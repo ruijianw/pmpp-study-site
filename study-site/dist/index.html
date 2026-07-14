@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
     <div class="app-shell">
       <aside class="sidebar" aria-label="Chapters">
         <div class="brand-block">
@@ -23,7 +24,7 @@
         <nav id="chapter-list" class="chapter-list"></nav>
       </aside>
 
-      <main class="workspace">
+      <main id="main-content" class="workspace" tabindex="-1">
         <section class="chapter-header">
           <div>
             <p id="chapter-kicker" class="kicker">Chapter</p>
@@ -32,6 +33,7 @@
           <div class="chapter-stats" aria-label="Chapter stats">
             <span id="page-count">0 pages</span>
             <span id="word-count">0 words</span>
+            <span id="artifact-count">0 artifacts</span>
           </div>
         </section>
 
@@ -57,6 +59,16 @@
           <p id="selected-artifact-copy">Choose an artifact type.</p>
           <button id="generate-button" type="button">Generate with Codex</button>
           <p id="codex-config" class="codex-config">Codex model loading</p>
+          <dl class="data-stats" aria-label="Offline data stats">
+            <div>
+              <dt>Coverage</dt>
+              <dd id="artifact-coverage">0 / 0</dd>
+            </div>
+            <div>
+              <dt>Updated</dt>
+              <dd id="data-updated">not generated</dd>
+            </div>
+          </dl>
           <label class="force-row">
             <input id="force-refresh" type="checkbox" />
             <span>Regenerate cached result</span>

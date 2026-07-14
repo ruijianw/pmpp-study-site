@@ -19,6 +19,7 @@ const els = {
   chapterTitle: document.querySelector("#chapter-title"),
   pageCount: document.querySelector("#page-count"),
   wordCount: document.querySelector("#word-count"),
+  artifactCount: document.querySelector("#artifact-count"),
   artifactTabs: document.querySelector("#artifact-tabs"),
   artifactKicker: document.querySelector("#artifact-kicker"),
   artifactTitle: document.querySelector("#artifact-title"),
@@ -27,6 +28,8 @@ const els = {
   selectedArtifactCopy: document.querySelector("#selected-artifact-copy"),
   controlTitle: document.querySelector("#control-title"),
   codexConfig: document.querySelector("#codex-config"),
+  artifactCoverage: document.querySelector("#artifact-coverage"),
+  dataUpdated: document.querySelector("#data-updated"),
   generateButton: document.querySelector("#generate-button"),
   forceRefresh: document.querySelector("#force-refresh"),
   forceRow: document.querySelector(".force-row"),
@@ -117,11 +120,15 @@ function renderHeader() {
   els.chapterTitle.textContent = chapter.title;
   els.pageCount.textContent = `${chapter.pageCount} pages`;
   els.wordCount.textContent = `${formatNumber(chapter.wordCount)} words`;
+  els.artifactCount.textContent = `${Object.keys(chapter.artifacts || {}).length} artifacts`;
 }
 
 function renderControls() {
   const type = currentType();
+  const coverage = artifactCoverage();
   els.selectedArtifactCopy.textContent = type?.description || "Choose an artifact type.";
+  els.artifactCoverage.textContent = `${coverage.available} / ${coverage.total}`;
+  els.dataUpdated.textContent = formatDate(state.generatedAt);
   if (state.staticMode) {
     els.controlTitle.textContent = "Offline Content";
     els.codexConfig.textContent = `NotebookLM ${state.notebook || "data"} · ${formatDate(state.generatedAt)}`;
@@ -208,7 +215,14 @@ function renderArtifact(artifact, cacheStatus) {
   if (content.summary) {
     const summary = document.createElement("div");
     summary.className = "summary-box";
-    summary.textContent = content.summary;
+    if (content.title) {
+      const heading = document.createElement("h4");
+      heading.textContent = content.title;
+      summary.append(heading);
+    }
+    const paragraph = document.createElement("p");
+    paragraph.textContent = content.summary;
+    summary.append(paragraph);
     els.artifactContent.append(summary);
   }
 
@@ -248,24 +262,21 @@ function renderValue(title, value) {
   card.append(heading);
 
   if (Array.isArray(value)) {
-    const list = document.createElement("ul");
-    for (const item of value) {
-      const li = document.createElement("li");
-      li.textContent = stringifyValue(item);
-      list.append(li);
-    }
-    card.append(list);
+    card.append(renderArray(value));
     return card;
   }
 
   if (value && typeof value === "object") {
+    const primaryList = value.points || value.bullets || value.options;
+    if (Array.isArray(primaryList)) {
+      card.append(renderArray(primaryList));
+    }
+
     for (const [key, nested] of Object.entries(value)) {
-      if (["title", "heading"].includes(key)) continue;
+      if (["title", "heading", "points", "bullets", "options"].includes(key)) continue;
       const label = document.createElement("small");
       label.textContent = titleCase(key);
-      const paragraph = document.createElement("p");
-      paragraph.textContent = stringifyValue(nested);
-      card.append(label, paragraph);
+      card.append(label, renderNested(nested));
     }
     return card;
   }
@@ -274,6 +285,25 @@ function renderValue(title, value) {
   paragraph.textContent = stringifyValue(value);
   card.append(paragraph);
   return card;
+}
+
+function renderNested(value) {
+  if (Array.isArray(value)) {
+    return renderArray(value);
+  }
+  const paragraph = document.createElement("p");
+  paragraph.textContent = stringifyValue(value);
+  return paragraph;
+}
+
+function renderArray(value) {
+  const list = document.createElement("ul");
+  for (const item of value) {
+    const li = document.createElement("li");
+    li.textContent = stringifyValue(item);
+    list.append(li);
+  }
+  return list;
 }
 
 function setArtifactShell(label, cacheStatus) {
@@ -321,6 +351,15 @@ function currentChapter() {
 
 function currentType() {
   return state.artifactTypes.find((type) => type.id === state.currentType);
+}
+
+function artifactCoverage() {
+  const total = state.chapters.length * state.artifactTypes.length;
+  const available = state.chapters.reduce(
+    (count, chapter) => count + Object.keys(chapter.artifacts || {}).length,
+    0,
+  );
+  return { available, total };
 }
 
 function stringifyValue(value) {
