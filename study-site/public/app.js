@@ -26,6 +26,13 @@ const els = {
   artifactContent: document.querySelector("#artifact-content"),
   cacheBadge: document.querySelector("#cache-badge"),
   selectedArtifactCopy: document.querySelector("#selected-artifact-copy"),
+  artifactUseCase: document.querySelector("#artifact-use-case"),
+  contextChapterKicker: document.querySelector("#context-chapter-kicker"),
+  contextChapterTitle: document.querySelector("#context-chapter-title"),
+  contextPageCount: document.querySelector("#context-page-count"),
+  contextWordCount: document.querySelector("#context-word-count"),
+  contextArtifactCount: document.querySelector("#context-artifact-count"),
+  chapterAssets: document.querySelector("#chapter-assets"),
   controlTitle: document.querySelector("#control-title"),
   codexConfig: document.querySelector("#codex-config"),
   artifactCoverage: document.querySelector("#artifact-coverage"),
@@ -34,6 +41,15 @@ const els = {
   forceRefresh: document.querySelector("#force-refresh"),
   forceRow: document.querySelector(".force-row"),
   statusLine: document.querySelector("#status-line"),
+};
+
+const artifactUseCases = {
+  "study-guide": "first-pass understanding",
+  briefing: "quick technical review",
+  "data-table": "comparing concepts",
+  flashcards: "recall practice",
+  quiz: "checking weak spots",
+  "slide-deck": "visual review or teaching",
 };
 
 init();
@@ -124,11 +140,25 @@ function renderHeader() {
 }
 
 function renderControls() {
+  const chapter = currentChapter();
   const type = currentType();
   const coverage = artifactCoverage();
+  const chapterArtifactCount = Object.keys(chapter?.artifacts || {}).length;
+
+  if (chapter) {
+    els.contextChapterKicker.textContent = `Chapter ${chapter.number}`;
+    els.contextChapterTitle.textContent = chapter.title;
+    els.contextPageCount.textContent = String(chapter.pageCount);
+    els.contextWordCount.textContent = formatNumber(chapter.wordCount);
+    els.contextArtifactCount.textContent = `${chapterArtifactCount} / ${state.artifactTypes.length}`;
+  }
+
   els.selectedArtifactCopy.textContent = type?.description || "Choose an artifact type.";
+  els.artifactUseCase.textContent = artifactUseCases[type?.id] || "focused review";
   els.artifactCoverage.textContent = `${coverage.available} / ${coverage.total}`;
   els.dataUpdated.textContent = formatDate(state.generatedAt);
+  renderChapterAssets(chapter);
+
   if (state.staticMode) {
     els.controlTitle.textContent = "Offline Content";
     els.codexConfig.textContent = `NotebookLM ${state.notebook || "data"} · ${formatDate(state.generatedAt)}`;
@@ -143,6 +173,41 @@ function renderControls() {
     ? `Codex ${state.codex.model} · ${state.codex.reasoningEffort}`
     : "Codex model unavailable";
   els.generateButton.disabled = state.loading || !currentChapter() || !type;
+}
+
+function renderChapterAssets(chapter) {
+  els.chapterAssets.replaceChildren();
+  if (!chapter) {
+    const empty = document.createElement("p");
+    empty.className = "asset-empty";
+    empty.textContent = "Select a chapter to view its available artifacts.";
+    els.chapterAssets.append(empty);
+    return;
+  }
+
+  for (const type of state.artifactTypes) {
+    const available = Boolean(chapter.artifacts?.[type.id]);
+    const active = type.id === state.currentType;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `asset-button${active ? " active" : ""}${available ? " available" : " missing"}`;
+    button.setAttribute("aria-pressed", String(active));
+    button.disabled = state.staticMode && !available;
+
+    const label = document.createElement("strong");
+    label.textContent = type.label;
+    const status = document.createElement("span");
+    status.textContent = available ? "Ready" : state.staticMode ? "Missing" : "Generate";
+    button.append(label, status);
+
+    button.addEventListener("click", async () => {
+      state.currentType = type.id;
+      renderArtifactTabs();
+      renderControls();
+      await loadCachedArtifact();
+    });
+    els.chapterAssets.append(button);
+  }
 }
 
 async function loadCachedArtifact() {

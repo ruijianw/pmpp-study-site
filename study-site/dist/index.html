@@ -53,12 +53,46 @@
         </section>
       </main>
 
-      <aside class="control-panel" aria-label="Generation controls">
-        <section class="control-section">
-          <h2 id="control-title">Generate</h2>
+      <aside class="control-panel" aria-label="Chapter study navigation">
+        <section class="control-section chapter-context">
+          <div>
+            <p id="context-chapter-kicker" class="kicker">Chapter</p>
+            <h2 id="context-chapter-title">Select a chapter</h2>
+          </div>
+          <dl class="data-stats compact-stats" aria-label="Current chapter stats">
+            <div>
+              <dt>Pages</dt>
+              <dd id="context-page-count">0</dd>
+            </div>
+            <div>
+              <dt>Words</dt>
+              <dd id="context-word-count">0</dd>
+            </div>
+            <div>
+              <dt>Assets</dt>
+              <dd id="context-artifact-count">0 / 0</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="control-section artifact-guide">
+          <h2>Artifact Guide</h2>
           <p id="selected-artifact-copy">Choose an artifact type.</p>
-          <button id="generate-button" type="button">Generate with Codex</button>
+          <div class="guide-callout">
+            <span>Use this for</span>
+            <strong id="artifact-use-case">choosing a study mode</strong>
+          </div>
+        </section>
+
+        <section class="control-section chapter-assets">
+          <h2>Chapter Assets</h2>
+          <div id="chapter-assets" class="asset-list"></div>
+        </section>
+
+        <section class="control-section source-section">
+          <h2 id="control-title">Generate</h2>
           <p id="codex-config" class="codex-config">Codex model loading</p>
+          <button id="generate-button" type="button">Generate with Codex</button>
           <dl class="data-stats" aria-label="Offline data stats">
             <div>
               <dt>Coverage</dt>
@@ -74,24 +108,6 @@
             <span>Regenerate cached result</span>
           </label>
           <p id="status-line" class="status-line">Idle</p>
-        </section>
-
-        <section class="control-section">
-          <h2>Study Loop</h2>
-          <ol class="study-loop">
-            <li>Read summary</li>
-            <li>Drill flashcards</li>
-            <li>Take quiz</li>
-            <li>Review weak concepts</li>
-          </ol>
-        </section>
-
-        <section class="control-section visual-map" aria-label="GPU learning map">
-          <h2>Map</h2>
-          <div class="lane lane-host"><span>Host</span><b>launch</b></div>
-          <div class="lane lane-grid"><span>Grid</span><b>blocks</b></div>
-          <div class="lane lane-memory"><span>Memory</span><b>coalesce</b></div>
-          <div class="lane lane-warp"><span>Warp</span><b>schedule</b></div>
         </section>
       </aside>
     </div>
