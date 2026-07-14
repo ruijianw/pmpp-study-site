@@ -1,0 +1,139 @@
+{
+  "chapterId": "chapter-04-compute-architecture-and-scheduling",
+  "chapterTitle": "Compute Architecture And Scheduling",
+  "sourceId": "c4dee50c-ba72-41d3-819f-b65012626952",
+  "sourceTitle": "chapter-04-compute-architecture-and-scheduling.pdf",
+  "artifactType": "flashcards",
+  "artifactLabel": "Flashcards",
+  "generatedAt": "2026-07-13T13:24:03.198463Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "闪卡：计算架构与调度 (Chapter 4: Compute Architecture and Scheduling)",
+    "summary": "包含 18 张精选闪卡，用于快速复习《大规模并行处理器编程》第四章的核心概念。内容涵盖 GPU 流式多处理器 (SM) 的层级结构、Warp 执行模型、控制发散 (Control Divergence)、延迟容忍机制以及占用率 (Occupancy) 计算陷阱。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Tips)",
+        "points": [
+          "利用简单 (Easy) 难度卡片巩固 SM、Warp、Occupancy 等基础术语的定义。",
+          "通过中等 (Medium) 难度卡片理解透明可扩展性 (Transparent scalability)、SIMT 模型及二维网格的线性化方式。",
+          "挑战困难 (Hard) 难度卡片，深入剖析性能悬崖 (Performance cliff)、零开销上下文切换以及死锁缺陷等底层性能推理重点。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "front": "现代 GPU 的核心计算单元 (SM) 的全称是什么？它内部包含了哪些主要组件？",
+        "back": "全称为流式多处理器 (Streaming Multiprocessors)。内部包含多个流处理器 (Streaming processors, 也常被称为 CUDA cores)、控制逻辑以及各种片上内存资源。",
+        "difficulty": "easy",
+        "sourceHint": "4.1 Architecture of a modern GPU"
+      },
+      {
+        "front": "在 CUDA 编程中，线程 (Threads) 被分配到 SM 上的基本硬件调度单位是什么？",
+        "back": "线程块 (Thread Block)。同一个块内的所有线程会被同时分配到同一个 SM 上执行，确保它们可以利用共享内存和屏障进行协同与同步。",
+        "difficulty": "easy",
+        "sourceHint": "4.2 Thread block scheduling"
+      },
+      {
+        "front": "从 Hopper 架构开始，CUDA 引入了哪个可选的硬件层级，允许组内的线程块协同调度并访问分布式共享内存？",
+        "back": "线程块集群 (Thread block cluster)。属于同一集群的块会被共调度 (co-scheduled) 到同一个 GPC (GPU Processing Cluster) 上。",
+        "difficulty": "medium",
+        "sourceHint": "4.2 Thread block scheduling"
+      },
+      {
+        "front": "如果在会导致线程走向不同控制分支的 `if-else` 语句块内部调用 `__syncthreads()`，会导致什么严重后果？",
+        "back": "会导致死锁 (Deadlock) 或未定义行为。屏障同步要求其作用域内的所有线程必须共同抵达，若部分线程因分支未执行该语句，整个块将永远挂起等待。",
+        "difficulty": "hard",
+        "sourceHint": "4.3 Synchronization and transparent scalability"
+      },
+      {
+        "front": "什么是 CUDA 架构的透明可扩展性 (Transparent scalability)？",
+        "back": "由于不同线程块之间没有隐式的执行顺序和同步依赖，硬件可以根据底层可用 SM 的数量以任意顺序并发调度 Block。这使得同一套代码可在从低端到高端的不同代际 GPU 上自动扩展并高效运行。",
+        "difficulty": "medium",
+        "sourceHint": "4.3 Synchronization and transparent scalability"
+      },
+      {
+        "front": "在调度线程块时，什么是尾部效应 (Tail effect)？如何避免？",
+        "back": "当总线程块数量不是 SM 并发容量的整数倍时，最后一波 (Wave) 调度的块数量较少，无法充分利用硬件资源。通常建议将网格划分为能整除硬件容量的块数来避免。",
+        "difficulty": "medium",
+        "sourceHint": "4.3 Synchronization and transparent scalability"
+      },
+      {
+        "front": "在 SM 中，线程块会被进一步划分为用于硬件执行的最小调度单元，它叫什么？通常包含多少个线程？",
+        "back": "它被称为 Warp，目前的 CUDA 架构中，一个 Warp 包含 32 个线程。",
+        "difficulty": "easy",
+        "sourceHint": "4.4 Warps and SIMD hardware"
+      },
+      {
+        "front": "多维线程块 (如 2D Block) 在被划分为 Warp 时，会采用何种布局方式展平 (Linearized)？",
+        "back": "采用行主序 (Row-major layout) 布局。即 `threadIdx.y` 值较小的线程排在前面，对于相同的 y，则按 `threadIdx.x` 递增排列以形成连续的 32 个线程。",
+        "difficulty": "medium",
+        "sourceHint": "4.4 Warps and SIMD hardware"
+      },
+      {
+        "front": "什么是 SIMT (Single Instruction, Multiple Thread) 模型？它与传统 CPU 的 SIMD 有何区别？",
+        "back": "在 SIMT 中，程序员编写基于标量线程的代码，硬件自动将线程分组为 Warp，并向 Warp 内所有线程广播相同指令进行 SIMD 风格执行。它隐藏了传统 CPU 中需要手动调用 SIMD 向量指令 API 的复杂性。",
+        "difficulty": "medium",
+        "sourceHint": "4.4 Warps and SIMD hardware"
+      },
+      {
+        "front": "什么是控制发散 (Control divergence)？",
+        "back": "当同一个 Warp 内的线程在遇到条件分支 (如 if-else) 时走向不同的控制流路径，硬件必须分多遍 (Multi-pass) 串行执行各分支。在执行某一分支时，未参与的线程会被置为非活跃状态，导致执行资源闲置。",
+        "difficulty": "medium",
+        "sourceHint": "4.5 Control divergence"
+      },
+      {
+        "front": "自 Volta 架构引入独立线程调度 (Independent thread scheduling) 后，对于产生发散的 Warp 线程，开发者绝对不能抱有什么假设？",
+        "back": "不能假设 Warp 内的线程在执行完分支后会自动隐式重新收敛 (Reconverge)。如果需要在分支后协同，必须显式调用 Warp 级同步原语 (如 `__syncwarp()`)。",
+        "difficulty": "hard",
+        "sourceHint": "4.5 Control divergence"
+      },
+      {
+        "front": "为了处理长度不能被块大小整除的数组，常在内核中使用 `if (i < n)`。这会产生大量控制发散从而严重拖慢程序吗？",
+        "back": "不会。当数据量足够大时（例如向量长度超过一万），由于边缘处理导致边界发散的 Warp 数量在整个网格中占比极小 (不到 1%)，对总体性能的影响微乎其微。不必为了消除它而过度增加代码复杂度。",
+        "difficulty": "hard",
+        "sourceHint": "4.5 Control divergence"
+      },
+      {
+        "front": "现代 GPU 硬件是如何实现延迟容忍 (Latency tolerance) 以掩盖全局内存访问等长耗时操作的？",
+        "back": "GPU 依靠过载分配 (Oversubscription) 远超物理执行单元数量的线程，结合细粒度多线程 (Fine-grained multithreading) 技术。当一个 Warp 遇到长延迟时，SM 迅速无缝切换到其他就绪的 Warp 执行，从而隐藏延迟。",
+        "difficulty": "medium",
+        "sourceHint": "4.6 Warp scheduling and latency tolerance"
+      },
+      {
+        "front": "为什么 GPU 能够实现零开销 (Zero-overhead) 的 Warp 上下文切换，而传统 CPU 的线程切换代价很高？",
+        "back": "CPU 切换线程需要将寄存器等上下文状态保存至主存并读取新状态；而 GPU SM 拥有海量的硬件寄存器，它将分配给它的所有 Warp 的上下文状态直接驻留在硬件上，瞬间即可完成就绪态的切换。",
+        "difficulty": "hard",
+        "sourceHint": "4.6 Warp scheduling and latency tolerance"
+      },
+      {
+        "front": "在 CUDA 性能调优中，什么是占用率 (Occupancy)？",
+        "back": "占用率是指实际分配给某 SM 的 Warp (或线程) 数量，与该 SM 硬件所能支持的最大 Warp 数量的比值。占用率越高，SM 就越有机会找到就绪的 Warp 来掩盖长延迟。",
+        "difficulty": "easy",
+        "sourceHint": "4.7 Resource partitioning and occupancy"
+      },
+      {
+        "front": "在 SM 内部，哪些关键资源是跨线程和线程块动态划分 (Dynamically partitioned) 的，它们的短缺会直接限制内核的占用率？",
+        "back": "关键的动态资源包括：线程槽 (Thread slots)、线程块槽 (Block slots)、寄存器 (Registers) 以及共享内存 (Shared memory)。",
+        "difficulty": "medium",
+        "sourceHint": "4.7 Resource partitioning and occupancy"
+      },
+      {
+        "front": "什么是内核优化中极其危险的“性能悬崖 (Performance cliff)”现象？",
+        "back": "当开发者稍微增加内核中的局部变量，导致单线程占用的寄存器数量微增并跨越某个硬件阈值时，SM 能容纳的总体 Block 数量会因总寄存器耗尽而锐减，导致占用率瞬间断崖式暴跌（如从 100% 暴跌至 75%）。",
+        "difficulty": "hard",
+        "sourceHint": "4.7 Resource partitioning and occupancy"
+      },
+      {
+        "front": "在编写需要适配多种 GPU 硬件的应用程序时，可以使用哪个 CUDA API 在运行时查询目标设备的硬件限制 (如 maxThreadsPerBlock)？",
+        "back": "可以使用 `cudaGetDeviceProperties` API，它会返回一个 `cudaDeviceProp` 结构体，其中包含了 SM 数量、寄存器限制、线程块维度上限等用于动态执行配置的关键参数。",
+        "difficulty": "easy",
+        "sourceHint": "4.8 Querying device properties"
+      }
+    ]
+  }
+}

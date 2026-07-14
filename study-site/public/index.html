@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PMPP Codex Study Workspace</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Chapters">
+        <div class="brand-block">
+          <div class="brand-mark" aria-hidden="true">P</div>
+          <div>
+            <h1>PMPP Study</h1>
+            <p id="chapter-count">Loading chapters</p>
+          </div>
+        </div>
+        <label class="search-field">
+          <span>Search</span>
+          <input id="chapter-search" type="search" placeholder="memory, scan, llm..." />
+        </label>
+        <nav id="chapter-list" class="chapter-list"></nav>
+      </aside>
+
+      <main class="workspace">
+        <section class="chapter-header">
+          <div>
+            <p id="chapter-kicker" class="kicker">Chapter</p>
+            <h2 id="chapter-title">Select a chapter</h2>
+          </div>
+          <div class="chapter-stats" aria-label="Chapter stats">
+            <span id="page-count">0 pages</span>
+            <span id="word-count">0 words</span>
+          </div>
+        </section>
+
+        <section class="artifact-tabs" id="artifact-tabs" aria-label="Artifact types"></section>
+
+        <section class="artifact-panel">
+          <div class="panel-header">
+            <div>
+              <p id="artifact-kicker" class="kicker">Artifact</p>
+              <h3 id="artifact-title">No artifact loaded</h3>
+            </div>
+            <span id="cache-badge" class="cache-badge">empty</span>
+          </div>
+          <div id="artifact-content" class="artifact-content empty-state">
+            Select a chapter and generate a study artifact.
+          </div>
+        </section>
+      </main>
+
+      <aside class="control-panel" aria-label="Generation controls">
+        <section class="control-section">
+          <h2 id="control-title">Generate</h2>
+          <p id="selected-artifact-copy">Choose an artifact type.</p>
+          <button id="generate-button" type="button">Generate with Codex</button>
+          <p id="codex-config" class="codex-config">Codex model loading</p>
+          <label class="force-row">
+            <input id="force-refresh" type="checkbox" />
+            <span>Regenerate cached result</span>
+          </label>
+          <p id="status-line" class="status-line">Idle</p>
+        </section>
+
+        <section class="control-section">
+          <h2>Study Loop</h2>
+          <ol class="study-loop">
+            <li>Read summary</li>
+            <li>Drill flashcards</li>
+            <li>Take quiz</li>
+            <li>Review weak concepts</li>
+          </ol>
+        </section>
+
+        <section class="control-section visual-map" aria-label="GPU learning map">
+          <h2>Map</h2>
+          <div class="lane lane-host"><span>Host</span><b>launch</b></div>
+          <div class="lane lane-grid"><span>Grid</span><b>blocks</b></div>
+          <div class="lane lane-memory"><span>Memory</span><b>coalesce</b></div>
+          <div class="lane lane-warp"><span>Warp</span><b>schedule</b></div>
+        </section>
+      </aside>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

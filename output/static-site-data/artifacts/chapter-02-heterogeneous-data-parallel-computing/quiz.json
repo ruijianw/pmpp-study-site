@@ -1,0 +1,158 @@
+{
+  "chapterId": "chapter-02-heterogeneous-data-parallel-computing",
+  "chapterTitle": "Heterogeneous Data Parallel Computing",
+  "sourceId": "9da6fad2-9ec4-460f-b6fc-7e470d872c59",
+  "sourceTitle": "chapter-02-heterogeneous-data-parallel-computing.pdf",
+  "artifactType": "quiz",
+  "artifactLabel": "Quiz",
+  "generatedAt": "2026-07-13T12:14:32.956425Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "测试题：异构数据并行计算 (Chapter 2: Heterogeneous Data Parallel Computing)",
+    "summary": "本测试题旨在检验对 CUDA C++ 基础数据并行编程模型的掌握程度，涵盖异构程序的内存管理 API、网格与线程块配置、全局索引计算、常见实现缺陷（如越界、主机指针解引用错误）以及底层编译执行原理。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Advice)",
+        "points": [
+          "1. 熟记异构编程的基础骨架：在主机端分配设备内存 -> 数据 HostToDevice -> 启动设备内核(Kernel) -> 数据 DeviceToHost -> 释放设备内存。",
+          "2. 牢记全局线程索引的推导公式 `i = blockIdx.x * blockDim.x + threadIdx.x`，理解它是如何将两级硬件线程映射到一维连续数据的。",
+          "3. 在设置网格执行配置(Execution Configuration)时，务必注意利用向上取整 `ceil(n/blockDim)`，并在内核代码中配套 `if (i < n)` 边界检查。",
+          "4. 绝不跨边界直接解引用：主机(Host)代码不能直接操作设备(Device)内存指针，所有设备上的内存申请必须通过严格转换为 `(void**)` 的 `cudaMalloc` 传递句柄。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "type": "multiple-choice",
+        "question": "在分配设备全局内存时，为什么 `cudaMalloc` 的第一个参数必须被强制转换为 `(void**)` 类型？",
+        "options": [
+          "A. 因为它需要直接覆盖主机内存中的原始数据",
+          "B. 因为它是一个通用分配函数，需要泛型二级指针来接收并修改底层设备指针中保存的显存地址",
+          "C. 因为 GPU 的显存地址结构与 CPU 完全不同，必须通过两次解引用才能建立链接",
+          "D. 这是由于 NVCC 编译器无法识别一级指针"
+        ],
+        "answer": "B",
+        "explanation": "cudaMalloc 使用返回值传递错误码 (cudaError_t)，因此必须通过接收设备指针的地址（即二级指针）来写入新分配的内存地址。由于它是能够分配各种数据类型空间的泛型函数，所以必须强制转换为 (void**)。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "如果在主机 (Host) 的 C++ 代码中，直接解引用一个指向设备全局内存的指针（例如试图读取 `A_d` 的值），会导致什么后果？",
+        "options": [
+          "A. 数据会被底层驱动自动从设备内存缓存到主机内存中",
+          "B. 编译器会自动插入 cudaMemcpy 指令",
+          "C. 导致运行时异常或段错误 (Segmentation Fault)",
+          "D. 程序会忽略该操作并返回数值 0"
+        ],
+        "answer": "C",
+        "explanation": "设备全局内存对主机 CPU 的代码是不可直接寻址和访问的。强行在主机代码中对设备指针解引用会导致段错误或不可预知的运行时异常。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "假设要处理长度为 1000 的向量，每个线程块 (Block) 的大小设为 256，为了完全覆盖所有数据，正确的网格尺寸 (Grid Size) 应该包含多少个线程块？",
+        "options": [
+          "A. 3",
+          "B. 4",
+          "C. 256",
+          "D. 1000"
+        ],
+        "answer": "B",
+        "explanation": "当数据长度无法被 Block 大小整除时，需要执行向上取整除法。ceil(1000 / 256.0) 会启动 4 个线程块（共计 1024 个线程）。多出的 24 个线程需要利用边界检查予以屏蔽。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "如何利用 CUDA 的函数修饰符，使得同一个函数能够被编译器编译成同时在主机 (Host) 和设备 (Device) 上执行的两个版本？",
+        "options": [
+          "A. 仅使用 __global__ 修饰符",
+          "B. 仅使用 __device__ 修饰符",
+          "C. 同时使用 __host__ 和 __device__ 修饰符",
+          "D. 使用默认的不带修饰符的声明"
+        ],
+        "answer": "C",
+        "explanation": "同时使用这两个关键字会指示 NVCC 编译器生成两份对象代码：一份在主机执行且只能被主机调用，另一份在设备执行且只能被设备调用。这常用于复用通用的计算逻辑库。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在一维网格和一维线程块的结构中，用于计算当前线程所需处理的一维数据全局唯一索引 (Global Index) 的标准 C++ 表达式是什么？",
+        "options": [
+          "A. i = blockIdx.x + threadIdx.x;",
+          "B. i = blockIdx.x * threadIdx.x;",
+          "C. i = blockIdx.x * blockDim.x + threadIdx.x;",
+          "D. i = blockIdx.x * blockDim.x * 2 + threadIdx.x;"
+        ],
+        "answer": "C",
+        "explanation": "表达式 `blockIdx.x * blockDim.x` 计算了当前线程块之前所有网格块包含的线程总数。加上当前线程在块内的局部偏移量 `threadIdx.x`，即可得到全局连续的唯一索引。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "以下哪种应用场景最典型地体现了数据并行性 (Data Parallelism)？",
+        "options": [
+          "A. 一个处理核心负责计算矩阵乘法，另一个核心同时负责将结果写入磁盘",
+          "B. 将应用逻辑划分为向量计算阶段与 I/O 阶段并发执行",
+          "C. 将一张高清彩色图像的数百万个像素映射给数百万个并发执行的线程，同时进行灰度转换",
+          "D. 在同一个核心内利用指令级流水线并发处理乱序指令"
+        ],
+        "answer": "C",
+        "explanation": "数据并行性指的是对同一个数据集的不同部分能够彼此独立地执行相同的操作计算。对海量独立像素同时进行颜色转换，是数据并行的完美体现，也是 CUDA 编程的核心优化方向。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "将传统的 C++ for 循环重构为 CUDA 内核 (Kernel) 时，为什么原本控制循环迭代步进的控制变量语句通常会被完全移除？",
+        "options": [
+          "A. 因为 CUDA 的编译器会自动将 for 循环在底层展开为内部串行指令",
+          "B. 这是因为循环并行化 (Loop Parallelism)，原先在时间上顺序执行的循环迭代被硬件直接映射给了空间上并发执行的大量独立线程",
+          "C. GPU 硬件不支持包含跳转和分支逻辑的控制指令",
+          "D. for 循环只能在 __device__ 函数中使用，不能在 __global__ 函数中出现"
+        ],
+        "answer": "B",
+        "explanation": "在 SPMD 编程模型中，启动的整个网格 (Grid) 相当于被完全展开的 for 循环，成千上万的并发线程代替了时间上的循环迭代步进，大幅缩短了程序的总体运行时间。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "当内核(Kernel)被调用并启动了包含成百上千个线程块 (Blocks) 的网格时，对于这些线程块在底层硬件上的执行顺序，开发者应该遵循怎样的假设？",
+        "options": [
+          "A. 硬件一定能保证 Block 0 在 Block 1 之前执行完毕",
+          "B. 所有线程块在任何型号的 GPU 上都能 100% 同一时刻执行",
+          "C. 硬件调度器可能以任何不可预测的顺序并发或乱序执行它们，绝不能在代码逻辑中依赖块间隐式的先后执行顺序",
+          "D. 奇数序号的线程块必然优先于偶数序号的线程块被调度"
+        ],
+        "answer": "C",
+        "explanation": "为了保证应用程序在规模较小（资源少）和规模庞大（资源多）的不同代际 GPU 上都具备可扩展性 (Scalability)，线程块被设计为必须能够以任意顺序被调度执行。依赖特定的执行顺序会导致灾难性的并发竞争故障。"
+      },
+      {
+        "type": "short-answer",
+        "question": "为什么在 CUDA 内核函数中，即使计算极其简单，通常也必须包含诸如 `if (i < n)` 这样的边界检查 (Boundary Checking) 分支语句？",
+        "expectedAnswer": "为了保证底层硬件架构的执行效率，线程块(Block)大小常被建议固定为 32 的倍数（如 256）。当处理的数据总量 N 无法被块大小完美整除时，利用向上取整启动的网格势必会在末尾块产生多余的线程。边界检查能够防止这些尾部多出的线程越界读取或覆写非法内存，从而避免数据损坏或程序崩溃。",
+        "explanation": "缺乏边界保护是并行数据切分中最容易导致的实现缺陷，轻则导致数组末尾出现乱码，重则引起显存访问违规越界。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在编写健壮的异构程序时，为什么强烈建议必须捕获并处理像 `cudaMalloc` 或 `cudaMemcpy` 等 API 函数的返回值 (cudaError_t)？",
+        "expectedAnswer": "因为 CUDA API 发生失败（例如系统耗尽显存、传入了非法的设备内存参数）时，底层驱动通常不会直接让主机端的程序中止。如果代码不主动检查错误码并继续向下执行，后续的内核 (Kernel) 将会拿到无效指针或残缺的数据进行计算，导致排错极其困难的隐蔽逻辑错误。",
+        "explanation": "及时捕获 API 返回的错误码 (如比对 cudaSuccess) 能够将隐性问题显性化，在事故的第一发生现场阻断程序，节约大量调试时间。"
+      },
+      {
+        "type": "short-answer",
+        "question": "编译工具链 NVCC (NVIDIA CUDA Compiler) 是如何处理带有 CUDA 扩展语法的 C++ 混合源文件的？",
+        "expectedAnswer": "NVCC 在预处理阶段会利用 CUDA 特有的修饰符关键字（如 __global__ 和 <<< >>>）来分离主机代码与设备代码。传统的主机端 C++ 代码会被分离出来交由底层的标准 C/C++ 编译器进行编译；而设备端的代码则会被 NVCC 编译器转换成名为 PTX (Parallel Thread Execution) 的虚拟汇编指令文件，以供 GPU 硬件最终执行。",
+        "explanation": "这种分离编译机制允许开发者将主机控制逻辑和设备加速内核统一写在一个文件内，极大降低了大规模异构编程的工程门槛。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在调用 `cudaMalloc` 为含有 `n` 个单精度浮点数 (float) 的数组分配设备内存时，其传入的 `size` 参数的具体表达式应该是什么？为什么？",
+        "expectedAnswer": "参数表达式应为 `size = n * sizeof(float);`。因为 cudaMalloc 及其底层机制所要求的内存大小是以字节 (bytes) 为单位的物理容量。所以必须将所需分配的数组元素个数 (n) 乘以单个对应数据类型在内存中占据的字节数。",
+        "explanation": "混淆数组的“元素个数”和物理内存的“字节总数”是异构内存分配过程中极易犯的低级但致命的错误。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在 SPMD (单程序多数据) 执行模型中，既然所有线程被启动后执行的是完全相同的内核代码，底层硬件是如何确保不同的线程能够“自觉”去处理不同位置的数据分片的？",
+        "expectedAnswer": "底层硬件在执行时，为每个被激活的线程提供了特定且只读的内置硬件标识变量（如 threadIdx.x 和 blockIdx.x）。每个线程在执行同一段代码时，通过读取映射在寄存器上的这些内置变量，能够获取自身在网格中的唯一身份坐标。将其代入数学映射公式后，原本相同的程序逻辑就会在不同的线程中产生不同的数据偏移量（内存访问地址）。",
+        "explanation": "正是这些只读的内置寄存器变量，充当了线程物理坐标与数学数据空间之间的桥梁，赋予了 SPMD 架构强大的灵活性。"
+      }
+    ]
+  }
+}

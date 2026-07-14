@@ -1,0 +1,71 @@
+{
+  "chapterId": "chapter-01-introduction",
+  "chapterTitle": "Introduction",
+  "sourceId": "36d65c10-46f4-41a0-8d73-eea6b485aea1",
+  "sourceTitle": "chapter-01-introduction.pdf",
+  "artifactType": "study-guide",
+  "artifactLabel": "Study Guide",
+  "generatedAt": "2026-07-13T12:06:32.438110Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "学习指南：引言 (Chapter 1: Introduction)",
+    "summary": "本章介绍了异构并行计算(Heterogeneous Parallel Computing)的背景，深入对比了多核CPU与多线程GPU在架构设计哲学上的本质差异。同时阐述了Amdahl定律对并行加速的限制，并总结了在CUDA编程中面临的算法复杂度、内存带宽、数据敏感性及同步开销等四大核心挑战，为全书的性能推理与计算思维奠定了基础。",
+    "sections": [
+      {
+        "heading": "学习目标 (Learning Objectives)",
+        "points": [
+          "1. 理解多核(Multi-core)CPU与多线程(Many-thread)GPU架构设计哲学的根本区别。",
+          "2. 掌握延迟导向(Latency-oriented)与吞吐量导向(Throughput-oriented)设计的底层硬件逻辑。",
+          "3. 运用Amdahl定律(Amdahl's Law)评估程序并行化后的理论最大加速比(Speedup)。",
+          "4. 识别大规模并行编程中的核心挑战，如内存受限(Memory-bound)和同步开销(Synchronization overhead)。",
+          "5. 理解CUDA相较于传统GPGPU (Graphics API) 在通用计算中的架构突破。",
+          "6. 建立计算思维(Computational Thinking)，以评估程序的并行潜力和硬件资源匹配度。"
+        ]
+      },
+      {
+        "heading": "章节结构映射 (Section-by-Section Chapter Map)",
+        "points": [
+          "1.1 异构并行计算 (Heterogeneous parallel computing): 探讨自2003年起半导体行业的算力演进，对比CPU与GPU架构，以及2007年CUDA发布带来的通用计算革命。",
+          "1.2 为什么需要更高的速度或并行度 (Why more speed or parallelism?): 分析深度学习、数字孪生等现代超级应用对执行吞吐量的巨大需求。",
+          "1.3 实际应用的加速 (Speeding up real applications): 引入Amdahl定律与“桃子”模型(Peach model)，解释串行代码对整体加速的制约及内存带宽瓶颈。",
+          "1.4 并行编程的挑战 (Challenges in parallel programming): 剖析并行算法复杂度、内存访问限制(Memory-bound)、数据特征敏感性以及线程协作带来的同步开销(Synchronization)。",
+          "1.5 相关并行编程接口 (Related parallel programming interfaces): 简要对比OpenMP (指令抽象)、MPI (集群消息传递) 和 OpenCL (跨平台标准化)。",
+          "1.6-1.7 核心目标与本书结构 (Goals & Organization): 确立追求高性能、正确性和跨代扩展性(Scalability)的编程目标，概览全书从基础到高级并行模式(Parallel Patterns)的结构。"
+        ]
+      },
+      {
+        "heading": "关键概念精解 (Key Concepts)",
+        "points": [
+          "延迟导向设计 (Latency-oriented Design): CPU的核心设计理念，通过大容量片上缓存(Caches)和复杂的分支预测控制逻辑，来最小化单线程内算术运算和内存访问的延迟。",
+          "吞吐量导向设计 (Throughput-oriented Design): GPU的核心设计理念，牺牲单线程延迟，摒弃大缓存和复杂控制逻辑，将大量芯片面积用于计算单元和内存通道，依靠数十万并发线程(Threads)切换来隐藏延迟。",
+          "Amdahl定律 (Amdahl's Law): 一种性能推理原则，指出应用程序的整体加速比受到其无法被并行化的串行部分（如“桃核”）耗时比例的严格限制。",
+          "内存受限 (Memory-bound): 应用程序的性能瓶颈在于数据从内存(DRAM)传输到处理器的速率(Memory bandwidth)，而非处理器的计算速度。",
+          "GPGPU与CUDA: 早期通用GPU编程需将计算伪装成图形像素渲染(GPGPU)，而CUDA通过引入硬件级的通用编程接口，让开发者能使用C/C++原生管理多线程与数据传递。"
+        ]
+      },
+      {
+        "heading": "常见误区与实现缺陷 (Common Misunderstandings & Implementation Mistakes)",
+        "points": [
+          "误区：认为只需增加GPU核心数量就能无限提升应用速度。真相：Amdahl定律决定了加速上限，若应用中串行部分占30%，则最大理论加速比仅为1.43倍，必须重新审视算法的并行覆盖率。",
+          "误区：将并行代码跑得慢归结为GPU算力不够。真相：大多数简单的并行化代码实际上会迅速耗尽内存带宽(Memory Bandwidth)，导致程序处于内存受限(Memory-bound)状态，需要利用片上存储器优化数据访问。",
+          "误区：认为所有并行算法都能比串行算法更高效。真相：某些并行算法为了适应并发执行，可能执行了比串行算法多得多的冗余工作(Redundant work)。如果不注重工作效率(Work efficiency)，面对大规模数据时反而会更慢。",
+          "实现缺陷：在线程协作(Collaboration)时，过度依赖屏障同步(Barriers)或原子操作(Atomic operations)，导致严重的同步开销，使大量并发线程陷入闲置等待。"
+        ]
+      },
+      {
+        "heading": "三阶段实践计划 (3-Session Practice Plan)",
+        "points": [
+          "Session 1：架构思维转换。梳理延迟导向(CPU)与吞吐量导向(GPU)在芯片面积分配（ALU、Cache、Control）上的视觉对比，并用自己的语言解释GPU如何通过“线程切换”隐藏延迟。",
+          "Session 2：Amdahl定律与瓶颈推演。计算不同串行占比（如10%、1%、0.1%）下，使用100倍速的GPU所能获得的整体应用加速比。分析为何异构计算必须让CPU和GPU分别处理“桃核”和“桃肉”。",
+          "Session 3：识别并行陷阱。分析一个简单的“数组求和”场景，列出如果由1000个线程同时更新一个总和变量，可能遇到的同步开销(Synchronization overhead)问题及对性能的破坏性影响。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

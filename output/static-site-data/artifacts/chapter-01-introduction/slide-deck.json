@@ -1,0 +1,163 @@
+{
+  "chapterId": "chapter-01-introduction",
+  "chapterTitle": "Introduction",
+  "sourceId": "36d65c10-46f4-41a0-8d73-eea6b485aea1",
+  "sourceTitle": "chapter-01-introduction.pdf",
+  "artifactType": "slide-deck",
+  "artifactLabel": "Slide Deck",
+  "generatedAt": "2026-07-13T12:10:18.846972Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "幻灯片大纲：引言 (Chapter 1: Introduction)",
+    "summary": "本幻灯片组提炼了异构并行计算的底层架构逻辑、Amdahl定律的应用、并行编程的四大核心挑战以及CUDA带来的技术突破，适用于CUDA入门阶段的架构认知与性能推理复习。",
+    "sections": [
+      {
+        "heading": "使用建议 (Usage Tips)",
+        "points": [
+          "前4页侧重底层架构哲学对比，适合建立CPU与GPU硬件资源的直观认知。",
+          "中段核心探讨Amdahl定律及内存、同步等四大性能挑战，构筑性能推理(Performance Reasoning)的基础。",
+          "尾段引出CUDA的历史突破与计算思维(Computational Thinking)，明确学习目标。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "slideNumber": 1,
+        "title": "并发革命与异构并行计算 (Concurrency Revolution & Heterogeneous Computing)",
+        "bullets": [
+          "2003年后，受制于能耗与散热瓶颈，单核时钟频率提升停滞。",
+          "微处理器全面转向多核 (Multi-core CPU) 与多线程 (Many-thread GPU) 架构。",
+          "软件开发模式由传统的串行代码转向依赖线程并发 (Concurrent threads) 的并行编程。"
+        ],
+        "speakerNotes": "自2003年起，单纯依靠提升频率来加速程序的时代终结。为了继续提升算力，业界分化出多核CPU和多线程GPU两条截然不同的路线，这直接导致了异构计算的诞生，也要求我们必须掌握并行编程思维。",
+        "visualSuggestion": "展示一条自2003年起CPU单核频率趋于平缓、而核心数和GPU并发线程数指数上升的双折线图。"
+      },
+      {
+        "slideNumber": 2,
+        "title": "CPU架构哲学：延迟导向设计 (Latency-Oriented Design)",
+        "bullets": [
+          "核心目标：极力最小化单线程内算术运算和内存访问的延迟。",
+          "资源分配：将庞大的芯片面积和功耗投入大容量片上缓存 (Caches) 与复杂控制逻辑（如分支预测）。",
+          "代价：极大地限制了芯片上能够容纳的计算单元 (ALUs) 数量。"
+        ],
+        "speakerNotes": "CPU像是一辆拥有极致响应速度的跑车。为了让单线程跑得足够快，它不惜成本地加入了复杂的预测和缓存机制，这被称为延迟导向设计。但这种设计占用了太多面积，无法提供极高的计算吞吐量。",
+        "visualSuggestion": "展示CPU芯片面积划分图，突出巨大的Cache区域和Control区域，仅有少量的ALU区域。"
+      },
+      {
+        "slideNumber": 3,
+        "title": "GPU架构哲学：吞吐量导向设计 (Throughput-Oriented Design)",
+        "bullets": [
+          "核心目标：最大化极大量并发线程的整体执行吞吐量。",
+          "资源分配：摒弃复杂控制逻辑与大缓存，塞入海量精简的计算单元 (ALUs) 和内存通道。",
+          "延迟隐藏 (Latency Hiding)：通过在数十万并发线程间极速切换来掩盖内存与计算延迟。"
+        ],
+        "speakerNotes": "GPU则像是一列重载货运火车。它放弃了单线程的低延迟，去掉了复杂的缓存和控制单元，换取了成百上千的核心。当某些线程在等内存时，硬件立刻切换到其他线程，通过这种“线程海”战术完美隐藏了延迟。",
+        "visualSuggestion": "展示GPU芯片面积划分图，满屏密集的绿色ALU小方块，与上一页的CPU形成强烈反差。"
+      },
+      {
+        "slideNumber": 4,
+        "title": "架构成本的不对称性 (Cost Asymmetry in Hardware Design)",
+        "bullets": [
+          "提升吞吐量成本低：计算单元翻倍 = 面积与功耗翻倍 (呈线性)。",
+          "降低延迟成本极高：延迟减半 = 复杂逻辑剧增，可能导致面积和功耗达到原来的4倍以上。",
+          "结论：面对现代数据密集型任务，增加线程并发数远比提升单核单线程速度更具经济学与物理学可行性。"
+        ],
+        "speakerNotes": "为什么不能做出既有单核极低延迟又有海量吞吐量的芯片？因为物理成本极度不对称。降低延迟的代价是呈指数上升的，这就是为什么业界最终选择了依赖大规模并行来提升算力的方案。",
+        "visualSuggestion": "天平对比图：一端是简单的“x2 ALU = x2 Power”，另一端是沉重的“1/2 Latency = x4 Power”砝码。"
+      },
+      {
+        "slideNumber": 5,
+        "title": "性能推理：Amdahl 定律 (Amdahl's Law)",
+        "bullets": [
+          "应用程序的理论最大加速比 (Speedup) 受到其串行代码比例的严格限制。",
+          "公式推演：若程序中无法并行的串行部分占 30%，即使 GPU 算力无限大，最大整体加速比仅为 1.43x。",
+          "常见误区：以为只需引入 GPU 就能起飞；实际上必须重构算法，将并行覆盖率提升至 99% 以上才能获得百倍加速。"
+        ],
+        "speakerNotes": "Amdahl定律是我们进行性能推理的底线。如果你不解决代码里的串行瓶颈，单纯堆叠再多GPU硬件也是徒劳。异构编程的首要任务是审视你的算法，尽可能把更多的工作推给并行化处理。",
+        "visualSuggestion": "展示一个饼图：30%红色的串行区与70%蓝色的并行区；旁边配以数学计算公式1/(0.3 + 0.7/∞) = 1.43。"
+      },
+      {
+        "slideNumber": 6,
+        "title": "协同分工：异构计算的“桃子模型 (Peach Model)”",
+        "bullets": [
+          "桃核 (Pit)：高度顺序依赖、难以并行化的核心逻辑代码，交由具备极低延迟的 CPU 处理。",
+          "桃肉 (Meat)：庞大的数据并行 (Data Parallel)、计算密集型代码，卸载至高吞吐量的 GPU 加速。",
+          "核心理念：通过协同执行，让 CPU 和 GPU 分别处理其架构最擅长的任务类型。"
+        ],
+        "speakerNotes": "在实际的异构系统中，我们不需要强迫GPU去跑串行代码，就像你不该去咬坚硬的桃核。我们让CPU去啃难啃的串行骨头，让GPU去吞噬海量的数据果肉，两者的优势互补才是王道。",
+        "visualSuggestion": "一张切开的桃子的照片。标注“CPU”指向坚硬的桃核，标注“GPU”指向饱满的桃肉。"
+      },
+      {
+        "slideNumber": 7,
+        "title": "并行实现挑战 (1/4)：内存受限 (Memory-Bound)",
+        "bullets": [
+          "现象：简单并行化后，通常最多仅能获得约 10 倍左右的加速比。",
+          "原因：海量并发线程迅速耗尽并饱和了系统主存 (DRAM) 的内存带宽 (Memory Bandwidth)。",
+          "对策：必须利用 GPU 特有的片上存储 (On-chip memories) 进行访存优化，减少对 DRAM 的重复访问。"
+        ],
+        "speakerNotes": "新手最常见的实现错误是只关注算力。GPU算力极其充沛，但如果你不优化数据搬运的过程，主存带宽立刻就会被撑爆，你的程序就会处于‘内存受限’状态，计算核心都在干等数据。",
+        "visualSuggestion": "动画或示意图：极宽的计算管道由于连接着狭窄的主存数据管道而造成严重堵塞。"
+      },
+      {
+        "slideNumber": 8,
+        "title": "并行实现挑战 (2/4)：工作效率 (Work Efficiency)",
+        "bullets": [
+          "定义：并行算法相对于最优串行算法，在总执行指令数/工作量上的效率。",
+          "实现缺陷：为了适应并发执行，某些并行算法会执行大量冗余工作 (Redundant work)。",
+          "后果：面对极大输入规模时，多做的工作量甚至会抵消掉硬件并行带来的速度优势。"
+        ],
+        "speakerNotes": "并不是所有问题都能完美并行。有些算法虽然写成了并行，但引入了极大的冗余计算。如果我们的并行算法的工作效率很低，当数据规模飙升时，它跑得可能比优秀的串行代码还要慢。",
+        "visualSuggestion": "对比图：串行算法直线走向终点 vs. 并行算法为了拆分任务在路途中绕了远路的轨迹。"
+      },
+      {
+        "slideNumber": 9,
+        "title": "并行实现挑战 (3/4)：数据特征敏感性 (Data Characteristics)",
+        "bullets": [
+          "问题：并行程序的性能比串行程序更容易受到输入数据特征的影响。",
+          "表现：极端不规则的数据大小或极不均匀的数据分布。",
+          "后果：导致不同线程被分配的工作量极度不均衡，部分线程被迫长时间闲置等待，破坏整体并发效能。"
+        ],
+        "speakerNotes": "如果数据分布极其不均，就会导致大量GPU线程早早干完活闲置，而少数线程还在苦苦计算。这种负载不均衡对极度依赖统一吞吐调度的GPU来说是致命的性能杀手。",
+        "visualSuggestion": "条形图对比：完美的负载均衡（各线程任务等长） vs 糟糕的负载（一条极长，其他极短导致空白等待）。"
+      },
+      {
+        "slideNumber": 10,
+        "title": "并行实现挑战 (4/4)：同步开销 (Synchronization Overhead)",
+        "bullets": [
+          "尴尬并行 (Embarrassingly parallel)：线程完全独立，无通信，性能最佳。",
+          "线程协作 (Collaboration)：许多高级任务需要线程间交互，必须使用屏障 (Barriers) 或原子操作 (Atomic operations)。",
+          "性能代价：过度的同步操作会迫使大量线程陷入阻塞等待状态，直接破坏了 GPU 隐藏延迟的核心机制。"
+        ],
+        "speakerNotes": "并非所有问题都是“尴尬并行”的。当我们被迫使用锁或屏障等同步机制时，必须极其谨慎。频繁的同步会让GPU的并发流水线断裂，引发灾难性的同步开销。",
+        "visualSuggestion": "交通信号灯比喻：无同步像高速公路自由行驶；过度同步像每隔10米就有一个红绿灯，导致严重拥堵。"
+      },
+      {
+        "slideNumber": 11,
+        "title": "历史突破：从 GPGPU 到 CUDA",
+        "bullets": [
+          "GPGPU 时代痛点：必须使用 OpenGL/Direct3D，将通用计算极其痛苦地“伪装”成渲染像素的图形操作。",
+          "CUDA 的革命 (2007)：在 GPU 硅片层面增加专用的通用计算与调度硬件接口。",
+          "优势：完全绕过图形渲染管线，支持开发者使用熟悉的 C/C++ 原生控制多线程架构。"
+        ],
+        "speakerNotes": "在2007年之前，用GPU做科学计算就像是逼着画家去算微积分。CUDA的伟大之处在于它直接在硬件硅片上开了后门，提供了一套通用的C++接口，彻底解放了GPU的计算潜力。",
+        "visualSuggestion": "时间线对比：2007年前复杂的图形API伪装管道 vs 2007年后直通硅片的C/C++代码结构。"
+      },
+      {
+        "slideNumber": 12,
+        "title": "最终目标：掌握计算思维 (Computational Thinking)",
+        "bullets": [
+          "定义：将现实世界的问题，抽象并转化为适合大规模并行处理器 (Massively parallel processors) 高效执行的逻辑结构的能力。",
+          "不仅是写出能运行的代码，更是通过深入了解底层硬件，进行严密的性能推理 (Performance Reasoning)。",
+          "跨代扩展性 (Scalability)：通过规整化和局部化数据访问，确保代码在未来算力更强的硬件上能自动获得加速。"
+        ],
+        "speakerNotes": "本书的核心不是教你背诵语法，而是培养计算思维。只有懂得将问题重构为对硬件友好的形式，并通过性能推理论证其合理性，你编写的CUDA代码才能在未来十年乃至更久的硬件迭代中持续爆发威力。",
+        "visualSuggestion": "大脑发光或者齿轮转动的图标，连接着问题抽象 (Problem) -> 并行模式 (Patterns) -> 硬件执行 (Hardware) 的闭环。"
+      }
+    ]
+  }
+}

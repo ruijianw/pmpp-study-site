@@ -1,0 +1,69 @@
+{
+  "chapterId": "chapter-19-convolutional-neural-networks",
+  "chapterTitle": "Convolutional Neural Networks",
+  "sourceId": "765c4df9-5672-44d9-9eee-974ff60884f9",
+  "sourceTitle": "chapter-19-convolutional-neural-networks.pdf",
+  "artifactType": "study-guide",
+  "artifactLabel": "Study Guide",
+  "generatedAt": "2026-07-13T14:54:01.593391Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "学习指南：卷积神经网络 (Chapter 19: Convolutional Neural Networks)",
+    "summary": "本指南旨在帮助读者掌握在 GPU 上加速卷积神经网络 (CNN) 前向传播的核心微架构技术。重点解析了如何识别卷积层中的高度并行性维度，如何利用分块网格 (Tiled Grid) 组织线程，以及如何通过隐式展开 (Implicit Unfolding) 将卷积运算无缝且高效地转化为通用矩阵乘法 (GEMM)，从而最大化显存带宽利用率和计算吞吐量。",
+    "sections": [
+      {
+        "heading": "学习目标 (Learning Objectives)",
+        "points": [
+          "1. 识别卷积层前向传播 (Forward propagation) 中的多层并行性，区分易于并行的维度 (批量样本 N、输出特征图 M、空间维度 H/W) 与适合串行累加的维度 (输入通道 C、滤波器维度 K)。",
+          "2. 掌握批量执行 (Batched execution) 如何通过增加网格 (Grid) 规模，有效提升 GPU 执行资源的利用率 (Occupancy)。",
+          "3. 应用三维网格和二维线程块策略，通过线性化索引解码 (Linearized index decoding) 将 1D blockIdx.y 映射到 2D 输出特征图的切片 (Tiles) 上。",
+          "4. 理解将卷积转化为通用矩阵乘法 (GEMM) 的数学基础，以及它在数据复用 (Data reuse) 上的架构优势。",
+          "5. 分析显式展开 (Explicit unfolding) 输入特征图时，由于感受野重叠引发的全局内存容量与带宽的扩展惩罚 (膨胀率接近 K^2)。",
+          "6. 掌握隐式展开 (Implicit unfolding) 技术，在共享内存切片加载 (Tiled memory loading) 阶段将虚拟 GEMM 矩阵的索引实时映射回原始输入张量，彻底规避显存膨胀。",
+          "7. 了解 cuDNN 库如何在片上内存 (On-chip memory) 中处理动态张量布局与卷积算法 (如 GEMM, Winograd)。"
+        ]
+      },
+      {
+        "heading": "章节结构映射 (Section-by-Section Chapter Map)",
+        "points": [
+          "19.1 卷积神经网络 (Convolutional Neural Networks): 介绍 CNN 的历史背景 (LeNet-5)，详细剖析卷积层的前向传播计算逻辑，包含输入/输出特征图 (Feature maps)、滤波器组 (Filter banks) 和批量执行 (Batched execution) 机制。",
+          "19.2 CUDA 卷积层内核 (A CUDA Convolutional Layer Kernel): 探讨并行度分配策略。设计 Grid：X=输出特征图，Z=批量样本，Y=线性化的空间 Tile。指出朴素实现虽具高并行度，但严重受限于全局内存带宽 (Global memory bandwidth)。",
+          "19.3 将卷积层公式化为 GEMM (Formulating Convolutional Layer as GEMM): 核心架构优化。讲解如何重组矩阵以复用数据。分析显式展开导致的严重空间扩张。推导隐式方法 (Implicit approach)，在分块乘法的加载阶段实时计算 B[u,v] 到 X 数组的索引映射。",
+          "19.4 CUDNN 库 (CUDNN Library): 概述 NVIDIA cuDNN 库，解释其基于张量 (Tensor) 不透明描述符的接口设计，以及如何在片上动态处理切片从而隐藏访存延迟 (Memory latency)。"
+        ]
+      },
+      {
+        "heading": "关键概念精解 (Key Concepts)",
+        "points": [
+          "特征图与滤波器组 (Feature Maps & Filter Banks): 卷积层的核心数据结构。每个输出特征图像素，是由所有输入特征图上的对应感受野 (Patches) 与相关滤波器进行点积并累加得到的结果。",
+          "批量执行 (Batched Execution): 将多个独立的输入样本打包为一个 mini-batch 进行前向传播。因为层内计算对各样本完全独立，Batching 可以极大扩展 Z 维度的 Grid 规模，从而避免 GPU 资源闲置。",
+          "GEMM 转换 (GEMM Formulation): 通过将滤波器组按行展平，输入特征图感受野按列展平，把多重嵌套的卷积循环转变为高度优化的矩阵乘法运算。由于卷积层通常参数积 (C * H_out * W_out) 极大，极其适合 GPU 的高计算密度特点。",
+          "显存膨胀 (Memory Expansion / Explicit Unfolding): 在显式构建 GEMM 输入矩阵 B 时，由于相邻输出像素对应的感受野高度重叠，输入像素会被多次复制。这种冗余会导致内存带宽和容量膨胀约 K^2 倍 (K 为滤波器尺寸)，抵消 GEMM 带来的提速。",
+          "隐式展开 (Implicit Unfolding): 高性能实现的精髓。并不在全局内存 (Global memory) 中真正创建庞大冗余的矩阵 B。而是在分块矩阵乘法中，当线程需要将 B 的某个元素加载到极速的片上共享内存 (Shared memory) 时，利用索引映射公式直接从原始输入特征图 X 中提取所需像素。"
+        ]
+      },
+      {
+        "heading": "常见误区与实现缺陷 (Common Misunderstandings & Implementation Mistakes)",
+        "points": [
+          "误区：为了最大化并行度，应该为卷积层的所有循环维度（包括输入通道 C 和滤波器高宽 K）分配并行线程。真相：如果将内部的 c, p, q 循环并行化，多个线程会同时尝试更新同一个输出像素 Y[n,m,h,w]，这将强制引入高延迟的原子操作 (Atomic operations)，产生严重的读改写冲突。正确的做法是保持它们串行，让单个线程在寄存器中累加最终结果。",
+          "误区：利用 GEMM 优化卷积时，必须预先在 GPU 显存中分配巨大的缓冲区来存储展开后的特征图矩阵 B。真相：显式展开 (Explicit unfolding) 会导致灾难性的内存带宽浪费 (Memory bandwidth consumption)。顶尖架构（如代码 19.11 及 cuDNN）均采用隐式展开，即在将数据拉入 Shared Memory / Cache 的瞬间完成索引重映射。",
+          "实现缺陷：在使用 3D Grid 映射卷积运算时，直接假设三个维度足够覆盖所有的并行方向。真相：由于 Z 维被样本批次 (Batch) 占用，X 维被输出特征图通道 (M) 占用，只剩下 Y 维来表示二维的输出图像切片 (Tiles)。必须在内核开头使用除法和取模 (`blockIdx.y / W_grid` 和 `blockIdx.y % W_grid`) 手动对 Y 索引进行线性解码 (Linearized indexing decoding)。"
+        ]
+      },
+      {
+        "heading": "三阶段实践计划 (3-Session Practice Plan)",
+        "points": [
+          "Session 1: 多维索引映射与朴素内核。实现 batched_convolution 内核 (参考 Fig 19.7)。重点练习 Grid 设计，在内核中正确实现 blockIdx.y 到二维 Tile 坐标的解码，并编写正确的 c, p, q 串行累加循环。",
+          "Session 2: 显式 GEMM 展开分析。在主机 (Host) 端使用 CPU 编写代码，按照展平逻辑显式地将输入特征图 X 转换为巨大的矩阵 B。分析并计算你的代码在不同 K (如 K=3, 5, 7) 下的膨胀率 (Expansion ratio)。",
+          "Session 3: 隐式分块 GEMM 内核 (Implicit Tiled GEMM)。基于第二章的矩阵乘法共享内存分块代码进行改造。取消全局内存中的矩阵 B，应用 Eq (19.5) 的索引映射公式 `X[n, u/(K*K), (u%(K*K))/K + v/W_out, ...]`，在从全局内存向 Shared Memory 加载切片数据的瞬间完成映射取值。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

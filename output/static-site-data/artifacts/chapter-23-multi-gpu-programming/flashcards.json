@@ -1,0 +1,139 @@
+{
+  "chapterId": "chapter-23-multi-gpu-programming",
+  "chapterTitle": "Multi Gpu Programming",
+  "sourceId": "e8ad84fc-300d-4465-aea8-8bb6469fefe6",
+  "sourceTitle": "chapter-23-multi-gpu-programming.pdf",
+  "artifactType": "flashcards",
+  "artifactLabel": "Flashcards",
+  "generatedAt": "2026-07-13T15:20:26.422281Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "闪卡：多 GPU 编程 (Chapter 23: Multi-GPU programming)",
+    "summary": "包含 18 张精选闪卡，专为复习多 GPU 架构下的 CUDA 并行编程模型设计。内容涵盖了光环交换 (Halo exchange) 的基础概念、CUDA-aware MPI 的微架构优势、利用流优先级 (Stream Priority) 和锁页内存 (Pinned memory) 实现计算与通信重叠，以及 NCCL 与 NVSHMEM 在消除主机同步开销和实现内核融合 (Kernel fusion) 方面的深度架构对比。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Tips)",
+        "points": [
+          "利用简单 (Easy) 难度卡片掌握 1D 域分解 (1D domain decomposition) 与双边/单边通信的基础概念。",
+          "通过中等 (Medium) 难度卡片理解 CUDA 流 (Streams)、事件 (Events) 和锁页内存 (Pinned memory) 在异步传输中的底层机制。",
+          "挑战困难 (Hard) 难度卡片，死磕 NCCL 组调用 (Group calls) 防死锁原理，以及 NVSHMEM 对称堆 (Symmetric heap) 如何彻底解放 CPU 并实现内核融合 (Kernel fusion)。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "front": "在 2D 模板计算 (Stencil computation) 中，为什么基于行主序 (Row-major layout) 使用 1D 域分解 (1D domain decomposition) 进行多 GPU 划分是有利的？",
+        "back": "因为行主序下 1D 分解使得需要被交换的边界光环行 (Halo rows) 在内存中是连续的，这极大地简化了 GPU 之间的数据拷贝和网络传输操作。",
+        "difficulty": "easy",
+        "sourceHint": "23.1 Stencil as a running example"
+      },
+      {
+        "front": "支持 CUDA 的 MPI (CUDA-aware MPI) 相较于传统 MPI 在数据传输路径上有什么微架构优势？",
+        "back": "传统 MPI 需要先显式将数据拷贝到主机内存，而 CUDA-aware MPI 能够识别设备指针，利用 DMA 或 RDMA 直接在 GPU 显存之间进行路由和传输，消除了主机中转延迟和冗余的 `cudaMemcpy` 代码。",
+        "difficulty": "medium",
+        "sourceHint": "23.2 Multi-GPU stencil with MPI"
+      },
+      {
+        "front": "在基于 MPI 进行光环交换 (Halo exchange) 时，为什么要使用 `MPI_Sendrecv` 而不是分别调用 `MPI_Send` 和 `MPI_Recv`？",
+        "back": "`MPI_Sendrecv` 能够同时发起发送和接收操作。因为在光环交换中，相邻进程必须双向交换边界数据，若单独使用阻塞的发送/接收，极易引发死锁 (Deadlock)。",
+        "difficulty": "medium",
+        "sourceHint": "23.2 Multi-GPU stencil with MPI"
+      },
+      {
+        "front": "在尝试重叠计算与通信 (Overlapping computation and communication) 时，为什么赋予边界计算流更高的优先级 (Stream Priority) 至关重要？",
+        "back": "如果庞大的内部计算内核率先占满了 GPU 的所有流式多处理器 (SM)，缺乏优先级的边界内核将被迫等待。这会导致通信网络因为没有及时拿到边界数据而长时间空闲，从而无法实现真正的重叠。",
+        "difficulty": "hard",
+        "sourceHint": "23.3 Overlapping computation and communication"
+      },
+      {
+        "front": "为了实现真正的异步数据传输 (`cudaMemcpyAsync`)，为什么主机内存必须使用 `cudaMallocHost` 分配为锁页内存 (Pinned memory / Page-locked memory)？",
+        "back": "DMA 硬件直接操作物理地址。如果使用普通 `malloc`，操作系统可能会发生分页 (Paging) 将数据换出物理内存，导致 DMA 损坏。为了防范此问题，CUDA runtime 遇到非锁页内存时会被迫进行同步双重拷贝，破坏异步重叠。",
+        "difficulty": "hard",
+        "sourceHint": "23.3 Overlapping computation and communication"
+      },
+      {
+        "front": "在跨多个 CUDA 流 (Streams) 协同工作时，如何不借助 CPU 主机端干预来实现流与流之间的同步依赖？",
+        "back": "使用 CUDA 事件 (Events)。通过在产生数据的流中使用 `cudaEventRecord` 记录事件，并在需要等待数据的流中使用 `cudaStreamWaitEvent`，实现纯设备端的流间依赖同步。",
+        "difficulty": "medium",
+        "sourceHint": "23.3 Overlapping computation and communication"
+      },
+      {
+        "front": "在基于 MPI 实现的计算与通信重叠中，主机同步开销 (Host synchronization overhead) 是如何拖累整体性能的？",
+        "back": "MPI 通信由主机端 CPU 发起。CPU 必须调用 `cudaStreamSynchronize` 等待 GPU 边界内核完成才能发起 MPI 传输。这种 CPU 阻塞调度会引入额外的延迟，推迟通信操作的发射，缩减了通信与计算的实际重叠时间。",
+        "difficulty": "hard",
+        "sourceHint": "23.3 Overlapping computation and communication"
+      },
+      {
+        "front": "NCCL (NVIDIA Collective Communications Library) 相比于 MPI 在多 GPU 异步并发模型上最大的架构突破是什么？",
+        "back": "NCCL 将通信原语 (如 `ncclSend`, `ncclRecv`) 直接放入 CUDA 流 (Streams) 中执行。这彻底解放了主机 CPU，消除了 CPU 充当计算和通信调度中间人时带来的主机同步延迟。",
+        "difficulty": "medium",
+        "sourceHint": "23.4 Multi-GPU stencil with NCCL"
+      },
+      {
+        "front": "由于 NCCL 没有提供原生的融合收发函数，开发者必须如何安全地实现双向的光环交换以避免死锁？",
+        "back": "必须使用 NCCL 的组调用 (Group Calls)。将 `ncclSend` 和 `ncclRecv` 夹在 `ncclGroupStart` 和 `ncclGroupEnd` 之间，以强制底层硬件并发执行双向传输，防止单向阻塞引发死锁。",
+        "difficulty": "hard",
+        "sourceHint": "23.4 Multi-GPU stencil with NCCL"
+      },
+      {
+        "front": "双边通信 (Two-sided) 和单边通信 (One-sided) 的核心区别是什么？",
+        "back": "双边通信 (如 MPI, NCCL) 需要收发双方共同参与并匹配原语，而单边通信 (如 NVSHMEM) 允许发起方使用 Put/Get 直接访问远程地址空间，无需目标端主机或进程的主动配合。",
+        "difficulty": "easy",
+        "sourceHint": "23.5 Multi-GPU stencil with NVSHMEM"
+      },
+      {
+        "front": "在 NVSHMEM 中，设备端线程是如何推导并直接访问目标 GPU (目标进程) 显存的物理地址的？",
+        "back": "通过对称堆 (Symmetric heap) 机制。所有处理元件 (PE) 会在其本地地址空间的相同虚拟偏移处分配内存。发起方只需提供自己在本地对称堆的地址和目标 PE 的 ID，NVSHMEM 就能自动计算出目标地址。",
+        "difficulty": "hard",
+        "sourceHint": "23.5 Multi-GPU stencil with NVSHMEM"
+      },
+      {
+        "front": "为什么使用 NVSHMEM 的设备驱动通信 (Device-initiated communication) 能够实现终极的内核融合 (Kernel fusion)？",
+        "back": "因为 NVSHMEM 的 `Put/Get` 操作可以直接在 CUDA Kernel 内部由线程调用。这使得原本必须被拆分为边界内核和内部内核的计算代码，可以融合到一个单一内核中异步完成，彻底消除了多次内核启动的开销。",
+        "difficulty": "hard",
+        "sourceHint": "23.5 Multi-GPU stencil with NVSHMEM"
+      },
+      {
+        "front": "在较慢的互连网络 (非 NVLink) 中，为什么在 NVSHMEM 内核中使用 `nvshmem_float_p` (细粒度单元素 put) 会导致性能灾难？",
+        "back": "单元素 put 会产生数量庞大的网络通信事务，导致极其严重的网络包头开销 (Network packet header overhead)。在实际工程中，应使用 Block 级原语 (如 `nvshmemx_float_put_block`) 进行粗粒度的聚合传输。",
+        "difficulty": "medium",
+        "sourceHint": "23.5 Multi-GPU stencil with NVSHMEM"
+      },
+      {
+        "front": "在单内核 NVSHMEM 实现中，仅同步 CUDA Stream 是否能保证光环交换的数据已被目标 GPU 成功接收？",
+        "back": "不能。流同步仅保证本地内核的计算和发送指令已完成。必须使用 NVSHMEM 提供的 `nvshmemx_barrier_all_on_stream` 插入内存屏障，才能确保所有发往远程的 Put 内存操作都已在目标端全局可见。",
+        "difficulty": "medium",
+        "sourceHint": "23.5 Multi-GPU stencil with NVSHMEM"
+      },
+      {
+        "front": "在多 GPU 模板计算中，`MPI_Allreduce` 这种集体通信 (Collective communication) 被用来解决什么问题？",
+        "back": "被用来计算全局残差的 L2 范数 (L2 norm)。每个 GPU 先计算出自身局部分区残差的平方和，然后通过 `MPI_Allreduce` 将所有节点的局部和聚合并分发给所有节点，用于判断迭代是否收敛。",
+        "difficulty": "easy",
+        "sourceHint": "23.2 Multi-GPU stencil with MPI"
+      },
+      {
+        "front": "在计算相邻 GPU 进程的 ID 时，采用 `(rank + 1) % numRanks` 这种环绕 (Wrap-around) 策略的物理建模意义是什么？",
+        "back": "这实现了周期性边界条件 (Periodic boundary condition)。通过让最高 Rank 的上边界与 Rank 0 的下边界连通，可以模拟一个无边界的连续物理空间，从而减少边缘效应。",
+        "difficulty": "easy",
+        "sourceHint": "23.2 Multi-GPU stencil with MPI"
+      },
+      {
+        "front": "在多 GPU 编程中，NCCL 能否完全抛弃 MPI 独立运行？为什么？",
+        "back": "通常不能。虽然 NCCL 专门负责高性能 GPU 间通信，但其通信组的建立、进程唯一标识 (如 `ncclGetUniqueId`) 的生成和跨进程广播，通常仍需要依赖 MPI 提供基础的进程调度和辅助通信网络。",
+        "difficulty": "medium",
+        "sourceHint": "23.4 Multi-GPU stencil with NCCL"
+      },
+      {
+        "front": "设备发起通信 (Device-initiated, 如 NVSHMEM) 和主机发起通信 (Host-initiated, 如 NCCL) 各自最适合什么样的数据粒度？",
+        "back": "主机发起通信适合那些在计算前就可独立确定的、粗粒度 (Coarse granularity) 的大块数据传输。设备发起通信适合细粒度 (Fine granularity) 数据，或那些必须作为重叠计算的一部分在 Kernel 内部动态决定的数据。",
+        "difficulty": "medium",
+        "sourceHint": "23.6 Summary"
+      }
+    ]
+  }
+}

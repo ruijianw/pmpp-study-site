@@ -1,0 +1,139 @@
+{
+  "chapterId": "chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation",
+  "chapterTitle": "Algorithm Selection Problem Decomposition And Problem Formulation",
+  "sourceId": "63fe8416-b018-40da-bcf6-b694e07d8fea",
+  "sourceTitle": "chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation.pdf",
+  "artifactType": "flashcards",
+  "artifactLabel": "Flashcards",
+  "generatedAt": "2026-07-13T15:13:27.723036Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "闪卡：算法选择、问题分解与问题重构 (Chapter 22)",
+    "summary": "包含 18 张精选闪卡，专为复习并行程序设计的高级抽象思维而设计。内容涵盖输出/输入中心分解策略与底层 Gather/Scatter 访存模式的映射关系，以及阿姆达尔定律、批处理 (Batching) 吞吐量优化和问题重构 (Problem formulation) 的核心工程取舍。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Tips)",
+        "points": [
+          "利用简单和中等难度卡片掌握输出中心 (Output-centric) 与输入中心 (Input-centric) 的基本概念及其对 GPU 原子操作的直接影响。",
+          "通过中等难度卡片理解直方图、稀疏矩阵、图遍历等经典算法为何在 Gather 与 Scatter 模式之间做出特定的反直觉权衡。",
+          "挑战困难难度卡片，深入思考批处理 (Batching) 如何通过牺牲个体延迟来提升算术强度，以及阿姆达尔定律在应用级性能建模中的实际计算。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "front": "在选择并行算法时，Kogge-Stone 和 Brent-Kung 前缀和 (Prefix sum) 算法展示了哪两个关键指标之间的经典权衡 (Trade-off)？",
+        "back": "算法复杂度 (Algorithmic complexity) 与暴露的并行度 (Amount of parallelism exposed)。Brent-Kung 的运算总数更少 (复杂度低)，但 Kogge-Stone 能暴露出更庞大的并发规模 (并行度高)，从而可能在海量核心的 GPU 上执行更快。",
+        "difficulty": "medium",
+        "sourceHint": "22.1 Algorithm selection"
+      },
+      {
+        "front": "在并行排序算法中，归并排序 (Merge sort) 和基数排序 (Radix sort) 展现了算法选择时哪两个维度的权衡？",
+        "back": "通用性 (Generality) 与 并行执行效率 (Parallel execution efficiency)。基数排序复杂度低且极易并行化，但只能处理特定类型的键值；而基于比较的归并排序通用性更强，但并行开销相对更大。",
+        "difficulty": "medium",
+        "sourceHint": "22.1 Algorithm selection"
+      },
+      {
+        "front": "直接库仑求和 (DCS) 与截断分箱 (Cutoff summation) 的算法替换，体现了问题重构中哪两个维度的极限权衡？",
+        "back": "算法复杂度 (Algorithmic complexity) 与 精度 (Accuracy)。截断分箱通过牺牲极小的物理精度 (忽略极远原子的微小贡献)，成功将计算复杂度从无法扩展的 $O(V^2)$ 降维至线性的 $O(V)$。",
+        "difficulty": "hard",
+        "sourceHint": "22.1 Algorithm selection"
+      },
+      {
+        "front": "什么是基于输出为中心 (Output-centric) 的问题分解？它通常对应 GPU 的哪种内存访问模式？",
+        "back": "将线程分配给输出元素，每个线程主动去获取相关的输入元素来计算并生成自己的输出结果。它通常对应收集 (Gather) 内存访问模式。",
+        "difficulty": "easy",
+        "sourceHint": "22.2 Problem decomposition"
+      },
+      {
+        "front": "在 CUDA 架构中，为什么输出中心 (Output-centric) 的 Gather 访问模式通常比 Scatter 模式更受青睐？",
+        "back": "因为 Gather 模式允许线程将累加的中间结果安全地保存在极速的私有寄存器 (Registers) 中，允许多线程通过缓存 (Caches) 共享输入数据节约带宽，且从根本上避免了数据竞态和原子操作 (Atomic operations)。",
+        "difficulty": "medium",
+        "sourceHint": "22.2 Problem decomposition"
+      },
+      {
+        "front": "什么是基于输入为中心 (Input-centric) 的问题分解？它通常对应 GPU 的哪种内存访问模式？",
+        "back": "将线程分配给输入元素，每个线程计算该输入对最终结果的贡献，并将结果应用到相应的输出元素上。它通常对应散布 (Scatter) 内存访问模式。",
+        "difficulty": "easy",
+        "sourceHint": "22.2 Problem decomposition"
+      },
+      {
+        "front": "在使用输入中心 (Input-centric) 分解策略时，为什么往往必须使用高延迟的原子操作 (Atomic operations)？",
+        "back": "因为在散布 (Scatter) 模式下，多个线程极有可能在同一时刻并发更新同一个输出地址。必须使用原子操作来防范数据竞态 (Race conditions) 导致的数值丢失，这会引发内存事务串行化。",
+        "difficulty": "medium",
+        "sourceHint": "22.2 Problem decomposition"
+      },
+      {
+        "front": "既然输出中心 (Output-centric) 分解能避免原子操作，为什么直方图 (Histogram) 计算仍然强烈倾向于使用输入中心 (Input-centric) 分解？",
+        "back": "如果直方图使用输出中心，由于输出箱子 (Bins) 数量远小于输入数据，会导致严重缺乏并行度；此外，线程为了找到属于自己箱子的输入，必须对全量输入数据进行低效的全局扫描搜索，还会引发极端的负载失衡 (Load imbalance)。",
+        "difficulty": "hard",
+        "sourceHint": "22.2 Problem decomposition"
+      },
+      {
+        "front": "在稀疏矩阵向量乘法 (SpMV) 中，COO 格式为什么必须使用输入中心 (Input-centric) 策略，而无法像 CSR/ELL 格式那样使用输出中心策略？",
+        "back": "COO 格式缺乏按行索引的结构。如果强行使用输出中心，分配给输出向量元素的线程将不得不在所有的非零元素中进行灾难性的全局遍历，以寻找对其有贡献的输入元素，这会极大增加计算复杂度。",
+        "difficulty": "hard",
+        "sourceHint": "22.2 Problem decomposition"
+      },
+      {
+        "front": "不稳定和稳定的过滤器模式 (Filter patterns) 为什么天然适合使用输入中心 (Input-centric) 分解？",
+        "back": "如果使用输出中心，分配给输出元素的线程需要逆向找出哪个输入元素应该被放置在这个位置，这种逆向查找极度低效且会导致大量线程冗余工作。而输入中心让线程读取输入并直接决定其去留和输出位置，自然且高效。",
+        "difficulty": "medium",
+        "sourceHint": "22.2 Problem decomposition"
+      },
+      {
+        "front": "为什么并行合并操作 (Merge operation) 倾向于使用输出中心 (Output-centric) 分解，即使在这种情况下输入中心分解也不需要原子操作？",
+        "back": "主要为了实现线程粗化 (Thread coarsening) 时的负载均衡 (Load balance)。如果是输入中心分解，某些线程可能会在另一数组中映射到大量元素，而其他线程只映射到少量元素，从而引发严重的控制流发散 (Control divergence) 和负载失衡。",
+        "difficulty": "hard",
+        "sourceHint": "22.2 Problem decomposition"
+      },
+      {
+        "front": "在图遍历 (Graph traversal) 中，以顶点为中心的 Push (Vertex-centric push) 和 Pull (Vertex-centric pull) 分别对应哪种问题分解策略？",
+        "back": "Push 实现使用的是输入中心 (Input-centric) 策略，线程从当前顶点向外散布更新相邻顶点的状态；Pull 实现使用的是输出中心 (Output-centric) 策略，线程只收集相邻顶点的数据来更新自己被分配的专属顶点。",
+        "difficulty": "medium",
+        "sourceHint": "22.2 Problem decomposition"
+      },
+      {
+        "front": "在评估应用级并行加速时，阿姆达尔定律 (Amdahl's law) 揭示了什么无情的物理限制？",
+        "back": "无论核心的并行算子在 GPU 上加速多少倍 (哪怕是无限快)，应用程序在系统级的最高极限加速比，永远被其无法并行化的串行部分耗时比例所死死限制。",
+        "difficulty": "easy",
+        "sourceHint": "22.3 Application level considerations – Amdahl’s law"
+      },
+      {
+        "front": "假设某分子动力学应用中 95% 的时间用于 GPU 核函数计算并加速了 100 倍，剩余 5% 为 CPU 串行。在不重叠执行的情况下，整体加速比约为多少？如果利用 CUDA 流完美重叠执行 (Overlap execution) 呢？",
+        "back": "如果不重叠，整体加速比为 $1 / (0.05 + 0.95/100) \\approx 17$ 倍。如果串行执行与 GPU 执行完美重叠 (完全隐藏了 GPU 的执行时间)，则由串行比例决定上限，加速比为 $1 / 0.05 = 20$ 倍。",
+        "difficulty": "hard",
+        "sourceHint": "22.3 Application level considerations – Amdahl’s law"
+      },
+      {
+        "front": "为了克服阿姆达尔定律中小任务带来的限制，除了细粒度的数据并行，开发者还可以利用 CUDA 的什么机制来提取任务级并行 (Task-level parallelism)？",
+        "back": "可以利用 CUDA 流 (Streams) 并发执行多个小规模的内核 (Kernels)。即使单个小内核无法喂饱 GPU，多个小内核同时执行能够相互掩盖延迟，提升 GPU 的整体占用率。",
+        "difficulty": "medium",
+        "sourceHint": "22.3 Application level considerations – Amdahl’s law"
+      },
+      {
+        "front": "为什么“问题重构” (Problem formulation) 通常能比单纯的 CUDA 指令级优化带来更大的性能飞跃？",
+        "back": "因为单纯映射通用的数值方法往往受限于固有的高计算复杂度和低并行度。跨学科的“问题重构”通过改变底层物理或数学近似条件，可以从根本上打破 $O(N^2)$ 等复杂度墙，解锁原本不可能的大规模并行计算能力。",
+        "difficulty": "medium",
+        "sourceHint": "22.4 Problem formulation"
+      },
+      {
+        "front": "在采用批处理 (Batching) 优化并行程序时，通常需要牺牲个别任务的什么指标，来换取系统整体的什么指标？",
+        "back": "通常需要牺牲解决单一任务/问题实例的延迟 (Latency)，来换取处理大规模任务批次的整体吞吐量 (Throughput)。",
+        "difficulty": "medium",
+        "sourceHint": "22.5 Batching: latency vs. throughput"
+      },
+      {
+        "front": "在大语言模型 (LLM) 推理中，批处理 (Batching) 多个查询请求是如何通过改变底层微架构行为来大幅提升吞吐量 (Throughput) 的？",
+        "back": "批处理将原本极度内存受限 (Memory-bound) 的向量-矩阵乘法，转换为算术强度 (Arithmetic intensity) 极高的矩阵-矩阵乘法。这使得全局内存中的权重矩阵只需被读取一次就能被所有查询复用，彻底消除了冗余的内存带宽消耗。",
+        "difficulty": "hard",
+        "sourceHint": "22.5 Batching: latency vs. throughput"
+      }
+    ]
+  }
+}

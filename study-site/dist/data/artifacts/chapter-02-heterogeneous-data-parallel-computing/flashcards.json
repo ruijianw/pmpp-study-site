@@ -1,0 +1,139 @@
+{
+  "chapterId": "chapter-02-heterogeneous-data-parallel-computing",
+  "chapterTitle": "Heterogeneous Data Parallel Computing",
+  "sourceId": "9da6fad2-9ec4-460f-b6fc-7e470d872c59",
+  "sourceTitle": "chapter-02-heterogeneous-data-parallel-computing.pdf",
+  "artifactType": "flashcards",
+  "artifactLabel": "Flashcards",
+  "generatedAt": "2026-07-13T12:13:23.771868Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "闪卡：异构数据并行计算 (Chapter 2: Heterogeneous Data Parallel Computing)",
+    "summary": "包含 18 张精选闪卡，用于快速复习 CUDA 数据并行编程的核心概念。涵盖了 CUDA API (内存管理与传输)、内置变量与全局线程索引计算、内核执行配置以及避免常见内存越界等实现缺陷。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Tips)",
+        "points": [
+          "利用简单 (Easy) 难度卡片巩固 CUDA 修饰符与基本 API 的语法记忆。",
+          "通过中等 (Medium) 难度卡片掌握 SPMD 线程层级模型及全局索引 (Global Index) 的核心计算公式。",
+          "挑战困难 (Hard) 难度卡片，深入理解执行时边界检查 (Boundary Checking) 的必要性以及底层网格分配推导。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "front": "数据并行性 (Data Parallelism) 和任务并行性 (Task Parallelism) 有何根本区别？",
+        "back": "数据并行指同一数据集的不同部分可以独立且并发地进行相同计算（如所有像素进行色彩转换）；任务并行指将应用程序分解为可独立执行的不同功能任务（如同时执行 I/O 和矩阵计算）。CUDA 主要挖掘数据并行性。",
+        "difficulty": "easy",
+        "sourceHint": "2.1 Data parallelism"
+      },
+      {
+        "front": "在分配设备全局内存时，为什么 cudaMalloc 的第一个参数必须被强制转换为 `(void**)` 类型？",
+        "back": "因为 cudaMalloc 使用返回值来传递错误码 (cudaError_t)，它必须通过接收指针的地址（二级指针）来修改设备指针的值以保存新分配的显存地址。由于是通用分配函数，因此需要泛型二级指针。",
+        "difficulty": "hard",
+        "sourceHint": "2.4 Device global memory and data transfer"
+      },
+      {
+        "front": "cudaMemcpy 的第四个参数的作用是什么？请列举两个常见的预定义常量。",
+        "back": "用于指定数据传输的方向。最常见的常量包括 cudaMemcpyHostToDevice（数据从主机复制到设备）和 cudaMemcpyDeviceToHost（数据从设备复制回主机）。",
+        "difficulty": "easy",
+        "sourceHint": "2.4 Device global memory and data transfer"
+      },
+      {
+        "front": "如果在主机 (Host) 的 C++ 代码中，直接解引用一个指向设备全局内存的指针（例如读取 `A_d`），会导致什么后果？",
+        "back": "会导致运行时异常或段错误 (Segmentation Fault)。主机 CPU 无法直接访问属于 GPU 的设备内存地址空间。",
+        "difficulty": "medium",
+        "sourceHint": "2.4 Device global memory and data transfer"
+      },
+      {
+        "front": "`__global__` 函数修饰符在 CUDA C++ 中的确切作用是什么？",
+        "back": "它声明该函数为 CUDA 内核 (Kernel) 函数。该函数在设备 (GPU) 上执行，默认可被主机 (Host) 调用。调用它会导致在设备上启动一个全新的并发线程网格 (Grid)。",
+        "difficulty": "medium",
+        "sourceHint": "2.5 Kernel functions and threading"
+      },
+      {
+        "front": "如果开发者在同一个函数声明前同时加上 `__host__` 和 `__device__` 两个修饰符，编译器会如何处理？",
+        "back": "NVCC 编译器会为该函数自动生成两份可执行代码：一份用于在主机执行且只能被主机调用，另一份用于在设备执行且只能被设备代码调用。非常适合于复用通用底层逻辑。",
+        "difficulty": "medium",
+        "sourceHint": "2.5 Kernel functions and threading"
+      },
+      {
+        "front": "CUDA 编程属于 SPMD (Single-Program Multiple-Data) 执行模型，这意味着什么？",
+        "back": "这意味着在一个网格 (Grid) 中的所有并发线程都会严格执行完全相同的内核 (Kernel) 程序代码，但每个线程通过读取自身的内置硬件标识变量来操作不同的数据片段。",
+        "difficulty": "medium",
+        "sourceHint": "2.5 Kernel functions and threading"
+      },
+      {
+        "front": "在一维网格配置中，请列出用于计算线程全局唯一索引的三个核心硬件内置变量 (Built-in Variables)。",
+        "back": "1. `blockDim.x` (当前线程块包含的线程数)；2. `blockIdx.x` (当前线程块在网格中的索引)；3. `threadIdx.x` (当前线程在所在块内的局部索引)。",
+        "difficulty": "easy",
+        "sourceHint": "2.5 Kernel functions and threading"
+      },
+      {
+        "front": "写出一维数据并行中，计算线程全局唯一索引 `i` 的标准 C++ 公式。",
+        "back": "`i = blockIdx.x * blockDim.x + threadIdx.x;` 这一公式将两级硬件线程层次精确映射为一维连续的数学数据空间。",
+        "difficulty": "medium",
+        "sourceHint": "2.5 Kernel functions and threading"
+      },
+      {
+        "front": "为什么在 CUDA 内核 (Kernel) 函数的开头，通常需要写诸如 `if (i < n)` 这样的边界检查 (Boundary Checking) 语句？",
+        "back": "因为为了硬件效率，线程块大小常固定为 32 的倍数（如 256）。当处理的数据总量 `n` 无法被该大小整除时，网格末尾的块会生成超额的线程。边界检查可防止这些多余线程越界访问非法内存。",
+        "difficulty": "hard",
+        "sourceHint": "2.5 Kernel functions and threading"
+      },
+      {
+        "front": "若要处理长度为 `n` 的向量，且指定每个线程块大小为 256，如何在主机代码中通过 C++ 计算所需启动的恰当网格大小 (Grid Size / Number of Blocks)？",
+        "back": "必须执行向上取整除法。典型的实现方式为 `ceil(n / 256.0)` （使用浮点除法再取顶）或在整数体系下使用 `(n + 255) / 256`。",
+        "difficulty": "hard",
+        "sourceHint": "2.6 Calling kernel functions"
+      },
+      {
+        "front": "在主机端调用内核函数时，`<<< >>>` 括号内的执行配置 (Execution Configuration) 的前两个参数分别代表什么？",
+        "back": "第一个参数指定本次调用的网格维度 (Grid Dimension，即包含多少个线程块)；第二个参数指定线程块维度 (Block Dimension，即每个块包含多少个线程)。",
+        "difficulty": "easy",
+        "sourceHint": "2.6 Calling kernel functions"
+      },
+      {
+        "front": "传统的 C++ for 循环在被转化为 CUDA 内核函数后，为什么循环的控制结构（如 `for(int i=0; i<n; ++i)`）通常会“消失”？",
+        "back": "这是循环并行化 (Loop Parallelism) 的本质。原先在时间上顺序迭代的每一次循环计算，现在被映射给线程网格中空间上并发执行的独立线程，整个网格相当于展开了的 for 循环。",
+        "difficulty": "medium",
+        "sourceHint": "2.5 Kernel functions and threading"
+      },
+      {
+        "front": "出于底层硬件调度效率的考虑，通常建议将每个线程块 (Thread Block) 的线程数设置为多少的倍数？",
+        "back": "建议设置为 32 的倍数（例如 128, 256 或 512）。",
+        "difficulty": "easy",
+        "sourceHint": "2.5 Kernel functions and threading"
+      },
+      {
+        "front": "对于健壮的 CUDA 程序，为什么必须捕获并处理 API（如 cudaMalloc）返回的 cudaError_t 错误码？",
+        "back": "CUDA API 失败（如显存耗尽或参数非法）时可能不会直接使程序崩溃。如果忽略错误码，后续的 Kernel 将使用无效的设备指针执行计算，导致排错极其困难的隐式逻辑错误。",
+        "difficulty": "medium",
+        "sourceHint": "2.4 Device global memory and data transfer (Sidebar)"
+      },
+      {
+        "front": "在当前的 CUDA 系统架构中，单个线程块 (Thread Block) 最多可以容纳多少个物理线程？",
+        "back": "单个线程块最多可以包含 1024 个线程。",
+        "difficulty": "easy",
+        "sourceHint": "2.5 Kernel functions and threading"
+      },
+      {
+        "front": "在同一个网格 (Grid) 内执行时，开发者能否假设标号较小的线程块 (Block 0) 会比标号较大的线程块 (Block 1) 先执行完毕？",
+        "back": "绝对不能。GPU 硬件调度器可以以任何随机顺序并发或乱序执行各个线程块。开发者若在代码逻辑中依赖块与块之间的隐式执行顺序，会引发严重的竞争条件故障。",
+        "difficulty": "hard",
+        "sourceHint": "2.6 Calling kernel functions"
+      },
+      {
+        "front": "NVCC (NVIDIA CUDA Compiler) 编译器的宏观工作流程是怎样的？",
+        "back": "NVCC 会解析混合的源文件，利用 CUDA 关键字分离代码。主机代码交由底层的标准 C/C++ 编译器处理；设备代码则被 NVCC 编译为 PTX (Parallel Thread Execution) 虚拟二进制文件，供 GPU 硬件执行。",
+        "difficulty": "medium",
+        "sourceHint": "2.7 Compilation"
+      }
+    ]
+  }
+}

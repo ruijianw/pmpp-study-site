@@ -1,0 +1,75 @@
+{
+  "chapterId": "chapter-11-scan",
+  "chapterTitle": "Scan",
+  "sourceId": "9cc447c1-78a3-4adb-9800-672372e26c29",
+  "sourceTitle": "chapter-11-scan.pdf",
+  "artifactType": "study-guide",
+  "artifactLabel": "Study Guide",
+  "generatedAt": "2026-07-13T14:02:55.344484Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "学习指南：扫描 (Chapter 11: Scan)",
+    "summary": "本章深入探讨了 GPU 上的并行扫描 (Parallel Scan / Prefix-Sum) 算法。从基础的 Kogge-Stone 算法出发，逐步介绍了双缓冲 (Double-buffering)、Warp 级原语 (Warp-level primitives)、线程粗化 (Thread coarsening) 与寄存器分块 (Register tiling) 等优化技术。重点分析了工作效率 (Work efficiency)、内存带宽限制，以及如何通过单次传递 (Single-pass) 和单向同步 (Unidirectional synchronization) 跨线程块整合结果，最终实现高性能的全局扫描。",
+    "sections": [
+      {
+        "heading": "学习目标 (Learning Objectives)",
+        "points": [
+          "1. 理解包含扫描 (Inclusive scan) 与排他扫描 (Exclusive scan) 的概念及顺序扫描算法的 O(N) 时间复杂度。",
+          "2. 掌握 Kogge-Stone 并行扫描算法的原理，理解其 O(N log N) 的工作复杂度 (Work complexity) 以及非工作效率 (Not work-efficient) 的特点。",
+          "3. 分析原位 Kogge-Stone 算法中需要双重同步屏障 (__syncthreads) 的原因，并运用双缓冲 (Double-buffering) 技术消除假依赖与第二层屏障。",
+          "4. 运用 Warp 级原语 (Warp-level primitives) 实现无共享内存与屏障的 Warp 级扫描，并理解“扫描-扫描-相加” (Scan-scan-add) 分解模式。",
+          "5. 通过线程粗化 (Thread coarsening) 将部分工作串行化，摊薄并发开销，显著提升算法的工作效率 (Work efficiency)。",
+          "6. 对比分析“扫描-扫描-相加”与“归约-扫描-扫描” (Reduce-scan-scan) 在多线程块 (Multi-block) 全局扫描中的内存访问和带宽差异。",
+          "7. 掌握利用动态分配 Block 索引与单向同步 (Unidirectional synchronization)，结合带 acquire/release 语义的原子操作，实现避免多 Kernel 调用的单回溯 (Single lookback) 全局扫描。"
+        ]
+      },
+      {
+        "heading": "章节结构映射 (Section-by-Section Chapter Map)",
+        "points": [
+          "11.1 背景 (Background): 介绍包含/排他扫描模式与标识值 (Identity value)，展示 O(N) 复杂度的顺序代码。",
+          "11.2 并行扫描与 Kogge-Stone 算法 (Parallel scan with Kogge-Stone): 引入并行化 Kogge-Stone 设计，分析其产生的并发读写冲突与双重屏障需求。",
+          "11.3 双缓冲 (Double-buffering): 引入输入/输出缓冲交替策略，消除单次循环内的写后读冲突，精简同步操作。",
+          "11.4 Warp 级原语 (Warp-level primitives): 详细讲解 Scan-scan-add 三阶段分解，结合洗牌指令替代共享内存进行极速 Warp 内部扫描。",
+          "11.5 工作效率考量 (Work efficiency considerations): 推导并行算法额外的工作量，指出在执行资源受限情况下的性能倒退隐患。",
+          "11.6 线程粗化 (Coarsening to improve work-efficiency): 用串行扫描接管部分工作，摊薄 Block 并行负担，回归 O(N) 的高效模式。",
+          "11.7-11.8 寄存器分块与带宽考量 (Register tiling & Bandwidth): 利用寄存器存储粗化网格，探讨极低算术强度下内存带宽 (Memory-bound) 如何制约算法峰值。",
+          "11.9 整合跨块全局扫描 (Consolidating block segments): 对比多 Kernel 策略，深度讲解利用单向同步与单回溯 (Single lookback) 技术实现单 Kernel 高效全局扫描。",
+          "11.10 Brent-Kung 算法 (Brent-Kung algorithm): 介绍具备 O(N) 工作效率但跨度更长的 Brent-Kung 算法，并分析其在 SIMD 执行模型下的实际局限。"
+        ]
+      },
+      {
+        "heading": "关键概念精解 (Key Concepts)",
+        "points": [
+          "扫描-扫描-相加 (Scan-scan-add): 一种分解大任务的方法。先对分段独立执行扫描，然后提取各段总和进行二次扫描，最后将这些扫描后的总和“加”回各自分段的每个元素中。",
+          "工作效率 (Work Efficiency): 一个并行算法所做的总工作量如果接近最优的顺序算法工作量，则称其工作效率高。Kogge-Stone 为 O(N log N) 不具备工作效率，而 Brent-Kung 和顺序代码均为 O(N)。",
+          "双缓冲 (Double-buffering): 循环中使用两组共享内存数组（input/output 交替身份）来解耦数据依赖。它允许线程在向 output 写入新值时安全读取 input 的旧值，免去了为保护旧数据不被提前覆盖的同步操作。",
+          "单向同步 (Unidirectional Synchronization): 与要求所有参与者同时活跃的全局屏障 (Barrier) 不同，它只要求早期的 Block 在后期的 Block 之前调度，通过动态分配 Block ID 并原子式轮询 (Atomic polling) 前一个 Block 的完成标志来实现链式等待。",
+          "内存顺序语义 (Memory Order Semantics): 在单向同步中，使用 cuda::memory_order_acquire 确保原子轮询后读取的数据不会被编译器/硬件提前执行；使用 cuda::memory_order_release 确保在设置完成标志前，所有的局部结果都已经安全写入内存。"
+        ]
+      },
+      {
+        "heading": "常见误区与实现缺陷 (Common Misunderstandings & Implementation Mistakes)",
+        "points": [
+          "误区：每个输出元素直接开启一个线程进行 O(N) 复杂度的规约，也能带来加速。真相：这种朴素方法工作复杂度高达 O(N^2)，跨度依然是 O(N)，在计算资源受限时，这会导致并行代码运行得比串行代码还要慢得多。",
+          "漏加同步导致的竞态 (Race Condition)：在没有双缓冲的 Kogge-Stone 内核中，如果遗漏了循环底部的第二个 __syncthreads()，线程可能会读取到被其他线程提前覆盖的“新值”而非“旧值”，导致极其难查的非确定性错误。",
+          "连续访存与粗化设计缺陷：在实施线程粗化时，直觉上常让每个线程加载自己那块连续的数据。实际上这会导致同一 Warp 中不同线程的访存跨度极大。必须使用交替加载 (例如跨度为 blockDim.x) 以确保全局内存的合并访存 (Coalesced accesses)。",
+          "误信最优复杂度理论：误认为 Brent-Kung 算法因为是 O(N) 就必定在 GPU 上比 Kogge-Stone 跑得快。真相是：在 Warp 的 SIMD 架构内，Brent-Kung 节省的操作会被转化为闲置线程（仍占用周期），而其更长的步骤树 (Span) 反而拖慢了整体 Warp 级别的执行时间。"
+        ]
+      },
+      {
+        "heading": "三阶段实践计划 (3-Session Practice Plan)",
+        "points": [
+          "Session 1: 基础内核与双缓冲优化。编写图 11.3 所示的 Kogge-Stone 基础版并理解其双重同步的必要性。接着，使用两组共享内存实现图 11.5 的双缓冲 (Double-buffering) 版本，体会代码如何通过空间换时间移除假依赖屏障。",
+          "Session 2: Warp 洗牌与线程粗化。运用 __shfl_up_sync (或由其变体实现的跨步读取) 重构 Warp 内部的极速扫描。接着在内核中引入 COARSE_FACTOR，实施线程粗化与寄存器分块 (Register tiling)，利用 Nsight 性能分析工具观察共享内存流量的暴跌。",
+          "Session 3: 征服跨块全局扫描。对比实现多 Kernel 调用的 Scan-scan-add 与 Reduce-scan-scan 并在 Profiler 中测算其全局内存读取字节。随后挑战编写基于单回溯 (Single lookback) 的单 Kernel 代码，熟练使用 fetch_add 配合 acquire / release 内存顺序以根治多 Kernel 带来的带宽瓶颈。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

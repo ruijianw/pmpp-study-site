@@ -1,0 +1,145 @@
+{
+  "chapterId": "chapter-14-sorting",
+  "chapterTitle": "Sorting",
+  "sourceId": "d8373a55-be5e-48d3-8179-2927abe3f03f",
+  "sourceTitle": "chapter-14-sorting.pdf",
+  "artifactType": "flashcards",
+  "artifactLabel": "Flashcards",
+  "generatedAt": "2026-07-13T14:25:59.490222Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "闪卡：排序 (Chapter 14: Sorting)",
+    "summary": "包含 19 张精选闪卡，用于快速复习《大规模并行处理器编程》第十四章关于并行排序的核心知识点。重点涵盖奇偶排序的数据竞争问题、并行基数排序的地址推导、共享内存优化非合并访存的机制，以及多位基数与线程粗化在访存与同步开销间的极致性能权衡。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Tips)",
+        "points": [
+          "利用简单 (Easy) 难度卡片掌握排序稳定性及基数排序的基本位运算推导。",
+          "通过中等 (Medium) 难度卡片理解并行基数排序的地址计算公式与共享内存局部排序原理。",
+          "挑战困难 (Hard) 难度卡片，死磕非合并访存 (Uncoalesced accesses) 产生的原因、多位基数 (Multi-bit radix) 对硬件性能的反噬，以及线程粗化 (Thread coarsening) 的全局优化价值。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "front": "比较类排序与非比较类排序算法在理论复杂度上有什么根本区别？",
+        "back": "比较类排序算法（如归并排序）的最优时间复杂度下限被严格限制在 O(N log N)；而非比较类算法（如基数排序）不依赖两两比较，能够突破此限制，获得更优的渐进复杂度。",
+        "difficulty": "easy",
+        "sourceHint": "14.1 Background"
+      },
+      {
+        "front": "排序算法的“稳定性 (Stability)”指的是什么？为什么在基数排序 (Radix sort) 中它至关重要？",
+        "back": "稳定性是指键值相等的元素在排序后严格保持其在原输入中的相对顺序。在基数排序的高位迭代中，必须依赖稳定的划分 (Stable partition) 来保留低位排序的已有成果，否则排序完全失效。",
+        "difficulty": "easy",
+        "sourceHint": "14.1 Background"
+      },
+      {
+        "front": "并行奇偶排序 (Parallel odd-even sort) 是如何避免并发修改时的数据竞争 (Race conditions) 的？",
+        "back": "该算法将相邻元素的比较与交换拆分为两个独立阶段：“奇数对迭代”与“偶数对迭代”交替进行。这种物理隔离确保了同一元素在单次迭代中最多只被一个线程访问，天然避免了竞争。",
+        "difficulty": "medium",
+        "sourceHint": "14.2 Parallel odd-even sort"
+      },
+      {
+        "front": "在奇偶排序中，所有成功交换的线程都向 `hasChanged` 全局标志写 `1`。这虽具幂等性 (Idempotence)，为什么仍是实现隐患？",
+        "back": "尽管写入多次 `1` 的逻辑结果不变，但在严谨的 C++ 内存模型中，无序的并发写入构成未定义行为 (Undefined behavior)。编译器优化可能导致程序崩溃，保守且安全的做法是必须使用原子操作 (Atomic operations)。",
+        "difficulty": "hard",
+        "sourceHint": "14.2 Parallel odd-even sort"
+      },
+      {
+        "front": "并行奇偶排序的工作复杂度 (Work complexity) 是多少？为什么它不适合处理大规模数据集？",
+        "back": "其工作复杂度高达 O(N^2)。由于算法执行了大量的冗余比较操作，在处理大规模数据时，这种低效的工作效率会严重白白消耗 GPU 宝贵的计算资源。",
+        "difficulty": "easy",
+        "sourceHint": "14.2 Parallel odd-even sort"
+      },
+      {
+        "front": "在并行基数排序 (Parallel radix sort) 中，提取一个键值 (key) 特定迭代位 (bit) 的常用位运算代码是什么？",
+        "back": "`(key >> iter) & 1`。其中 `iter` 为当前迭代的位数索引，先将目标位右移至最低位，然后与 1 进行按位与运算，从而安全屏蔽掉其他高位比特。",
+        "difficulty": "easy",
+        "sourceHint": "14.5 Parallel radix sort"
+      },
+      {
+        "front": "在 1-bit 的并行基数排序中，如果当前元素的提取位为 0，它的输出目标索引 (Destination of a zero) 该如何推导计算？",
+        "back": "目标索引 = 当前元素的输入索引 (key index) - 排在它前面且比特位为 1 的元素总数 (# ones before)。",
+        "difficulty": "medium",
+        "sourceHint": "14.5 Parallel radix sort"
+      },
+      {
+        "front": "在 1-bit 的并行基数排序中，如何计算提取位为 1 的元素的绝对输出目标索引？",
+        "back": "目标索引 = 数组总长度 (input size) - 数组中比特为 1 的总数量 (# ones in total) + 排在当前元素前面且比特位为 1 的元素数量 (# ones before)。",
+        "difficulty": "medium",
+        "sourceHint": "14.5 Parallel radix sort"
+      },
+      {
+        "front": "在基础并行基数排序中，为了让各线程计算出全局目标偏移，GPU 必须协作执行哪种核心计算原语？",
+        "back": "网格级排他扫描 (Grid-wide exclusive scan)。通过对所有线程提取出的位标志执行前缀和运算，每个线程即可快速获取“排在自己前面的 1 的数量”。",
+        "difficulty": "medium",
+        "sourceHint": "14.5 Parallel radix sort"
+      },
+      {
+        "front": "基础版的并行基数排序内核为何会引发灾难性的非合并访存 (Uncoalesced memory accesses)？",
+        "back": "在同一个 Warp 内，相邻线程会根据各自键值特征，分别向全局内存中相距极远的 0 桶 (前面) 和 1 桶 (后面) 进行跳跃式写入。这种物理地址碎片化彻底破坏了硬件的合并访存规则。",
+        "difficulty": "hard",
+        "sourceHint": "14.6 Optimizing for memory coalescing"
+      },
+      {
+        "front": "如何利用共享内存 (Shared memory) 巧妙修复基数排序中分散写入全局内存的问题？",
+        "back": "先在 Thread Block 内部利用共享内存进行局部排序 (Local sort)，将 0 桶和 1 桶在片上物理分离并紧凑重组。之后，连续的线程即可将整块数据以完美合并的方式转储到全局内存中。",
+        "difficulty": "medium",
+        "sourceHint": "14.6 Optimizing for memory coalescing"
+      },
+      {
+        "front": "在引入共享内存优化的基数排序中，如何计算每个 Thread Block 局部桶在全局内存中的起始写入位置？",
+        "back": "将所有 Block 的 0 桶大小与 1 桶大小按行主序 (Row-major order) 组合成一张大表，并对该表执行网格级排他扫描 (Exclusive scan)，生成的结果即为各局部桶精确的全局基底偏移。",
+        "difficulty": "hard",
+        "sourceHint": "14.6 Optimizing for memory coalescing"
+      },
+      {
+        "front": "在基数排序中，采用多位基数 (Multi-bit radix，如一次处理 2-bit) 的核心性能诱惑是什么？",
+        "back": "能按比例减少完全排序所需的循环迭代次数。例如 2-bit 将迭代次数砍半，直接减少了一半的内核启动、全局内存数据往返读写以及排他扫描的执行次数。",
+        "difficulty": "medium",
+        "sourceHint": "14.7 Choice of radix value"
+      },
+      {
+        "front": "为什么不能无限扩大基数排序的基数大小 (Radix value)？这对合并访存会造成什么硬件级惩罚？",
+        "back": "基数增加会导致每个 Block 分裂出呈指数级增长的局部桶 (数量为 2^r)。极度细碎的桶使得内部元素极少，当转储到全局内存时，单次连续写入的尺寸过小，再次严重恶化合并访存 (Memory coalescing) 效率。",
+        "difficulty": "hard",
+        "sourceHint": "14.7 Choice of radix value"
+      },
+      {
+        "front": "多位基数 (Multi-bit radix) 会对基数排序中的网格同步开销 (Synchronization overhead) 带来什么负面影响？",
+        "back": "计算 Block 偏移的全局排他扫描表格的行数与基数桶的数量成正比 (2^r)。基数过大会导致这张同步表急剧膨胀，进而大幅推高全局排他扫描的执行延迟。",
+        "difficulty": "hard",
+        "sourceHint": "14.7 Choice of radix value"
+      },
+      {
+        "front": "在高级基数排序中，线程粗化 (Thread coarsening) 是如何完美弥补多位基数造成的合并访存退化的？",
+        "back": "通过让单个线程负责处理多个键值，极大增加了单个 Block 的总数据吞吐量。这让那些被细碎分裂的局部桶 (Local buckets) 重新累积到足够多的元素，进而恢复了高效的大块连续内存转储。",
+        "difficulty": "hard",
+        "sourceHint": "14.8 Thread coarsening to improve coalescing"
+      },
+      {
+        "front": "线程粗化 (Thread coarsening) 除了改善访存，还能如何有效削减基数排序的全局扫描开销？",
+        "back": "粗化大幅减少了网格中启动的 Thread Block 数量。由于全局扫描表格的列数直接等同于 Block 总数，减少 Block 即可成比例缩减扫描表的体积，显著降低同步计算时间。",
+        "difficulty": "medium",
+        "sourceHint": "14.8 Thread coarsening to improve coalescing"
+      },
+      {
+        "front": "最低有效位 (LSD) 基数排序与最高有效位 (MSD) 基数排序在数据全局移动特征上有何显著差异？",
+        "back": "LSD 在每一次迭代中都需要进行网格级的全局数据洗牌 (Global shuffling)；而 MSD 在按最高位进行首次全局划分后，后续迭代均可局限在各局部桶内部独立完成，避免了大量跨区域的数据搬运。",
+        "difficulty": "medium",
+        "sourceHint": "14.9 Other parallel sort methods"
+      },
+      {
+        "front": "Batcher 的双调排序网络 (Bitonic sort) 具有什么特性？其最大的优缺点是什么？",
+        "back": "它使用固定且与数据无关的比较模式，极易硬件化和在 GPU 上并行化。优点是极其简单，适合小规模固定长度数据；缺点是工作复杂度达 O(N log^2 N)，处理海量数据时效率不如基数或样本排序。",
+        "difficulty": "medium",
+        "sourceHint": "14.9 Other parallel sort methods"
+      }
+    ]
+  }
+}

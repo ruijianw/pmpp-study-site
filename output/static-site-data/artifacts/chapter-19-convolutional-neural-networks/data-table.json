@@ -1,0 +1,72 @@
+{
+  "chapterId": "chapter-19-convolutional-neural-networks",
+  "chapterTitle": "Convolutional Neural Networks",
+  "sourceId": "765c4df9-5672-44d9-9eee-974ff60884f9",
+  "sourceTitle": "chapter-19-convolutional-neural-networks.pdf",
+  "artifactType": "data-table",
+  "artifactLabel": "Data Table",
+  "generatedAt": "2026-07-13T14:55:19.642332Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "数据表格：卷积神经网络 (Chapter 19: Convolutional Neural Networks)",
+    "summary": "本数据表格整理了在 GPU 上加速卷积神经网络前向传播的核心微架构技术与权衡。重点解析了多维并行性的映射、批量执行 (Batched execution) 的优势，以及将卷积公式化为通用矩阵乘法 (GEMM) 时的显存膨胀问题与隐式展开 (Implicit unfolding) 解决方案。",
+    "sections": [
+      {
+        "heading": "表格说明 (Table Description)",
+        "points": [
+          "系统分析了卷积运算中不同维度的并行化选择，解释了为何某些维度必须串行以避免同步冲突。",
+          "深入对比了显式与隐式 GEMM 展开在内存带宽和容量消耗上的本质区别，揭示了底层库 (如 cuDNN) 的核心优化逻辑。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "concept": "并行维度的选择与串行累加 (Parallel Dimension Selection & Serialization)",
+        "definition": "在设计卷积内核时，将批量样本 (N)、输出特征图 (M) 和空间维度 (H, W) 分配给网格和线程块进行完全并行化；而将输入特征图 (C) 和滤波器维度 (K) 保留在单个线程内部进行串行循环累加。",
+        "cudaRelevance": "这种映射方式确保了每个线程唯一负责一个输出像素的最终计算。由于线程之间没有写冲突，可以直接使用寄存器进行累加，最后一次性写入全局内存。",
+        "performanceConcern": "由于排除了对全局内存读改写 (Read-modify-write) 的依赖，彻底避免了高延迟的同步操作，最大化了指令吞吐量。",
+        "commonMistake": "试图将所有的循环维度（包括 C, p, q）都并行化，导致多个线程并发更新同一个输出特征图的像素，被迫大量使用高代价的原子操作 (Atomic operations)，引发严重的串行化惩罚。"
+      },
+      {
+        "concept": "线性化索引解码 (Linearized Index Decoding)",
+        "definition": "由于 CUDA Grid 最高支持 3D 拓扑，而卷积运算往往涉及 4D 映射。当 X 维分配给输出特征图 (M)，Z 维分配给批次 (N) 时，将 2D 的空间切片 (Tiles) 使用行主序线性化映射到 1D 的 Y 维 (`blockIdx.y`) 上。",
+        "cudaRelevance": "在内核执行的初期，线程必须通过除法 (`blockIdx.y / W_grid`) 和取模 (`blockIdx.y % W_grid`) 运算，将线性的 Block 索引手动解码为输出特征图中的二维垂直和水平切片坐标。",
+        "performanceConcern": "这是解决高维张量映射到低维硬件网格的必要且高效的方法，运算开销极小且完美保留了空间维度的并发度。",
+        "commonMistake": "直接假设 CUDA Grid 的三维空间足够覆盖所有循环，或者忘记在内核中进行线性和非线性的索引反向解码，导致访问越界或未能正确遍历特征图的所有像素。"
+      },
+      {
+        "concept": "批量执行 (Batched Execution)",
+        "definition": "将多个独立的输入样本打包为一个 mini-batch，在同一次前向传播中一起处理。",
+        "cudaRelevance": "通过增加样本维度，直接扩展了 Grid 的 Z 维度规模 (即 `gridDim.z = N`)，从而向 GPU 发射数量庞大的 Thread Blocks，极大充实了硬件的调度池。",
+        "performanceConcern": "显著提升了 GPU 执行资源的利用率 (Occupancy)。特别是在单张图像分辨率较小导致并行度不足时，批量执行是避免流式多处理器 (SM) 闲置的关键策略。",
+        "commonMistake": "在训练或高并发推理时，采用 for 循环在主机端 (Host) 逐个发射单样本卷积 Kernel，导致巨大的内核启动开销 (Kernel launch overhead) 且 GPU 算力严重闲置。"
+      },
+      {
+        "concept": "卷积转化为 GEMM (Formulating Convolution as GEMM)",
+        "definition": "通过将滤波器组按行展平，将输入特征图对应的感受野按列展平，从而将多重嵌套的复杂卷积循环转换为高度优化的通用矩阵乘法 (GEMM)。",
+        "cudaRelevance": "使得深度学习可以直接利用经过数十年极致优化的线性代数库 (如 cuBLAS)。因为卷积层的参数积 (C * H_out * W_out) 通常极大，转化为大规模矩阵乘法能极好地契合 GPU 的高计算密度特征。",
+        "performanceConcern": "分块矩阵乘法 (Tiled GEMM) 具有极高的“计算访存比 (Compute-to-memory-access ratio)”，能够通过共享内存的数据复用大幅降低全局内存带宽压力，显著提升浮点吞吐量。",
+        "commonMistake": "坚持手写多层嵌套的朴素卷积循环，无法有效利用底层缓存和寄存器分块技术，导致性能永远被内存带宽瓶颈 (Memory-bound) 死死卡住。"
+      },
+      {
+        "concept": "显式展开与显存膨胀 (Explicit Unfolding & Memory Expansion)",
+        "definition": "在内存中实际分配一个巨大的缓冲区，并将输入特征图的感受野像素物理复制、拼接成 GEMM 所需的列主序矩阵 B。",
+        "cudaRelevance": "由于卷积感受野在空间上高度重叠，单个输入像素会被复制多次 (例如中心像素被复制 K^2 次)。这种显式的冗余构造会导致极端的全局内存容量与带宽的消耗。",
+        "performanceConcern": "扩张比例接近 $K^2$ (K 为滤波器尺寸)。在实际模型中，这会导致数十倍的显存膨胀，不仅瞬间耗尽 GPU 显存，庞大的数据搬运也会直接抵消 GEMM 带来的所有计算红利。",
+        "commonMistake": "为了调用现成的矩阵乘法 API，在主机或设备端写一个预处理 Kernel 来强行物理生成展开后的输入矩阵 B，引发灾难性的 Out-Of-Memory (OOM) 异常或性能暴跌。"
+      },
+      {
+        "concept": "隐式展开 (Implicit Unfolding)",
+        "definition": "不真正在全局内存中创建庞大的矩阵 B。而是在分块 GEMM (Tiled GEMM) 从全局内存向共享内存 (Shared memory) 加载数据的阶段，动态计算虚拟 B 矩阵元素映射到原始输入张量 X 的物理索引并直接拉取数据。",
+        "cudaRelevance": "利用复杂的索引映射公式 (例如 Eq 19.5)，在数据载入片上内存的瞬间完成重组。矩阵 B 仅仅是一个“概念 (Conceptual)”，只存在于计算逻辑中，从未在显存中实例化。",
+        "performanceConcern": "这是 cuDNN 等工业级库实现高性能卷积的精髓。它完美结合了 GEMM 的极高计算吞吐量与原始张量的零显存膨胀优势，是架构级极致权衡的典范。",
+        "commonMistake": "认为隐式映射的索引计算逻辑过于复杂会拖慢内核。实际上，GPU 极强的算术指令吞吐量能轻易覆盖这些索引计算开销，而节省下来的全局内存带宽是无价的性能收益。"
+      }
+    ]
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "chapterId": "chapter-16-dynamic-programming-and-wavefront-parallelism",
+  "chapterTitle": "Dynamic Programming And Wavefront Parallelism",
+  "sourceId": "53d954fd-2c4e-4132-a9e4-fa18b0c18262",
+  "sourceTitle": "chapter-16-dynamic-programming-and-wavefront-parallelism.pdf",
+  "artifactType": "data-table",
+  "artifactLabel": "Data Table",
+  "generatedAt": "2026-07-13T14:36:28.424334Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "数据表格：动态规划与波前并行 (Chapter 16: Dynamic Programming And Wavefront Parallelism)",
+    "summary": "本数据表格整理了在 GPU 上利用波前并行 (Wavefront parallelism) 加速动态规划算法的核心技术。详细剖析了从基础的自底向上迭代，到引入块级分块 (Block-level tiling)、超平面变换 (Hyperplane transformation) 以及跨块同步 (Inter-block synchronization) 的进阶性能调优与架构陷阱。",
+    "sections": [
+      {
+        "heading": "表格说明 (Table Description)",
+        "points": [
+          "系统对比了自顶向下 (Top-down) 与自底向上 (Bottom-up) 策略在 GPU 架构上的性能差异。",
+          "深入解析了在应对动态规模波前时，如何通过几何变换与内存布局重组来突破 Warp 闲置与访存瓶颈。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "concept": "自底向上与波前并行 (Bottom-up & Wavefront Parallelism)",
+        "definition": "从最小子问题开始迭代建表 (Tabulation) 的动态规划求解方法。在每轮迭代中，所有相互独立、无数据依赖且可同时计算的子问题集合构成了一个波前 (Wavefront)。",
+        "cudaRelevance": "由于 GPU 无法高效支持深层内联的函数递归调用，且对哈希表等关联结构的访问极易引发非合并访存 (Uncoalesced memory accesses)，因此天然暴露数据并行性的自底向上迭代成为 GPU 动态规划的基石。",
+        "performanceConcern": "波前的规模决定了并发度。恒定波前 (如 Floyd-Warshall 算法中的 2D 平面) 能提供稳定的并行计算量；而动态波前 (如 Smith-Waterman 中的抗角线) 其规模会随着迭代先增后减，极易导致严重的负载不均衡。",
+        "commonMistake": "试图将 CPU 上的自顶向下 (Top-down) 递归带记忆化 (Memoization) 的代码直接无脑移植到 GPU，导致编译器优化失效、内核执行开销呈指数级暴增。"
+      },
+      {
+        "concept": "块级分块 (Block-level Tiling)",
+        "definition": "将庞大的动态规划状态矩阵分割为较小的子块 (Tiles)，每个 GPU Thread Block 负责计算一个子块。块内波前通过低延迟的共享内存完成局部同步。",
+        "cudaRelevance": "利用片上共享内存 (Shared memory) 缓冲子块数据，配合轻量级的 `__syncthreads()` 实现局部抗角线波前的迭代。最后再由 Block 协同发出向量化写指令，将原本随机的散列访存转化为完美的合并写回 (Coalesced storing)。",
+        "performanceConcern": "极大减少了全局内核终止 (Kernel termination) 带来的高昂延迟。但若采用基础的矩形分块 (Square/Rectangular tiles)，在扫描抗角线时，活跃线程数会先增后减，导致大量 Warp 线程处于闲置状态，造成算力浪费。",
+        "commonMistake": "在处理动态生缩的波前 (如基因比对) 时，不在块内做缓冲，而是粗暴地为矩阵的每一条抗角线都发起一次独立的 Kernel 启动，使得微薄的计算量被庞大的 Kernel 启动延迟彻底淹没。"
+      },
+      {
+        "concept": "超平面变换 (Hyperplane Transformation / Hypertiling)",
+        "definition": "通过剪切变换 (Shear transformation) 等仿射映射，将常规的矩形分块转换为平行四边形的超分块 (Hypertiles)。使得原始矩阵中的列在变换后恰好对齐到波前的抗角线方向。",
+        "cudaRelevance": "这是解决 Warp 闲置的架构级神级优化。它将原本长度不断变化的抗角线波前，强制拉平为长度恒定的独立计算列。这确保了在超分块的迭代过程中，所有被分配的线程能够始终保持 100% 活跃。",
+        "performanceConcern": "完美解决了矩形分块的 Warp 利用率不足 (Underutilization) 问题，使每个迭代的平均工作效率翻倍。同时，由于连续处理紧凑的行列，也大幅改善了对 L2 缓存 (L2 Cache) 数据局部性的保护。",
+        "commonMistake": "忽略了形变后边缘线程的越界读取风险。由于所有线程在整个迭代周期中都保持活跃，位于边缘的线程可能会计算并读取到共享内存中界外的垃圾数据。因此，必须编写 `initialize_tile` 函数显式将共享内存清零，防止引发非法指令。"
+      },
+      {
+        "concept": "超分块 Bank 冲突与填充 (Hypertile Bank Conflicts & Padding)",
+        "definition": "在共享内存中以行主序 (Row-major) 存储经过倾斜变换的超分块时，如果其逻辑宽度恰好是 Bank 数量的倍数或约数，按列读取时将会命中同一个物理 Bank。",
+        "cudaRelevance": "在 32-Bank 的共享内存架构下，动态规划计算需要高频读取当前单元的左侧、上方和左上方历史数据。不当的倾斜内存映射会导致极其严重的访存串行化惩罚。",
+        "performanceConcern": "通过引入数据填充 (Padding)，例如在地址计算时应用宏 `x + (x >> LOG_NUM_BANKS)`，可以刻意打乱存储的物理连续性，将并发访存请求均匀错开到不同的 Bank 中，彻底消除冲突。",
+        "commonMistake": "误以为只要是分块算法，共享内存的分配就可以直接沿用常规矩阵的思维。超分块这种非正交的存储结构实际上更容易隐蔽地踩中 Bank 冲突的死穴，导致理论上的计算收益被劣化的访存完全吃掉。"
+      },
+      {
+        "concept": "跨块同步 (Inter-block Synchronization)",
+        "definition": "在全局内存中预分配一组标志位 (Flags) 数组。在不终止当前 Kernel 的前提下，持久化线程块 (Persistent thread blocks) 会在内部通过轮询标志位的方式，等待其直接依赖的邻居子块完成计算。",
+        "cudaRelevance": "这是一种轻量级的替代方案，用于替换依赖于 CPU 控制的 “内核终止与重启 (Kernel termination and relaunch)” 全局同步机制。新架构还可以利用协作组 (Cooperative groups) 实现类似功能。",
+        "performanceConcern": "常规的全局同步迫使所有的 Block 等待整条波前线上的最慢者，造成大量 SM 空闲周期。跨块同步通过单向的细粒度信令，让只要满足局部依赖的 Block 就能立刻开工，极大地提高了流水线的紧凑度。",
+        "commonMistake": "在使用持久化轮询等待机制时，如果强行发射的总 Block 数量超过了当前 GPU 的 SM 能够物理并发容纳的上限，会导致未被调度的 Block 永远无法执行以释放锁，从而引发整个系统的全局死锁 (Deadlock)。"
+      }
+    ]
+  }
+}

@@ -1,0 +1,158 @@
+{
+  "chapterId": "chapter-17-sparse-matrix-computation",
+  "chapterTitle": "Sparse Matrix Computation",
+  "sourceId": "d5283765-beee-4146-bd22-3fe27fe6e978",
+  "sourceTitle": "chapter-17-sparse-matrix-computation.pdf",
+  "artifactType": "quiz",
+  "artifactLabel": "Quiz",
+  "generatedAt": "2026-07-13T14:44:41.124645Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "测试题：稀疏矩阵计算 (Chapter 17: Sparse Matrix Computation)",
+    "summary": "本测试题旨在检验读者对 GPU 上稀疏矩阵-向量乘法 (SpMV) 核心架构挑战的理解。重点考查 COO、CSR、ELL、JDS 和 CSC 等格式在合并访存 (Memory coalescing)、控制流发散 (Control divergence)、负载均衡以及原子操作等底层硬件行为上的极致权衡。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Advice)",
+        "points": [
+          "1. 辩证看待压缩与正则化 (Compaction vs. Regularization)：剔除零元素节省了空间，但带来的不规则性会毁掉 GPU 性能。理解 ELL 格式如何通过加入填充 (Padding) 将数据重新正则化，是掌握高级 GPU 优化的关键。",
+          "2. 紧盯原子操作 (Atomic Operations) 的双重代价：COO 格式完美的合并访存被原子操作的高延迟和“浮点非确定性舍入误差”抵消，这也是促使人们转向 CSR 等行级映射格式的核心原因。",
+          "3. 深刻理解控制流发散 (Control flow divergence) 的解决之道：CSR 的行长不一引发严重发散，混合 ELL-COO 通过截断长尾缓解发散，而 JDS 则通过预排序彻底消灭了 Warp 内的发散。",
+          "4. 列主序 (Column-major order) 的神威：要牢记，ELL 和 JDS 之所以能恢复合并访存，根本原因在于转置为列主序存储后，相邻线程在同一次循环中能够访问物理上连续的内存地址。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "type": "multiple-choice",
+        "question": "在 GPU 上进行稀疏矩阵计算 (如 SpMV) 时，其浮点吞吐量 (FLOPS rating) 通常远低于密集矩阵计算的根本原因是什么？",
+        "options": [
+          "A. 稀疏矩阵的存储必须使用双精度浮点数 (FP64)，导致算力减半。",
+          "B. 消除零元素引入了严重的不规则性 (Irregularity)，导致内存带宽利用率不足 (如非合并访存)、控制流发散 (Control divergence) 和负载不均。",
+          "C. GPU 无法处理一维数组，导致寄存器大量溢出。",
+          "D. 稀疏矩阵的预处理通常需要在每次迭代中阻塞 GPU 的计算流。"
+        ],
+        "answer": "B",
+        "explanation": "稀疏矩阵压缩虽然节省了存储空间并减少了无用的零值计算，但它破坏了数据的规则布局。在 SIMT 架构上，这种数据依赖型的不规则性极易引发访存和控制流瓶颈，使得理论峰值算力难以发挥。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在 SpMV/COO 内核中采用“单线程单非零元素 (One thread per non-zero)”的映射策略，其最大的正确性及性能隐患是什么？",
+        "options": [
+          "A. 同一 Warp 内的不同线程循环次数相差极大，导致极端的控制流发散。",
+          "B. 由于分配到同一行不同非零元素的线程会并发更新同一个输出向量元素，必须使用高延迟的原子操作 (Atomic operations)，且可能引发浮点非确定性舍入误差。",
+          "C. 连续的线程在访问 `value` 数组时物理地址极度分散，导致显存带宽崩溃。",
+          "D. 需要极高的共享内存来缓存整个输入向量。"
+        ],
+        "answer": "B",
+        "explanation": "COO 格式本身天然支持合并访存和完美的负载均衡。但正是因为映射太灵活，多个线程可能碰巧计算同一行的元素，因此必须依赖原子操作来累加。非确定性的累加顺序对于浮点数是不安全的。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在采用“单线程单行 (One thread per row)”策略的 SpMV/CSR 内核中，为什么会遭受严重的非合并访存 (Uncoalesced accesses) 惩罚？",
+        "options": [
+          "A. 因为同一 Warp 内相邻的线程负责相邻的行，它们在循环迭代中读取矩阵 `value` 数组时，因行长度的累加偏移导致物理地址相距甚远。",
+          "B. 因为 CSR 强制使用列主序 (Column-major) 存储数据。",
+          "C. 因为每次点积操作都需要调用 `atomicAdd` 竞争显存控制器。",
+          "D. 因为 CSR 格式抛弃了 `colIdx` 数组，导致必须通过二分查找寻找非零元素。"
+        ],
+        "answer": "A",
+        "explanation": "CSR 格式按行紧凑存储。线程 0 读第 0 行第 1 个元素，线程 1 读第 1 行第 1 个元素。由于第 0 行可能包含几十个元素，这两个线程在内存中请求的物理地址相隔很远，破坏了 GPU 按缓存行合并访存的机制。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "SpMV/CSR 内核在微架构层面产生严重控制流发散 (Control flow divergence) 的根本原因是什么？",
+        "options": [
+          "A. 原子操作导致部分线程被挂起。",
+          "B. 输入向量中的零元素导致的分支跳过。",
+          "C. 各行的非零元素数量不同，导致同一 Warp 内的不同线程负责的循环迭代次数差异巨大，早结束的线程只能闲置等待最慢的线程。",
+          "D. CPU 和 GPU 之间的数据拷贝延迟不均匀。"
+        ],
+        "answer": "C",
+        "explanation": "SIMT 架构下，一个 Warp 内的线程必须步调一致。CSR 中一行长、一行短的随机分布，使得 Warp 的执行时间被迫看齐最长的那一行，短行的线程做完工作后只能处于空转状态。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "ELL 格式是如何通过内存布局重组来彻底解决 CSR 带来的非合并访存问题的？",
+        "options": [
+          "A. 通过将所有零元素从矩阵中彻底剔除并引入二级索引。",
+          "B. 将各行填充 (Padding) 至等长，并将其转置为列主序 (Column-major order) 存储，使得相邻线程在同一次迭代中访问连续的物理地址。",
+          "C. 强制使用共享内存 (Shared memory) 进行块级别的坐标重组。",
+          "D. 利用纹理缓存 (Texture cache) 处理 2D 空间的数据散列。"
+        ],
+        "answer": "B",
+        "explanation": "ELL 的核心在于：补齐长度后，原先不规则的矩阵变成了整齐的矩形。转置为列主序后，所有行的第 0 个元素连续排布，第 1 个元素连续排布。这样相邻线程 (负责相邻行) 读取数据时，完美满足了合并访存的物理条件。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在应对具有“长尾分布 (Long-tail distribution)”的稀疏矩阵时，混合 ELL-COO (Hybrid ELL-COO) 格式主要解决了纯 ELL 格式的什么痛点？",
+        "options": [
+          "A. 解决了输出向量的写入冲突，消除了原子操作。",
+          "B. 剥离了少数超长行，避免了纯 ELL 极端的空间浪费 (无效填充)，同时减少了 ELL 内核的最大循环次数以缓解控制流发散。",
+          "C. 通过哈希映射提升了 CPU-GPU 的传输带宽。",
+          "D. 降低了矩阵的浮点数精度要求以提升计算速度。"
+        ],
+        "answer": "B",
+        "explanation": "如果矩阵有一行极长，纯 ELL 会把其他所有短行用天量的零补齐，显存瞬间爆炸。混合格式把这根“长尾”切给灵活的 COO 处理，使得 ELL 的宽度回归正常水平，既省了空间又降了发散。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "相比于 ELL 格式，JDS (锯齿对角线存储) 格式是如何在不引入无效填充 (Padding) 的前提下，有效降低控制流发散的？",
+        "options": [
+          "A. 利用硬件指令自动挂起闲置线程。",
+          "B. 在压缩前按行内非零元素数量对所有行进行降序排序 (Sorting)，使得被分配到同一 Warp 的线程拥有几乎相同的循环迭代次数。",
+          "C. 通过在运行时动态终止内核并重新调度。",
+          "D. 将每个非零元素分散到独立的 Thread Block 中。"
+        ],
+        "answer": "B",
+        "explanation": "控制流发散的元凶是 Warp 内线程工作量不一。JDS 直接通过预排序，把长行放在一起，短行放在一起。物理上相邻的线程负责的工作量极度相似，Warp 内所有线程基本能同进同退。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "将 CSC (压缩稀疏列) 格式应用于常规的 SpMV (稀疏矩阵乘密集向量) 计算中被认为是最差的设计，主要原因是什么？",
+        "options": [
+          "A. 它无法存储超过 2^32 个非零元素。",
+          "B. 因为它仅能被 CPU 串行处理，无法映射到 GPU 的 Grid 结构上。",
+          "C. 它完全破坏了输入向量的合并访存，导致 Cache Thrashing。",
+          "D. 它同时集齐了针对矩阵的非合并访存、由于列长不一导致的发散，以及由于向输出向量写入而不可避免的原子操作 (Atomic operations)。"
+        ],
+        "answer": "D",
+        "explanation": "在普通 SpMV 中给单列分配一个线程，线程在列向遍历不仅地址跳跃 (非合并访存)，列长还不一 (控制流发散)，且最终累加到输出向量时不同列的线程极易撞车 (需要原子操作)。这三点叠加使得其在常规 SpMV 中表现极差。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在 SpMV/COO 内核中，为什么使用 `atomicAdd` 更新输出向量不仅会导致严重的延迟，还会引发数值稳定性隐患？",
+        "expectedAnswer": "因为多个线程并发更新同一个输出元素的顺序在 GPU 上是非确定性的 (Non-deterministic)。对于浮点数运算，加法不满足严格的结合律。如果累加的顺序改变，舍入误差 (Rounding error) 的累积结果就会有所不同，从而导致每次运行计算出的结果可能产生微小的偏差，引发数值稳定性问题。",
+        "explanation": "这揭示了在浮点并行计算中，原子的无序性带来的深层次精度惩罚。也是科学计算领域极力避免使用原子加法的原因之一。"
+      },
+      {
+        "type": "short-answer",
+        "question": "为什么 SpMV/CSR 内核不需要像 SpMV/COO 那样使用原子操作 (Atomic operations)？",
+        "expectedAnswer": "CSR 格式在 GPU 上的经典映射策略是“单线程单行 (One thread per row)”。因为单个线程负责提取该行的所有非零元素并独立完成整个内积累加过程，最终它唯一地将结果直接写入到输出向量的对应位置。由于没有其他线程会写入该输出位置，因此彻底消除了数据竞态，无需使用原子操作。",
+        "explanation": "通过改变线程到数据的映射粒度（从“每元素”上升到“每行”），从根本上避免了写入冲突。这是并行算法设计中控制同步开销的经典手法。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在什么样的数据分布特征下，使用纯 ELL 格式会导致显存空间效率 (Space efficiency) 出现灾难性恶化？",
+        "expectedAnswer": "当稀疏矩阵的非零元素分布极度不均衡，存在极其明显的长尾分布 (Long-tail distribution) 时。例如矩阵中仅有一行或少数几行拥有几百个非零元素，而绝大多数行只有几个元素。因为纯 ELL 强制要求用无效填充 (Padding) 将所有短行补齐到最长行的长度，这会生成海量的无用数据，导致显存空间效率暴跌，甚至体积超过原有的密集矩阵。",
+        "explanation": "正则化是一把双刃剑，它牺牲空间换取规则的访存。但如果数据偏差过大，牺牲的空间成本将完全失去控制。"
+      },
+      {
+        "type": "short-answer",
+        "question": "JDS 格式需要提前对行进行排序，这引入了高昂的预处理开销。在实际的科学计算应用中，为何这种代价通常是完全可以接受的？",
+        "expectedAnswer": "在许多真实的工程应用（如求解线性方程组的共轭梯度法等迭代求解器）中，稀疏矩阵代表的是方程组的物理耦合系数，在成百上千次的迭代求解过程中是保持不变的 (只有向量 X 和 Y 在变)。因此，针对稀疏矩阵的昂贵排序与格式构建仅需在初始阶段执行一次，其成本可以被后续无数次高效的 SpMV/JDS 执行完美摊销 (Amortized)。",
+        "explanation": "在评估算法优化是否划算时，必须将其放在整个应用生命周期（特别是迭代类求解器）的大背景下考量。"
+      },
+      {
+        "type": "short-answer",
+        "question": "尽管 CSC 格式在常规的 SpMV 计算中表现最为糟糕，但它在 SpMSpV (稀疏矩阵乘稀疏向量) 运算中却具有不可替代的架构优势。原因是什么？",
+        "expectedAnswer": "CSC 格式是按列组织并紧凑存储数据的。在 SpMSpV 中，作为乘数输入的向量本身也是高度稀疏的。利用 CSC 的列向分组特性，当程序检测到输入向量某个元素的值为零时，可以直接跳过 (Skip) 整个矩阵中对应的完整一列，从而避免了大量毫无意义的内存拉取与乘加计算。",
+        "explanation": "不同的运算需求对应不同的数据布局。CSC 对于按行遍历是灾难，但对于必须按列驱动的运算却是神器。"
+      }
+    ]
+  }
+}

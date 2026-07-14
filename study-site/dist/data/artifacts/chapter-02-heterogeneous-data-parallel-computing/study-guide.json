@@ -1,0 +1,73 @@
+{
+  "chapterId": "chapter-02-heterogeneous-data-parallel-computing",
+  "chapterTitle": "Heterogeneous Data Parallel Computing",
+  "sourceId": "9da6fad2-9ec4-460f-b6fc-7e470d872c59",
+  "sourceTitle": "chapter-02-heterogeneous-data-parallel-computing.pdf",
+  "artifactType": "study-guide",
+  "artifactLabel": "Study Guide",
+  "generatedAt": "2026-07-13T12:11:09.135031Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "学习指南：异构数据并行计算 (Chapter 2: Heterogeneous Data Parallel Computing)",
+    "summary": "本章通过经典的向量加法实例，全面介绍了 CUDA C++ 的基本程序结构、异构内存管理与线程组织模型。重点解析了数据并行性 (Data Parallelism)、主机 (Host) 与设备 (Device) 的数据传输机制，以及如何利用网格 (Grid) 和线程块 (Block) 的内置变量计算全局线程索引，从而将传统的 CPU 串行循环彻底重构为 GPU 并行计算模式。",
+    "sections": [
+      {
+        "heading": "学习目标 (Learning Objectives)",
+        "points": [
+          "1. 区分数据并行性 (Data Parallelism) 与任务并行性 (Task Parallelism)，识别适合大规模并行加速的数据密集型应用场景。",
+          "2. 掌握异构系统协同执行架构，理解包含 Host 代码与 Device 代码的混合源文件是如何被 NVCC 编译器分离和处理的。",
+          "3. 熟练运用 CUDA 内存管理 API（cudaMalloc、cudaFree、cudaMemcpy），掌握在设备全局内存 (Global Memory) 上的空间分配及双向数据传输机制。",
+          "4. 深刻理解并运用函数声明限定符 (__global__、__device__、__host__) 控制代码在不同物理单元的编译与执行边界。",
+          "5. 掌握 SPMD (Single-Program Multiple-Data) 编程风格，理解 CUDA 线程的两级层次化组织（Grid 与 Block）。",
+          "6. 能够利用内置变量 (threadIdx、blockIdx、blockDim) 精确计算一维全局线程索引，实现数据映射。",
+          "7. 掌握内核执行配置 (Execution Configuration)，能够根据输入数据规模动态推导安全的线程块数量 (Grid Size) 并执行边界保护。"
+        ]
+      },
+      {
+        "heading": "章节结构映射 (Section-by-Section Chapter Map)",
+        "points": [
+          "2.1 数据并行性 (Data parallelism): 对比数据并行与任务并行，以彩色图像转灰度图为例，说明如何重组数据逻辑以利用并发性。",
+          "2.2 CUDA C++ 程序结构 (CUDA C++ program structure): 概述异构平台的 Host/Device 分工，介绍内核 (Kernel) 调用触发大规模并发线程网格 (Grid) 的运行机制。",
+          "2.3 向量加法示例 (A vector addition example): 从传统的 C++ 串行循环切入，展示如何将其改写为包含“内存分配-数据拷贝-执行内核-取回结果-释放内存”的标准异构骨架。",
+          "2.4 设备全局内存与数据传输 (Device global memory and data transfer): 深度解析 cudaMalloc 签名与 C 标准库的差异，详解 cudaMemcpy 参数，强调宏观错误检查的重要性。",
+          "2.5 内核函数与线程化 (Kernel functions and threading): 介绍修饰符语法，阐述计算全局唯一索引 (i = blockIdx.x * blockDim.x + threadIdx.x) 的核心模式，以及引入 if (i < n) 边界检查的必要性。",
+          "2.6 调用内核函数 (Calling kernel functions): 解析内核调用语法 (<<<gridDim, blockDim>>>)，利用 ceil 向上取整计算以保证全量数据覆盖。",
+          "2.7 编译 (Compilation): 介绍 NVCC 编译器的工作流，阐明 Host C++ 代码与 Device PTX (Parallel Thread Execution) 虚拟汇编的生成与链接过程。"
+        ]
+      },
+      {
+        "heading": "关键概念精解 (Key Concepts)",
+        "points": [
+          "数据并行性 (Data Parallelism): 数据结构的不同部分能够被独立计算的现象。在 CUDA 中，这种特性允许将海量像素、向量元素等交由数万个并发线程同时处理。",
+          "SPMD (单程序多数据): 一种并行计算模型，在 CUDA 中表现为所有启动的线程执行完全相同的内核代码，但通过访问只读硬件寄存器（内置变量）来获取自身唯一身份，进而对不同的数据分片进行操作。",
+          "内置变量 (Built-in Variables): 包括 threadIdx（线程内局部索引）、blockIdx（线程块索引）和 blockDim（线程块维度）。这是将物理线程映射到数学数据空间的核心桥梁。",
+          "循环并行化 (Loop Parallelism): 并行编程的核心思维跃迁。将传统的 C++ for 循环（依靠循环变量推进的时间迭代）直接剥离，替换为依靠全网格并发线程坐标直接定位数据的空间映射。",
+          "执行配置 (Execution Configuration): 位于 <<< 与 >>> 之间的内核启动参数，主要定义启动的网格中包含的 Block 数量，以及每个 Block 包含的 Thread 数量。"
+        ]
+      },
+      {
+        "heading": "常见误区与实现缺陷 (Common Misunderstandings & Implementation Mistakes)",
+        "points": [
+          "内存受限误区：在 Host 端直接解引用 (dereference) Device 指针（带有 _d 后缀）。真相：Device 指针指向 GPU 显存，CPU 在默认情况下无法通过虚拟地址直接访问，强行解引用会导致段错误 (Segmentation Fault)。",
+          "函数签名缺陷：认为 cudaMalloc 与标准 C 的 malloc 用法相同。真相：cudaMalloc 通过返回值报告错误码 (cudaError_t)，因此它必须利用二级指针 (void**) 来写入分配的内存地址。",
+          "未进行边界检查 (Boundary Check)：为了满足 GPU 硬件效率，线程块大小常设为 32 的倍数（如 256）。如果处理的数据量不能被 256 整除，末尾 Block 多生成的线程会在无 if (i < n) 保护时引发越界访存，造成不可预知的内存损坏。",
+          "执行顺序假设：误认为标号较小的线程块 (Block 0) 总是比标号较大的线程块 (Block 1) 先执行完毕。真相：硬件调度器可能以任何随机顺序并发或乱序执行各个 Block，开发者绝对不能在代码逻辑中依赖 Block 间的隐式执行顺序。"
+        ]
+      },
+      {
+        "heading": "三阶段实践计划 (3-Session Practice Plan)",
+        "points": [
+          "Session 1: Host API 肌肉记忆训练。创建一个 C++ 骨架，针对大小为 N 的 float 数组，手写 cudaMalloc、三方向的 cudaMemcpy 以及 cudaFree 调用，并尝试封装一个简单的错误检查宏以捕获 API 失败情况。",
+          "Session 2: 线程映射推演。在纸上画出包含 3 个 Block、每个 Block 有 256 个 Thread 的二维阵列结构。默写公式 i = blockIdx.x * blockDim.x + threadIdx.x，手动推导 Block 2 的第 10 个线程对应的全局索引值，并编写具有越界保护的向量加法 Kernel。",
+          "Session 3: 动态执行配置。在 Host 代码中，使用 C++ 语句 (N + 255) / 256 或 ceil(N / 256.0) 针对不同的输入向量长度 N（例如 1000, 2048, 7777）计算出最佳的 Grid 大小，补全完整 <<<grid, 256>>> 启动调用并联调运行。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

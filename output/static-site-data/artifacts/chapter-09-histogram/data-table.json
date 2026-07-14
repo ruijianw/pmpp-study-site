@@ -1,0 +1,65 @@
+{
+  "chapterId": "chapter-09-histogram",
+  "chapterTitle": "Histogram",
+  "sourceId": "7f3b148b-9490-4fb1-8047-9a97a835fbee",
+  "sourceTitle": "chapter-09-histogram.pdf",
+  "artifactType": "data-table",
+  "artifactLabel": "Data Table",
+  "generatedAt": "2026-07-13T13:52:43.873891Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "数据表格：直方图与原子操作 (Chapter 9: Histogram)",
+    "summary": "本数据表格系统整理了《大规模并行处理器编程》第九章关于直方图计算的核心概念 [1]。深入剖析了输出干扰引发的竞态条件，原子操作的延迟与吞吐量限制，并详细对比了通过共享内存私有化、交错划分及线程级私有化等策略突破内存带宽瓶颈的底层原理与常见陷阱 [1-4]。",
+    "sections": [
+      {
+        "heading": "表格说明 (Table Description)",
+        "points": [
+          "本表结构化呈现了直方图计算由于打破“所有者计算 (Owner-computes)”法则而面临的性能瓶颈与解决路径 [1]。",
+          "详细解析了不同层级私有化 (Privatization) 技术的权衡，以及在 GPU 上实施线程粗化 (Thread coarsening) 时必须遵循的访存规律 [2, 5, 6]。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "concept": "输出干扰与读-改-写竞态条件 (Output Interference & Read-modify-write Race Conditions)",
+        "definition": "当多个线程同时对同一内存地址执行读取、修改、写入的序列时，最终的计算结果会因线程相对执行时序的不同而产生差异，导致部分更新操作被错误地覆盖或丢失 [7, 8]。",
+        "cudaRelevance": "直方图计算由于输出位置依赖于输入数据，无法应用“所有者计算”法则，天然存在输出干扰 [1]。若不加以控制，GPU 的高并发特性会立即触发严重的竞态条件 [9]。",
+        "performanceConcern": "若不处理则结果必定错误；若强制采用串行化机制（如原子操作）进行控制，则会引发极大的排队延迟，进而大幅拉低程序的整体执行速度 [1, 10]。",
+        "commonMistake": "开发者误以为多个线程可以直接安全地执行如 `++bins[b]` 的普通递增操作，未认识到在高度并发的 GPU 硬件环境中，这会导致严重的更新丢失现象 [8, 11]。"
+      },
+      {
+        "concept": "原子操作 (Atomic Operations)",
+        "definition": "由底层硬件保障的不可分割的读-改-写操作序列 [12]。当多个线程同时对同一地址执行原子操作时，硬件会将其强制串行化 (Serialize)，确保每次更新都能完整执行 [12, 13]。",
+        "cudaRelevance": "在 CUDA C++ 中，可通过引入 `<cuda/atomic>` 库并创建 `cuda::atomic_ref` 类来实现，如使用 `fetch_add` 方法执行原子加法，并可指定诸如 `cuda::thread_scope_block` 的同步作用域 [14-16]。",
+        "performanceConcern": "对同一地址的原子操作吞吐量近似受限于极长的内存延迟倒数 [17]。在全局内存 (DRAM) 中执行高度冲突的原子操作，可能会导致吞吐量跌至极低水平（例如仅 2.5 M atomics/s），使理论带宽大量闲置 [18]。",
+        "commonMistake": "误以为原子操作的性能开销可以忽略不计，或者在只需要块内同步的场景下使用了开销更大的设备级作用域 (Device scope) 原子操作 [10, 16, 19] ；未认识到现代 GPU 已支持 L2 缓存 (L2 Cache) 原子操作来缓解这一问题 [20] 。"
+      },
+      {
+        "concept": "分块级私有化 (Block-level Privatization)",
+        "definition": "为每个 Thread Block 复制一份高竞争度输出数据结构（如局部直方图），将全局的原子竞争分散并降维为局部竞争的技术 [2, 21]。",
+        "cudaRelevance": "将私有直方图放置在访问延迟仅需数个时钟周期的共享内存 (Shared memory) 中，各线程在局部极速完成原子更新后，再统一使用原子操作合并至全局内存 [22, 23]。",
+        "performanceConcern": "由于共享内存的极低延迟，私有化能够将原子操作吞吐量提升数个数量级 [22]。但维护私有副本必须付出代价，即额外的清零初始化和最终全局提交的开销 (Commit overhead) [5]。",
+        "commonMistake": "遗漏在更新私有化数据之前和提交数据之前的 `__syncthreads()` 同步屏障，导致线程使用未完成初始化的脏数据，或者在所有线程完成计算前就将局部数据提前提交至全局副本 [23, 24]。"
+      },
+      {
+        "concept": "交错划分与线程粗化 (Interleaved Partitioning in Thread Coarsening)",
+        "definition": "在实施线程粗化让单线程处理多元素时，安排 Warp 内相邻的线程去访问物理地址相邻的元素（步长为 blockDim.x），使各线程处理的分区相互交错 [3]。",
+        "cudaRelevance": "通过线程粗化摊薄私有化开销时，必须结合交错划分来指派工作任务，以此保障底层内存请求能够满足合并访存 (Memory coalescing) 的条件 [3, 5]。",
+        "performanceConcern": "由于 GPU 缓存会受到海量活跃线程的干扰，交错划分是确保同一个 Warp 读取连续内存、实现极高总线带宽利用率的唯一有效方式 [3, 25]。",
+        "commonMistake": "照搬 CPU 的串行编程直觉，使用连续划分 (Contiguous partitioning) 让单 GPU 线程处理一整块连续数据 [26]。这会导致同一个 Warp 内的线程跨越极大的地址跨度读取数据，彻底破坏合并访存机制，性能不升反降 [3]。"
+      },
+      {
+        "concept": "线程级私有化 (Thread-level Privatization)",
+        "definition": "针对包含大面积连续相同值的数据集，利用单线程粗化循环，在寄存器 (Registers) 中先行累加相同元素的计数值，仅当数值改变时才使用原子操作向共享内存提交 [4, 6]。",
+        "cudaRelevance": "这是基于特定输入数据分布特征（如大面积的纯色天空像素）进行的极限优化，用于进一步缩减对共享内存中私有副本的原子操作频率 [4, 27]。",
+        "performanceConcern": "对于高度重复的数据集，能大幅削减原子操作冲突并提升执行速度 [27, 28]。但会引入额外的寄存器变量及条件控制流 (if-statement) [28, 29]。",
+        "commonMistake": "未评估输入数据相似性 (Similarity) 就盲目套用该技术。如果输入数据高度随机跳跃，额外的控制流发散 (Control divergence) 和指令负担将直接抵消优化收益，甚至导致内核执行变慢 [28]。"
+      }
+    ]
+  }
+}

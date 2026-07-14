@@ -1,0 +1,71 @@
+{
+  "chapterId": "chapter-05-memory-architecture-and-data-locality",
+  "chapterTitle": "Memory Architecture And Data Locality",
+  "sourceId": "bde6b4cd-9cdf-4782-a570-a72e79387d7d",
+  "sourceTitle": "chapter-05-memory-architecture-and-data-locality.pdf",
+  "artifactType": "study-guide",
+  "artifactLabel": "Study Guide",
+  "generatedAt": "2026-07-13T13:27:18.213672Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "学习指南：内存架构与数据局部性 (Chapter 5: Memory Architecture and Data Locality)",
+    "summary": "本章重点探讨 GPU 的内存架构及数据局部性，深入解析计算访存比 (FLOP/B)、Roofline 模型与内存受限/计算受限的性能推理。通过引入共享内存 (Shared Memory) 和分块 (Tiling) 优化技术，展示了如何大幅降低全局内存流量。同时剖析了多线程协作中的数据依赖、屏障同步、边界检查机制以及动态共享内存配置对占用率 (Occupancy) 的影响。",
+    "sections": [
+      {
+        "heading": "学习目标 (Learning Objectives)",
+        "points": [
+          "1. 计算并运用计算访存比 (FLOP/B) 区分计算受限 (Compute-bound) 与内存受限 (Memory-bound) 内核，利用 Roofline 模型进行性能推理。",
+          "2. 区分全局内存、共享内存、常量内存、本地内存和寄存器的特性（延迟、带宽、作用域与生命周期）。",
+          "3. 掌握分块 (Tiling) 策略，通过将全局内存数据集中加载至共享内存，减少冗余的全局访存流量以提升性能。",
+          "4. 识别并解决由于多线程协作共享数据而引发的写后读 (Write-after-read) 与读后写 (Read-after-write) 数据依赖问题。",
+          "5. 在分块算法中实现严谨的边界检查 (Boundary checks)，安全处理非整除尺寸的数据矩阵。",
+          "6. 理解寄存器和共享内存的使用量对硬件占用率 (Occupancy) 的限制，掌握动态共享内存 (Dynamic Shared Memory) 的配置方法。"
+        ]
+      },
+      {
+        "heading": "章节结构映射 (Section-by-Section Chapter Map)",
+        "points": [
+          "5.1 内存带宽作为性能瓶颈 (Memory bandwidth as a performance limiter): 引入峰值计算吞吐量与内存带宽概念，结合 Roofline 模型分析光速性能 (Speed-of-light analysis)。",
+          "5.2 CUDA 内存类型 (CUDA memory types): 详解不同内存层级 (寄存器、本地、共享、全局、常量内存) 的物理位置、访问速度与变量声明修饰符。",
+          "5.3 分块以减少内存流量 (Tiling for reduced memory traffic): 讲解利用数据局部性 (Locality)，通过线程协作将数据分块加载至共享内存的基本思想。",
+          "5.4 分块矩阵乘法内核 (A tiled matrix multiplication kernel): 展示基于共享内存与 Strip-mining 的具体代码实现，剖析 __syncthreads() 在解决真假数据依赖中的关键作用。",
+          "5.5 边界检查 (Boundary checks): 解决输入矩阵尺寸不是分块大小整数倍时的越界访存陷阱，通过安全填充 0.0f 防止结果被污染。",
+          "5.6 内存使用对占用率的影响 (Impact of memory usage on occupancy): 分析共享内存超限导致占用率 (Occupancy) 骤降的机制，介绍 extern __shared__ 动态分配方法。"
+        ]
+      },
+      {
+        "heading": "关键概念精解 (Key Concepts)",
+        "points": [
+          "计算访存比 (Compute-to-global-memory-access ratio): 衡量内核每访问 1 Byte 全局内存所执行的浮点运算次数 (FLOP/B)。用于判定程序是计算受限还是内存受限的核心指标。",
+          "Roofline 模型 (Roofline Model): 可视化性能分析工具，交叉点决定了应用的计算强度阈值，展示应用在特定硬件上是受限于内存带宽还是计算吞吐量。",
+          "共享内存 (Shared Memory): 位于片上 (On-chip) 的高速暂存器内存 (Scratchpad memory)，声明为 __shared__。由同一个 Block 内的所有线程共享，是分块协作计算的基石。",
+          "分块 (Tiling): 优化策略，将拥有数据局部性 (Locality) 的计算划分为阶段 (Phases)，把能放入共享内存的小块 (Tile) 数据集中协同加载，将全局访存转化为高速的片上访存。",
+          "数据依赖 (Data Dependences): 在协同加载中，读后写 (Read-after-write/True dependence) 指读取必须等待其他线程数据写入完成；写后读 (Write-after-read/False dependence) 指覆盖写入必须等待所有线程读取完成。这两种依赖均需使用 __syncthreads() 屏障解决。"
+        ]
+      },
+      {
+        "heading": "常见误区与实现缺陷 (Common Misunderstandings & Implementation Mistakes)",
+        "points": [
+          "自动数组分配误区：认为只需在内核中声明自动数组 (Automatic array variables) 即可利用寄存器高速访问。真相：默认情况下自动数组会被分配到本地内存 (Local memory，实则位于慢速的全局 DRAM 显存中)，只有索引全为常量时才可能被放入寄存器。",
+          "屏障遗漏缺陷：分块内核中遗漏两次 __syncthreads() 的任何一次。遗漏第一次会导致读取了尚未写入共享内存的随机值 (违反读后写依赖)；遗漏第二次会导致共享内存中当前阶段的数据被下一阶段的线程提前覆盖 (违反写后读依赖)。",
+          "越界控制缺陷：在非整除维度的矩阵计算中，仅通过剔除无效计算线程来防止越界。真相：即使是计算有效输出元素的线程，也可能在加载输入矩阵边缘时发生越界读取。必须为每一个内存加载操作添加独立的行列边界验证，越界时在共享内存填入安全的 0.0f。",
+          "盲目分块导致性能悬崖：认为尽可能使用更大的共享内存块 (Tile) 总能提升性能。真相：共享内存容量极其有限，过大的 Tile 会直接限制 SM 能并发驻留的 Block 数量，导致占用率 (Occupancy) 急剧下降，反而无法掩盖内存延迟。"
+        ]
+      },
+      {
+        "heading": "三阶段实践计划 (3-Session Practice Plan)",
+        "points": [
+          "Session 1: Roofline 模型与性能推演。根据给定硬件的峰值算力与带宽 (例如 H100 的 66.9 TFLOPS 和 3.35 TB/s)，手算理论 FLOP/B 阈值，推演简单矩阵乘法的执行瓶颈，进行光速性能分析 (Speed-of-light analysis)。",
+          "Session 2: 共享内存与分块内核实现。编写分块矩阵乘法内核。严格练习在协同加载和计算之间交替插入两次 __syncthreads()，并通过 Strip-mining 逻辑体验阶段化 (Phases) 内存加载。",
+          "Session 3: 复杂边界防御与动态内存分配。重构矩阵乘法，使其支持任意非整除的长方形矩阵边界检查。修改内核使用 extern __shared__，并在主机代码的执行配置 (Execution Configuration) 中计算并传入第三个参数以动态分配共享内存大小。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

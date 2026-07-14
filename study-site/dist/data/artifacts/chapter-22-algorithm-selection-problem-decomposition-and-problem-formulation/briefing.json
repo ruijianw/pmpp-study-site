@@ -1,0 +1,62 @@
+{
+  "chapterId": "chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation",
+  "chapterTitle": "Algorithm Selection Problem Decomposition And Problem Formulation",
+  "sourceId": "63fe8416-b018-40da-bcf6-b694e07d8fea",
+  "sourceTitle": "chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation.pdf",
+  "artifactType": "briefing",
+  "artifactLabel": "Briefing",
+  "generatedAt": "2026-07-13T15:11:43.007090Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "简报：算法选择、问题分解与问题重构 (Chapter 22)",
+    "summary": "本简报提炼了并行程序设计的高级抽象思维，探讨了算法选择中的多维权衡、问题分解对 GPU 底层访存模式的决定性影响，以及阿姆达尔定律与批处理 (Batching) 对系统级吞吐量的优化 [1-3]。",
+    "sections": [
+      {
+        "heading": "执行摘要 (Executive Summary)",
+        "points": [
+          "并行编程不仅仅是底层指令的优化，更是算法选择与问题重构的顶层设计过程 [1, 4]。",
+          "针对特定的领域问题，开发者必须在算法复杂度 (Algorithmic complexity)、并发规模 (Parallelism exposed)、通用性以及准确度之间做出极其敏锐的权衡 [5, 6]。",
+          "通过合理的问题分解（如输出中心或输入中心），可以完美适配 GPU 的内存层次结构，在并行度、负载均衡与避免高昂同步代价之间取得最佳折中 [2, 7, 8]。"
+        ]
+      },
+      {
+        "heading": "核心主张 (Core Claims)",
+        "points": [
+          "输出中心与 Gather 模式：输出中心策略 (Output-centric) 天然对应收集 (Gather) 访存模式，允许线程利用私有寄存器累加，并有效利用缓存节约全局内存带宽，完美避开高延迟的原子操作 (Atomic operations) [7, 8]。",
+          "输入中心与 Scatter 模式：输入中心策略 (Input-centric) 对应散布 (Scatter) 访存模式，因多线程易并发写同一地址而必须依赖原子操作 [8]。但当输出规模极小、输入到输出的映射关系难以反推时（如直方图或稀疏矩阵 SpMV/COO），它是实现负载均衡和提取并行度的必由之路 [9-11]。",
+          "阿姆达尔定律的系统级制约：局部内核高达百倍的加速，极易被极其微小的串行部分所抵消 [12, 13]。这要求通过 CUDA 流 (Streams) 等技术在 GPU 上并发执行多个小内核，以榨取任务级并行 (Task-level parallelism) [14]。",
+          "批处理 (Batching) 提升算术强度：批处理的微架构本质是用增加个体任务的延迟 (Latency) 为代价，消除跨任务间的全局内存冗余访问。例如，将多个查询合并，把低效的向量-矩阵运算转化为算术强度极高的矩阵乘法，从而实现整体吞吐量 (Throughput) 的飞跃 [3, 15]。"
+        ]
+      },
+      {
+        "heading": "本章重要性 (Why This Chapter Matters)",
+        "points": [
+          "本章将前文微观的 CUDA 代码级优化升华为宏观的并行思维 (Parallel thinking) 抽象 [4, 16]。",
+          "它解释了为什么强行并行化低效的数值方法是不明智的，强调跨学科的“问题重构 (Problem formulation)”往往能带来比单纯压榨硬件指令大得多的数量级性能飞跃 [17, 18]。"
+        ]
+      },
+      {
+        "heading": "先决条件 (Prerequisites)",
+        "points": [
+          "深刻理解基础并行算法（如排序、前缀和）在复杂度与并行规模上的固有矛盾 [19, 20]。",
+          "熟悉底层微架构存储结构（如 Registers, Cache, Global memory），理解它们在应对 Gather 与 Scatter 访存模式时的带宽与延迟差异 [7, 8]。",
+          "理解算术强度 (Arithmetic intensity) 概念以及 GPU 面向吞吐量 (Throughput) 的设计哲学 [3, 15]。"
+        ]
+      },
+      {
+        "heading": "实现启示与常见错误 (Implementation Implications)",
+        "points": [
+          "盲目套用分解策略：在图像卷积或模板计算中，如果未识别出其天然的聚集属性，而错误使用输入中心分解 (Input-centric)，会将原本极高效的寄存器复用退化为灾难性的原子操作 (Atomic operations) 竞争锁死 [21, 22]。",
+          "忽视长尾串行任务：仅关注大尺寸核心算子的细粒度并行，却让少量串行任务阻塞在主机端 CPU，导致应用级加速比停滞。应主动利用多核 CPU 或并发 CUDA 流处理这些“不值得单独上 GPU”的任务，以掩盖其延迟 [13, 14]。",
+          "抗拒基于吞吐量的批处理重构：在需要处理海量并发请求的系统中（如大模型推理），执迷于降低单个请求的绝对响应延迟，拒绝采用批处理 (Batching)，导致硬件执行极低算术强度的计算，GPU 彻底沦为内存受限 (Memory-bound) 状态 [3, 15]。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "chapterId": "chapter-02-heterogeneous-data-parallel-computing",
+  "chapterTitle": "Heterogeneous Data Parallel Computing",
+  "sourceId": "9da6fad2-9ec4-460f-b6fc-7e470d872c59",
+  "sourceTitle": "chapter-02-heterogeneous-data-parallel-computing.pdf",
+  "artifactType": "data-table",
+  "artifactLabel": "Data Table",
+  "generatedAt": "2026-07-13T12:12:30.001633Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "数据表格：异构数据并行计算 (Chapter 2: Heterogeneous Data Parallel Computing)",
+    "summary": "本数据表格整理了《大规模并行处理器编程》第二章的核心概念，涵盖数据并行性、异构内存管理、两级线程架构、以及全局索引映射机制。通过剖析 CUDA API 和内置变量的底层逻辑，帮助开发者识别并行化过程中的常见陷阱并进行准确的性能推理。",
+    "sections": [
+      {
+        "heading": "表格说明 (Table Description)",
+        "points": [
+          "本表结构化呈现了从串行代码到大规模并行内核(Kernel)转换过程中的关键技术点。",
+          "每个条目包含定义、在 CUDA 编程模型中的作用、性能考量以及常见的实现错误，旨在为快速复习与代码排错提供直接参考。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "concept": "数据并行性 (Data Parallelism)",
+        "definition": "数据集的不同部分可以彼此独立地进行相同计算的现象（如图像像素转换、向量加法）。",
+        "cudaRelevance": "是 GPU 大规模并行加速的基石。在 CUDA 中，通过将海量相互独立的数据单元映射给数十万个独立线程来实现并发执行。",
+        "performanceConcern": "数据集必须足够庞大，才能产生充足的并发线程以充分利用硬件执行资源，实现性能随硬件迭代而线性增长的可扩展性 (Scalability)。",
+        "commonMistake": "混淆数据并行与任务并行 (Task Parallelism)，错误地尝试在设备端大规模分配相互依赖的复杂不同任务，导致 GPU 吞吐量优势无法发挥。"
+      },
+      {
+        "concept": "设备全局内存 (Device Global Memory)",
+        "definition": "GPU 板载的高容量动态随机存取存储器 (DRAM)，通过 CUDA API（如 cudaMalloc 和 cudaFree）由主机进行分配与释放。",
+        "cudaRelevance": "异构计算中主机 (Host) 和设备 (Device) 之间数据交换的主要存储介质，内核中的所有线程均可读取和写入该内存空间。",
+        "performanceConcern": "由于存在物理边界，主机与设备之间的数据传输 (cudaMemcpy) 非常耗时。频繁的双向数据搬运会抵消掉 GPU 的计算加速优势。",
+        "commonMistake": "在主机 (Host) 的 CPU C++ 代码中，直接解引用 (Dereference) 指向设备全局内存的指针（通常带有 _d 后缀），直接引发段错误或程序崩溃。"
+      },
+      {
+        "concept": "内存分配 API 签名 (cudaMalloc Signature)",
+        "definition": "CUDA 提供的在设备全局内存中分配对象的函数。与标准 C 的 malloc 仅返回指针不同，cudaMalloc 利用返回值传递错误码，因此利用二级指针来写入地址。",
+        "cudaRelevance": "在启动任何 GPU 计算前，必须使用它正确获取设备存储空间的句柄。要求传入 `(void**)` 类型的指针地址。",
+        "performanceConcern": "若不配套使用错误检查机制 (Error Checking)，在显存耗尽时分配失败将无法被及时捕获，导致后续内核因无效地址指针引发灾难性错误。",
+        "commonMistake": "按照传统 C 语言习惯，错误地仅传入一级指针，或者遗漏将其强制转换为 `(void**)` 类型，导致设备指针变量未能获取真实的显存地址。"
+      },
+      {
+        "concept": "线程网格与线程块 (Grid and Blocks)",
+        "definition": "CUDA 硬件对并发线程采用的两级层次化组织结构。每次调用内核 (Kernel) 会启动一个网格 (Grid)，该网格被均匀划分为多个大小相同的线程块 (Block)。",
+        "cudaRelevance": "这是单程序多数据 (SPMD) 模型在 CUDA 中的具象化，通过在调用函数时添加执行配置 (Execution Configuration) `<<<gridDim, blockDim>>>` 来动态设置。",
+        "performanceConcern": "为了满足底层硬件的极速调度效率，单个 Block 的线程数量通常被强制建议设置为 32 的倍数（如 256）。",
+        "commonMistake": "错误地假设标号较小或同一 Grid 中的不同 Block 之间存在隐式的先后执行顺序，由于硬件调度器的乱序性，这会导致极其隐蔽的竞争条件错误。"
+      },
+      {
+        "concept": "内置变量与全局索引 (Built-in Variables & Global Index)",
+        "definition": "由 CUDA 运行时预初始化的硬件级只读寄存器变量（threadIdx, blockIdx, blockDim），允许每个线程获取自身在网格中的确切拓扑坐标。",
+        "cudaRelevance": "取代了传统 C++ 中的 for 循环控制变量。常用于构建一维数据映射的基准公式：`i = blockIdx.x * blockDim.x + threadIdx.x`。",
+        "performanceConcern": "内置变量直接映射至底层寄存器，因此计算全局索引极其迅速。高效的索引直接决定了海量线程能否以极低的开销匹配到正确的数据分片。",
+        "commonMistake": "在计算偏移量时，遗漏乘上 `blockDim.x` 导致多个 Block 的线程完全重叠覆盖在相同的数据内存区域，造成数据计算的严重错乱。"
+      },
+      {
+        "concept": "边界检查 (Boundary Checking)",
+        "definition": "内核函数中的保护性分支语句（如 `if (i < n)`），用于防止尾部线程越界处理未定义的数据区间。",
+        "cudaRelevance": "由于 Block 大小常固定为预设值（如 256），当所处理数据总量 (N) 无法被完美整除时，利用向上取整 `ceil(n/256.0)` 启动的网格必然会产生多余的线程。",
+        "performanceConcern": "虽然分支语句在高度并行的 GPU 中可能轻微影响指令流水线的一致性，但在异构内存中保障不发生非法访存是必须妥协的第一准则。",
+        "commonMistake": "忘记在内核开头添加边界检查条件，导致末尾 Block 中多余的线程错误地读取或覆写了越界内存，不仅引发结果错误，甚至会导致程序挂起。"
+      }
+    ]
+  }
+}

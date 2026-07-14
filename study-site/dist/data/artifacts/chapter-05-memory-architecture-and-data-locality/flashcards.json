@@ -1,0 +1,139 @@
+{
+  "chapterId": "chapter-05-memory-architecture-and-data-locality",
+  "chapterTitle": "Memory Architecture And Data Locality",
+  "sourceId": "bde6b4cd-9cdf-4782-a570-a72e79387d7d",
+  "sourceTitle": "chapter-05-memory-architecture-and-data-locality.pdf",
+  "artifactType": "flashcards",
+  "artifactLabel": "Flashcards",
+  "generatedAt": "2026-07-13T13:29:26.890006Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "闪卡：内存架构与数据局部性 (Chapter 5: Memory Architecture and Data Locality)",
+    "summary": "包含 18 张精选闪卡，用于快速复习 CUDA 内存层级、性能推理 (Roofline 模型)、分块技术 (Tiling)、共享内存同步依赖以及边界检查陷阱。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Tips)",
+        "points": [
+          "利用简单 (Easy) 难度卡片熟悉不同的内存类型 (Shared, Constant, Global, Local) 及其声明生命周期。",
+          "通过中等 (Medium) 难度卡片掌握性能推理 (Roofline 模型与 FLOP/B) 和分块 (Tiling) 的核心思想。",
+          "挑战困难 (Hard) 难度卡片，深入分析同步屏障遗漏导致的读写依赖冲突、占用率限制以及复杂的边界防御机制。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "front": "什么是计算访存比 (Compute-to-global-memory-access ratio / FLOP/B)？",
+        "back": "它是衡量内核每访问 1 字节 (Byte) 全局内存所执行的浮点运算次数 (FLOP) 的指标。用于判断内核性能是受限于计算能力 (Compute-bound) 还是内存带宽 (Memory-bound)。",
+        "difficulty": "easy",
+        "sourceHint": "5.1 Memory bandwidth as a performance limiter"
+      },
+      {
+        "front": "如何利用硬件规格判断一个内核程序是计算受限 (Compute-bound) 还是内存受限 (Memory-bound)？",
+        "back": "计算硬件的“峰值计算吞吐量 / 峰值内存带宽”得出阈值。如果内核的实际 FLOP/B 大于该阈值，通常是计算受限；如果小于该阈值，则是内存受限。",
+        "difficulty": "medium",
+        "sourceHint": "5.1 Memory bandwidth as a performance limiter"
+      },
+      {
+        "front": "Roofline 模型 (Roofline Model) 的 X 轴和 Y 轴分别代表什么？它有什么作用？",
+        "back": "X 轴代表计算强度 (Arithmetic intensity, FLOP/B)，Y 轴代表计算吞吐量 (GFLOPS)。它用于光速性能分析 (Speed-of-light analysis)，直观展示应用是受限于内存斜线还是算力水平线，评估优化空间。",
+        "difficulty": "medium",
+        "sourceHint": "5.1 Memory bandwidth as a performance limiter (Sidebar)"
+      },
+      {
+        "front": "在 CUDA 中使用 `__shared__` 关键字声明的变量，其作用域 (Scope) 和生命周期 (Lifetime) 是怎样的？",
+        "back": "作用域是单个线程块 (Thread block)，块内所有线程共享同一份数据。生命周期是整个内核执行期间，当 Block 执行完毕时数据即被销毁。",
+        "difficulty": "easy",
+        "sourceHint": "5.2 CUDA memory types"
+      },
+      {
+        "front": "除了极低的访问延迟，将操作数放置在寄存器 (Registers) 中相比于全局内存 (Global Memory) 还有哪两个隐蔽的性能优势？",
+        "back": "1. 寄存器操作数是内置于算术指令中的，不需要额外的 load 指令。 2. 访问寄存器的能耗 (Energy efficiency) 比访问全局内存低至少一个数量级。",
+        "difficulty": "hard",
+        "sourceHint": "5.2 CUDA memory types"
+      },
+      {
+        "front": "如果开发者在 CUDA 内核中声明了一个普通的自动数组变量 (Automatic array variables)，它通常会被存放在哪里？",
+        "back": "它会被分配到线程私有的本地内存 (Local memory) 中。请注意，本地内存物理上依然位于高延迟、低带宽的全局显存 (Global DRAM) 中，除非数组很小且索引全是常量，编译器才可能将其优化到寄存器。",
+        "difficulty": "hard",
+        "sourceHint": "5.2 CUDA memory types"
+      },
+      {
+        "front": "Hopper 架构引入的分布式共享内存 (Distributed shared memory) 提供了什么新能力？",
+        "back": "它允许属于同一个线程块集群 (Thread block cluster) 的不同 Block 互相访问彼此的共享内存，从而在不经过全局内存的情况下扩大了协作线程和高速内存池的规模。",
+        "difficulty": "medium",
+        "sourceHint": "5.2 CUDA memory types"
+      },
+      {
+        "front": "什么是分块 (Tiling) 技术？它的核心目的是什么？",
+        "back": "分块是将大数据集划分为能放入共享内存的小块 (Tiles) 的技术。核心目的是利用数据局部性 (Data Locality)，通过线程协作将全局内存数据一次性加载到高速共享内存中，供多次重复计算，从而大幅减少全局访存流量。",
+        "difficulty": "medium",
+        "sourceHint": "5.3 Tiling for reduced memory traffic"
+      },
+      {
+        "front": "在基于共享内存的分块矩阵乘法中，若设定 Tile 的尺寸为 `TILE_WIDTH`，理论上能将全局内存访存量降低到原来的几分之几？",
+        "back": "理想情况下，全局访存量可以降低到原来的 `1 / TILE_WIDTH`。因为每个被加载到共享内存的元素将被 `TILE_WIDTH` 个线程重复利用。",
+        "difficulty": "hard",
+        "sourceHint": "5.3 Tiling for reduced memory traffic"
+      },
+      {
+        "front": "在分块协同加载过程中，什么是读后写 (Read-after-write / 真依赖) 依赖？如何解决？",
+        "back": "读后写依赖是指某个线程读取共享内存前，必须等待其他线程将数据写入完毕。解决方案是在写入共享内存后、读取数据前，调用 `__syncthreads()` 设置屏障。",
+        "difficulty": "medium",
+        "sourceHint": "5.4 A tiled matrix multiplication kernel"
+      },
+      {
+        "front": "在 Strip-mining 循环中，为什么在计算完毕后、进入下一阶段加载新数据前，必须执行第二次 `__syncthreads()`？如果遗漏会发生什么？",
+        "back": "这是为了解决写后读 (Write-after-read / 假依赖) 冲突。如果遗漏，执行较快的线程会提前进入下一阶段并用新数据覆盖共享内存，导致较慢的线程读取到错误的新数据，而不是当前阶段应该计算的数据。",
+        "difficulty": "hard",
+        "sourceHint": "5.4 A tiled matrix multiplication kernel"
+      },
+      {
+        "front": "在矩阵尺寸无法被 Block 大小整除时，为什么仅仅“剔除不计算有效输出 P 元素的线程”无法完全避免越界访存错误？",
+        "back": "因为即使是负责计算有效 P 元素的线程，在加载位于矩阵边缘的 Tile 阶段时，也可能试图读取超出 M 或 N 原始矩阵宽度的冗余内存空间，导致越界或读取垃圾数据。",
+        "difficulty": "hard",
+        "sourceHint": "5.5 Boundary checks"
+      },
+      {
+        "front": "在进行内存边界检查 (Boundary checks) 时，如果发现某个线程准备加载的输入矩阵元素越界了，应该向共享内存中填入什么安全值？",
+        "back": "应该填入 `0.0f`。因为零值在后续的矩阵乘法点积 (Dot-product) 加和中不会对最终的有效结果产生任何改变。",
+        "difficulty": "medium",
+        "sourceHint": "5.5 Boundary checks"
+      },
+      {
+        "front": "滥用高速的共享内存 (Shared Memory) 会对底层硬件的占用率 (Occupancy) 产生什么负面影响？",
+        "back": "由于每个流式多处理器 (SM) 的共享内存容量是有限硬性资源。如果单个 Block 申请了过大的共享内存，会导致 SM 能够并发驻留的 Block 数量锐减，占用率大幅下降，削弱 GPU 隐藏访存延迟的能力。",
+        "difficulty": "medium",
+        "sourceHint": "5.6 Impact of memory usage on occupancy"
+      },
+      {
+        "front": "如果在编译时无法确定共享内存所需的大小，CUDA 提供了什么机制在主机 (Host) 端动态分配共享内存？",
+        "back": "在内核中使用 `extern __shared__ 数组名[]` 声明。然后在主机调用内核时，通过执行配置 `<<<grid, block, size_in_bytes>>>` 的第三个参数传入所需分配的共享内存字节数。",
+        "difficulty": "hard",
+        "sourceHint": "5.6 Impact of memory usage on occupancy"
+      },
+      {
+        "front": "在动态分配多维共享内存时，为什么内核中的 `extern __shared__ Mds_Nds[]` 只能被声明为一维数组？",
+        "back": "因为动态分配是在运行时分配了一整块连续的字节空间。开发者需要自己在这个扁平的一维空间内切分出不同的逻辑段（如前一半给 Mds，后一半给 Nds），并手动使用线性化偏移量进行寻址。",
+        "difficulty": "hard",
+        "sourceHint": "5.6 Impact of memory usage on occupancy"
+      },
+      {
+        "front": "什么是循环的 Strip-mining 技术？",
+        "back": "它是一种将长循环打破成多个短阶段 (Phases) 的技术。在并行编程中，常用于让同一 Block 的线程在每个阶段只聚焦于一小部分数据，协同将数据加载进缓存或共享内存中，是实现分块 (Tiling) 的主要载体。",
+        "difficulty": "medium",
+        "sourceHint": "5.4 A tiled matrix multiplication kernel"
+      },
+      {
+        "front": "CUDA 变量声明中，仅带有 `__device__` 修饰符（无 shared 或 constant）的变量代表什么内存类型？",
+        "back": "它代表全局变量 (Global variables)，存放在全局内存中。所有网格的所有线程均可访问，生命周期贯穿整个应用程序。但通常认为滥用全局变量属于不良的编程风格。",
+        "difficulty": "easy",
+        "sourceHint": "5.2 CUDA memory types"
+      }
+    ]
+  }
+}

@@ -1,0 +1,185 @@
+{
+  "chapterId": "chapter-21-electrostatic-potential-map",
+  "chapterTitle": "Electrostatic Potential Map",
+  "sourceId": "92e442b0-fc5b-4782-bad6-f51b574a393d",
+  "sourceTitle": "chapter-21-electrostatic-potential-map.pdf",
+  "artifactType": "slide-deck",
+  "artifactLabel": "Slide Deck",
+  "generatedAt": "2026-07-13T15:10:05.359911Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "幻灯片大纲：静电势图 (Chapter 21: Electrostatic Potential Map)",
+    "summary": "本幻灯片组深入解析了 GPU 静电势图计算的核心架构优化过程。从 Scatter 与 Gather 模式的内核设计取舍，到线程粗化 (Thread Coarsening) 的收益与访存陷阱修复，最后探讨了利用截断分箱 (Cutoff Binning) 与 CPU-GPU 异构协同解决超大规模数据扩展性瓶颈的高级策略。",
+    "sections": [
+      {
+        "heading": "使用建议 (Usage Tips)",
+        "points": [
+          "第 1-4 页：介绍 DCS 算法基础，深入探讨 Scatter 与 Gather 模式对底层原子操作的影响，以及并行化中的“优化悖论”。",
+          "第 5-8 页：详细讲解线程粗化 (Thread Coarsening) 的算术优化原理，及其引发的非合并访存 (Uncoalesced memory access) 陷阱与交错分配 (Interleaved Assignment) 修复方法。",
+          "第 9-14 页：重点关注系统规模扩展性，讲解截断分箱 (Cutoff Binning) 算法，探讨常量内存到共享内存的转换，以及规避虚拟原子 (Dummy atoms) 浪费的异构延迟掩盖 (Latency hiding) 策略。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "slideNumber": 1,
+        "title": "背景：静电势图与 DCS (Background & DCS)",
+        "bullets": [
+          "应用背景：VMD 软件常用于计算网格空间中的静电势图，用于分子动力学模拟 (如离子放置)。",
+          "直接库仑求和 (DCS)：高精度算法，网格点电势等于所有原子贡献之和 (电荷除以距离)。",
+          "性能挑战：计算复杂度正比于 (原子数 × 网格点数)。随着系统体积增大，呈现 $O(V^2)$ 二次方暴增，急需 GPU 加速。"
+        ],
+        "speakerNotes": "在分子动力学中，计算静电势图是一个经典的高负载任务。直接库仑求和 (DCS) 非常精确，但它要计算每一个网格点和每一个原子之间的相互作用。这意味着当模拟体积增大时，网格点和原子数都在增加，计算量呈平方级爆炸，这是引入 GPU 加速的直接动机。",
+        "visualSuggestion": "展示图 21.2：一个网格点接收来自多个原子贡献的箭头示意图，标明 $potential[j] += charge[i] / r_{i,j}$ 公式。"
+      },
+      {
+        "slideNumber": 2,
+        "title": "模式之争：Scatter 模式的灾难 (Scatter Mode)",
+        "bullets": [
+          "串行优化：优秀的 CPU C 代码通常采用外循环遍历原子、内循环遍历网格点，以减少重复计算。",
+          "Scatter (发散) 映射：将此逻辑移植到 GPU，会导致每个线程代表一个原子，去更新所有的网格点。",
+          "致命缺陷：所有线程并发写入相同的网格点，产生海量写冲突，强制依赖 `atomicAdd`，严重摧毁并行吞吐量。"
+        ],
+        "speakerNotes": "如果我们直接把 CPU 上最快的 C 代码并行化，让每个线程处理一个原子，然后把能量发散 (Scatter) 到各个网格点上，在 GPU 上将是一场灾难。成千上万的线程同时抢着写同一个网格点，必须用原子操作排队，这会让 GPU 的海量计算核心处于严重阻塞状态。",
+        "visualSuggestion": "绘制一个漏斗图解：多个线程 (Atoms) 的箭头指向同一个网格点 (Grid Point)，并在汇聚处打上红色的 `atomicAdd` 警告标志。"
+      },
+      {
+        "slideNumber": 3,
+        "title": "模式之争：Gather 模式与优化悖论 (Gather Mode & Paradox)",
+        "bullets": [
+          "Gather (收集) 映射：每个线程负责一个网格点，遍历所有原子进行累加。",
+          "无锁并发：线程独占输出地址，无需任何原子操作 (Atomic operations)，完美契合 SIMT 架构。",
+          "优化悖论 (Optimization Paradox)：在 CPU 上增加算术冗余的“未优化”代码，在 GPU 上因其无冲突访存拓扑反而实现了最高性能。"
+        ],
+        "speakerNotes": "反过来，如果我们用 Gather 模式，让每个线程负责算好一个网格点的最终结果再写入。虽然每个线程会做一些重复的减法计算，但写回全局内存时绝对不会有冲突，完全不需要原子操作。这就是并行计算中的‘优化悖论’：有时候牺牲一点浮点计算量来换取无锁的独立内存写入，是绝对值得的。",
+        "visualSuggestion": "对比天平图：左侧 Scatter 模式 = 低 FLOPs + 极高内存冲突 (红叉)；右侧 Gather 模式 = 略高 FLOPs + 完美无冲突写入 (绿勾)。"
+      },
+      {
+        "slideNumber": 4,
+        "title": "利用常量缓存广播 (Constant Cache Broadcast)",
+        "bullets": [
+          "数据访问特征：在 Gather 模式下，同一时刻 Warp 内的所有线程都在读取相同的原子数据 (坐标与电荷)。",
+          "常量内存 (Constant Memory)：将原子的分块数据 (Chunks) 存入常量内存。",
+          "硬件广播 (Broadcast)：硬件缓存能将一次内存读取广播给 Warp 内的所有 32 个线程，几乎消除了全局内存带宽瓶颈。"
+        ],
+        "speakerNotes": "在 Gather 内核中，大家都在同步遍历同一批原子。这意味着 Warp 里的 32 个线程在任何一个周期都在读同一个原子的 x, y, z 和电荷。我们把这些原子放进常量内存，GPU 硬件就会触发广播机制，读一次内存喂饱 32 个线程，极其高效。",
+        "visualSuggestion": "展示常量缓存 (Constant Cache) 广播机制示意图：单一读取请求到达 Cache 后，分发为 32 根箭头指向 Warp 中的所有线程。"
+      },
+      {
+        "slideNumber": 5,
+        "title": "算法级优化：线程粗化 (Thread Coarsening)",
+        "bullets": [
+          "概念：让单个线程不仅计算一个网格点，而是负责计算相邻的多个 (如 4 个) 网格点。",
+          "寄存器复用：原子的坐标和电荷只需从常量内存加载一次，即可保留在寄存器 (Registers) 中复用 4 次。",
+          "消除冗余：处于同行的网格点与原子的 y、z 距离差 (`dy`, `dz`) 相同，只需计算一次。"
+        ],
+        "speakerNotes": "虽然 Gather 模式很快，但每次算距离都要重新读一遍常量内存并计算 y 和 z 的差值。我们可以用线程粗化 (Thread Coarsening)：让一个线程算同行的 4 个点。因为这 4 个点在同一行，它们跟原子的 y、z 距离差是完全一样的。我们可以把计算结果和原子数据存在寄存器里复用。",
+        "visualSuggestion": "展示图 21.7：一个原子 (Atom[i]) 到同行 4 个网格点的连线，高亮表明它们在 y 和 z 轴上的偏移量是共享的。"
+      },
+      {
+        "slideNumber": 6,
+        "title": "线程粗化的性能收益 (Benefits of Coarsening)",
+        "bullets": [
+          "显著降低访存：对于 4 个网格点，对常量内存的访问从 16 次直降为 4 次。",
+          "大幅减少指令 (FLOPs)：浮点运算次数从 48 次降至 24 次。",
+          "代价权衡：增加了每个线程的寄存器压力。只要不超过 SM 的物理限制，即可大幅提升算术强度与吞吐率。"
+        ],
+        "speakerNotes": "粗化的收益是惊人的。算 4 个点原本需要 16 次内存访问和 48 次浮点运算，粗化后变成了 4 次内存访问和 24 次浮点运算，指令数砍掉了一半。当然，代价是用了更多寄存器，但只要不引起严重的 Occupancy (占用率) 下降，这笔交易非常划算。",
+        "visualSuggestion": "柱状图对比：Naive Gather vs. Coarsened Gather 在 Constant Loads 和 FLOPs 数量上的断崖式下降。"
+      },
+      {
+        "slideNumber": 7,
+        "title": "实现陷阱：非合并访存 (Uncoalesced Memory Access)",
+        "bullets": [
+          "直觉写法陷阱：在单线程内部使用紧凑的 for 循环计算连续的网格点 `idx, idx+1, idx+2, idx+3`。",
+          "Warp 访存撕裂：当线程 0 写出数据 0 时，线程 1 会去写出数据 4。Warp 内相邻线程的地址不连续。",
+          "性能后果：导致极其严重的非合并访存 (Uncoalesced writes)，全局内存带宽被细碎的内存事务严重浪费。"
+        ],
+        "speakerNotes": "但粗化很容易掉进一个陷阱。如果让线程 0 算点 0 到 3，线程 1 算点 4 到 7。当大家一起执行第一条写内存指令时，线程 0 写地址 0，线程 1 写地址 4。地址之间有空隙，这破坏了 GPU 的合并访存规则，内存总线会被这种碎片化的写操作挤爆。",
+        "visualSuggestion": "错误内存访问图示：红色的错位箭头。Thread 0 -> Addr 0, Thread 1 -> Addr 4，中间暴露出 Address 1-3 的内存空洞。"
+      },
+      {
+        "slideNumber": 8,
+        "title": "修复访存：交错分配 (Interleaved Assignment)",
+        "bullets": [
+          "跨度分配：摒弃连续分配，改用以线程块维度 (`blockDim.x`) 为跨度的交错分配逻辑。",
+          "地址对齐：线程 0 计算 `0, blockDim.x, ...`；线程 1 计算 `1, 1+blockDim.x, ...`。",
+          "完美合并：确保在任何一次写出指令中，Warp 中的 32 个线程始终访问连续的 32 个全局内存地址，恢复内存峰值带宽。"
+        ],
+        "speakerNotes": "怎么修复？用交错分配！线程 0 先算地址 0，线程 1 算地址 1。当算完第一批后，线程 0 去算地址 `0 + blockDim.x`。这种像发扑克牌一样的交错分配，保证了任何时候同 Warp 的线程都在写连续的内存块，完美恢复了合并访存。",
+        "visualSuggestion": "图 21.9 的概念重绘：像发牌一样交错分配任务，绿色块标明 Thread 0-31 访问连续内存 (Coalesced Writes)。"
+      },
+      {
+        "slideNumber": 9,
+        "title": "扩展性瓶颈与截断分箱 (Scalability & Cutoff Binning)",
+        "bullets": [
+          "扩展性墙：大分子系统的 DCS $O(V^2)$ 复杂度让 GPU 也无能为力。",
+          "物理近似：引入截断半径 (Cutoff radius)，忽略极远原子的微小贡献，将复杂度降维至 $O(V)$。",
+          "空间分箱 (Binning)：将空间划分为均匀的网格箱 (Bins)，线程仅需扫描与自身重叠的邻域列表 (Neighborhood list)。"
+        ],
+        "speakerNotes": "DCS 虽然精确，但 $O(V^2)$ 意味着系统大一倍，算力需求大四倍，扩展性太差。实际上，距离很远的原子对电势影响极小。我们引入“截断半径”，只算附近的原子。通过把空间切分成 Bin (箱子)，线程只要检查自己周围那几个箱子就行了，算法复杂度立刻降为 $O(V)$。",
+        "visualSuggestion": "对比图 21.11：左侧 Direct Summation 密集连接所有点，右侧 Cutoff Summation 只连接虚线圆圈 (Cutoff distance) 内的点。"
+      },
+      {
+        "slideNumber": 10,
+        "title": "放弃常量内存：转向共享内存协作",
+        "bullets": [
+          "常量内存失效：分箱后，不同的 Thread Blocks 需要访问不同的邻域原子子集，有限的常量内存无法缓冲所有数据。",
+          "协作加载：同一 Block 的线程协作将它们共同需要的邻域箱 (Neighborhood bins) 的原子拉取到共享内存 (Shared memory) 中。",
+          "消除全局延迟：所有线程随后从极低延迟的 Shared Memory 内部进行截断距离测试与电势累加。"
+        ],
+        "speakerNotes": "切分空间后，原来的常量内存绝招失效了，因为它容量太小，装不下各个 Block 需要的不同原子子集。现在的最佳实践是让同一个 Block 里的线程合作，把周围邻居箱子里的原子一起搬进共享内存。大家再从共享内存里读，同样飞快。",
+        "visualSuggestion": "内存层级流转图：Global Memory (Bins) -> 线程协作加载 (Cooperative Load) -> Shared Memory -> 线程并行计算 (Thread Compute)。"
+      },
+      {
+        "slideNumber": 11,
+        "title": "边界陷阱：控制流发散 (Control Divergence)",
+        "bullets": [
+          "几何错位：邻域箱 (方形) 与截断半径 (圆形) 之间存在不完全重叠的空间“角”。",
+          "动态分支：即使同在一个箱子里的原子，也必须由每个线程计算实际距离，并使用 `if` 条件判断是否累加。",
+          "性能影响：Warp 内部因为原子的命中与否产生控制流发散 (Control Divergence)，部分线程必须空转等待。"
+        ],
+        "speakerNotes": "虽然我们把相邻箱子的原子都拿进来了，但箱子是方的，截断半径是圆的。边角上的原子可能在 A 线程的圆内，在 B 线程的圆外。这就迫使我们必须加一个 `if (distance < cutoff)` 的判断，不可避免地在 Warp 内部引发了控制流发散。",
+        "visualSuggestion": "展示图 21.12 的核心概念：方形 Bin 网格上叠加一个虚线圆，高亮圆外的点引发的分支跳过 (Divergence)。"
+      },
+      {
+        "slideNumber": 12,
+        "title": "数据对齐陷阱：虚拟原子的浪费 (Dummy Atoms)",
+        "bullets": [
+          "分布不均：真实分子的空间分布极度不均，各 Bin 的原子数量差异巨大。",
+          "粗暴对齐的代价：若为了 SIMT 规则性，将所有 Bin 用“虚拟原子 (Dummy atoms)”填充至最大尺寸，会导致灾难性的浪费。",
+          "双重惩罚：既严重浪费了有限的全局/共享内存容量，又迫使 GPU 执行海量无意义的乘零操作。"
+        ],
+        "speakerNotes": "原子在空间的分布是不均匀的，有的箱子很满，有的空空如也。为了在 GPU 上保持数组对齐，新手喜欢用电荷为 0 的‘虚拟原子’把所有箱子填满。千万别这么做！这不仅挤爆了宝贵的显存，还会让 GPU 大量时间都在算 0 乘以 0，得不偿失。",
+        "visualSuggestion": "一个箱子 (Bin) 示意图，底部几个真实的红色原子，上方填满了一大堆半透明的无用“幽灵原子 (Dummy Atoms)”，打上红色警告符号。"
+      },
+      {
+        "slideNumber": 13,
+        "title": "终极方案：溢出列表与异构协同 (Overflow & Synergy)",
+        "bullets": [
+          "设定固定上限：设置一个较小且固定的 Bin 容量 (如足以覆盖 97% 的情况)。",
+          "溢出列表 (Overflow List)：在预处理阶段，将装不下的原子移入专用的溢出列表。",
+          "CPU 异步兜底：GPU 专注处理极其规则的 Bin 数据，主机端 CPU 负责补充计算少量的不规则溢出原子。"
+        ],
+        "speakerNotes": "完美的解决方案是软硬件协同：我们设定一个合理的固定箱子大小，保证 97% 的箱子装得下，GPU 就能极其高效、规则地执行。剩下装不下的 3% 原子放到溢出列表里，直接丢给主机端的 CPU 去算，GPU 不碰这些不规则的数据。",
+        "visualSuggestion": "工作流分离图：Preprocessing -> 95% Regular Bins 送入 GPU 极速通道；5% Overflow List 送入 CPU 兜底通道。"
+      },
+      {
+        "slideNumber": 14,
+        "title": "总结：架构级延迟掩盖 (Latency Hiding)",
+        "bullets": [
+          "流式并发：当 GPU 正在执行下一批次 (Slice) 的静电势内核时，CPU 同步处理上一批次的溢出原子。",
+          "完美掩盖：只要溢出比例极低，CPU 的执行时间会被 GPU 的大批量计算时间完美掩盖 (Latency hiding)。",
+          "工程启示：算法设计不能仅着眼于指令数，必须向底层微架构 (访存冲突) 妥协，并善用异构系统的整体特性。"
+        ],
+        "speakerNotes": "最妙的是，CPU 算溢出列表的时间完全可以被掩盖掉。通过 CUDA Streams，当 GPU 正在算第 2 批网格时，CPU 同时在算第 1 批的溢出原子。这展现了异构计算的终极哲学：GPU 做它最擅长的大规模规则并行，CPU 料理不规则的边缘情况，两者完美掩盖延迟。",
+        "visualSuggestion": "甘特图 (Gantt Chart)：上排 GPU (Slice 1, Slice 2, Slice 3紧密排布)，下排 CPU (Overflow 1, Overflow 2隐藏在 GPU 执行周期下方)。"
+      }
+    ]
+  }
+}

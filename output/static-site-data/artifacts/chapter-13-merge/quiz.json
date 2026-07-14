@@ -1,0 +1,158 @@
+{
+  "chapterId": "chapter-13-merge",
+  "chapterTitle": "Merge",
+  "sourceId": "fe2cbf02-e8a0-4d31-8236-d29aa0d0b96c",
+  "sourceTitle": "chapter-13-merge.pdf",
+  "artifactType": "quiz",
+  "artifactLabel": "Quiz",
+  "generatedAt": "2026-07-13T14:21:31.371000Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "测试题：归并 (Chapter 13: Merge)",
+    "summary": "本测试题旨在检验读者对 GPU 上并行有序归并 (Parallel Ordered Merge) 核心挑战与优化技巧的掌握程度。重点考察动态数据划分 (协同秩 Co-rank)、非合并访存缺陷分析、共享内存循环缓冲区 (Circular-buffer) 设计以及线程粗化 (Thread coarsening) 的性能权衡。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Advice)",
+        "points": [
+          "1. 理解动态数据依赖 (Data-dependent memory accesses)：不同于矩阵乘法的静态映射，归并内核中各线程所需的输入边界高度依赖数据值。这是导致基础内核出现严重非合并访存 (Uncoalesced accesses) 的根本原因。",
+          "2. 掌握协同秩 (Co-rank) 搜索的代价：利用 O(log N) 的二分查找解决动态划分虽妙，但成本高昂。必须结合线程粗化 (Thread coarsening) 摊薄搜索开销，否则整体工作效率 (Work efficiency) 将发生倒退。",
+          "3. 洞悉分块 (Tiling) 的局限与进阶：共享内存能解决访存碎片，但由于每次迭代 A 和 B 的消耗量不可预知，基础分块会重载未耗尽的数据，浪费约 50% 带宽。必须引入循环缓冲区 (Circular-buffer) 才能榨干内存带宽。",
+          "4. 关注代码可维护性：在实现循环缓冲区时，使用简化模型 (Simplified model) 将复杂的模运算 (Modulo) 回绕逻辑从底层的二分查找中剥离，是极为重要的工程实践。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "type": "multiple-choice",
+        "question": "并行有序归并 (Ordered merge) 为什么强调必须满足稳定性 (Stability)？",
+        "options": [
+          "A. 为了防止在不同 Block 并发读写时产生死锁 (Deadlock)。",
+          "B. 为了保证当两个输入数组存在键值相等的元素时，它们在输出数组中仍能保持相对的原始输入顺序，以防止破坏前序阶段的排序成果。",
+          "C. 为了确保 GPU 的全局内存带宽利用率能够维持在一个稳定的水平。",
+          "D. 为了避免在使用共享内存时发生 Bank Conflict。"
+        ],
+        "answer": "B",
+        "explanation": "稳定性是排序和归并算法的核心属性。在多级排序 (如 Map-Reduce) 中，如果后级的不稳定归并打乱了键值相同元素的相对顺序，前级排序所做的工作就会被破坏。在 Co-rank 中，通过 A[i-1] <= B[j] 来体现 A 优先的稳定性。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "协同秩 (Co-rank) 算法通过二分查找确定输入边界 i 和 j，满足 i+j=k。判断该边界划分正确的两个核心条件是什么？",
+        "options": [
+          "A. A[i] <= B[j] 且 B[j] < A[i]",
+          "B. A[i-1] <= B[j-1]",
+          "C. A[i-1] <= B[j] 且 B[j-1] < A[i]",
+          "D. A[i] < B[j] 且 B[j] <= A[i]"
+        ],
+        "answer": "C",
+        "explanation": "这两个条件确保了：被选入前缀子段的 A 数组最大元素 (A[i-1]) 不会大于未被选入的 B 数组最小元素 (B[j])；同时被选入的 B 数组最大元素 (B[j-1]) 严格小于未被选入的 A 数组最小元素 (A[i])。这完美划分了输出并保障了稳定性。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在基础的并行归并内核 (Basic parallel merge kernel) 中，最致命的底层性能缺陷是什么？",
+        "options": [
+          "A. 二分查找逻辑过于复杂，导致严重的控制流发散 (Control divergence)。",
+          "B. 由于数据依赖导致 Warp 内相邻线程所需读取的起始地址极大概率不连续，触发了极其严重的非合并访存 (Uncoalesced accesses)。",
+          "C. 每个线程都试图独占所有共享内存，导致占用率 (Occupancy) 降为 0。",
+          "D. 并发的归并写入导致严重的写后写 (Write-after-write) 数据竞态。"
+        ],
+        "answer": "B",
+        "explanation": "基础内核让每个线程独立做 Co-rank 并直接从全局内存读取自己那份数据。因为数据值不同，线程0和线程1的输入边界差距可能极大，物理地址不连续直接摧毁了内存总线的合并访存机制。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "基于共享内存的分块归并内核 (Tiled merge kernel) 解决了非合并访存，但为什么仍然会浪费大约 50% 的全局内存带宽？",
+        "options": [
+          "A. 因为数据必须同时被写入 L1 缓存和 L2 缓存。",
+          "B. 因为每次迭代从 A 和 B 预取了满 Tile 的数据，但总共只消耗了一个 Tile 的数据。未消耗的数据会在下一次迭代被直接丢弃并从全局内存重复加载。",
+          "C. 因为 CUDA 编译器的循环展开 (Loop unrolling) 优化在此场景下失效。",
+          "D. 因为共享内存的读写速度只有全局内存的一半。"
+        ],
+        "answer": "B",
+        "explanation": "由于数据的不可预测性，一次迭代可能耗尽 A 但完全没用 B。最坏情况下，每次有 50% 的预加载数据未被使用。简单的 Tiled 内核下一轮会重新覆盖加载这些已在共享内存中的数据，导致严重浪费。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在分块归并内核之上引入循环缓冲区 (Circular-buffer) 的核心收益是什么？",
+        "options": [
+          "A. 彻底消除共享内存 (Shared memory) 中未消耗数据的冗余重载，每次只加载被消耗掉的数量，从而榨干极限的内存带宽。",
+          "B. 自动屏蔽代码中的所有分支条件，消除控制流发散。",
+          "C. 无限扩大每个 Block 能够处理的数据量上限。",
+          "D. 大幅降低内核对寄存器 (Registers) 的使用需求。"
+        ],
+        "answer": "A",
+        "explanation": "循环缓冲区利用环形回绕复用了留在共享内存中的未消耗数据。这确保了从全局内存读入的数据 100% 都是新数据，彻底消除了上一代内核的带宽浪费现象。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "为什么在并行归并中，如果不进行线程粗化 (Thread coarsening)（即让一个线程仅负责生成一个输出元素）会导致性能严重崩溃？",
+        "options": [
+          "A. 单线程处理单元素会触发架构底层的死锁机制。",
+          "B. 昂贵的 O(log N) 级 Co-rank 二分查找开销将被分摊到仅 1 次比较赋值上，纯计算周期会被天量的搜索开销完全淹没。",
+          "C. 会瞬间耗尽 GPU 的常量内存 (Constant memory)。",
+          "D. 导致内核无法通过 CUDA 编译器的词法检查。"
+        ],
+        "answer": "B",
+        "explanation": "二分查找非常耗时。如果每个线程只产出 1 个元素，这意味着为了 1 步合并操作，付出了 log N 步的搜索代价。粗化让每个线程执行 1 次搜索后，接着串行输出多个元素，有效摊薄了高昂的算法开销。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "相比于矩阵乘法 (Matrix Multiplication) 等静态内存映射模式，归并操作的并行化面临的独特挑战是什么？",
+        "options": [
+          "A. 需要处理浮点数极易丢失精度的舍入误差问题。",
+          "B. 依赖全局时钟周期进行极高频的同步。",
+          "C. 每个线程需要的输入数据边界完全取决于数据本身的数值，即“动态输入数据识别 (Dynamic input data identification)”。",
+          "D. 数据天然分布在不同的 GPU 节点上，需通过 NVLink 通信。"
+        ],
+        "answer": "C",
+        "explanation": "在矩阵乘法中，线程(i,j)需要读取哪一行哪一列是在编译期就可以算出的。但在归并中，不看具体数据大小，根本不知道目标前缀需要从 A 数组拿几个、从 B 数组拿几个，这是并行设计的最大难点。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在实现循环缓冲区归并内核时，为什么要引入“简化模型 (Simplified model)”来处理 Co-rank 计算？",
+        "options": [
+          "A. 为了大幅减少共享内存的分配量。",
+          "B. 为了避免将复杂的模运算 (Modulo) 回绕逻辑硬编码到二分查找的迭代内部，从而保持底层搜索逻辑的简洁性与代码可维护性。",
+          "C. 为了兼容不支持原子操作 (Atomic operations) 的旧版 GPU 架构。",
+          "D. 使得编译器能够自动触发 L1 缓存的数据预取 (Prefetching)。"
+        ],
+        "answer": "B",
+        "explanation": "如果把循环缓冲区的取模 `%` 逻辑直接揉进 Co-rank 的 while 循环里，代码会变得极难阅读且容易出错。通过接口抽象，让核心逻辑以为是一段连续内存，只在最后访问元素的那一刻应用模运算，这是绝佳的设计模式。"
+      },
+      {
+        "type": "short-answer",
+        "question": "标准的顺序归并算法 (Sequential merge algorithm) 在 CPU 上的时间复杂度是多少？",
+        "expectedAnswer": "O(m+n)，其中 m 和 n 是两个输入数组的长度。算法通过双指针线性遍历两个输入列表，每比较一次产生一个输出元素。",
+        "explanation": "了解最优顺序算法的时间复杂度，是评估并行算法是否存在“多余功 (Not work-efficient)”的基准线。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在 Co-rank 二分查找的初始化中，如果输出秩 (Rank) k 大于数组 B 的长度 n，为什么搜索 A 数组的下界 `i_low` 必须被初始化为 `k - n` 而不是 0？",
+        "expectedAnswer": "因为目标输出前缀总共需要 k 个元素。即使这 k 个元素中包含了 B 数组所有的 n 个元素，剩下的 k-n 个元素也必定且只能来自于 A 数组。因此，A 数组被消耗的元素数量绝对不可能小于 k-n。直接将下界拉高至 k-n 能有效缩减二分查找的初始区间。",
+        "explanation": "极致的边界收敛是降低 O(log N) 搜索常数开销的关键，精准的初始化能大幅减少 while 循环的迭代次数。"
+      },
+      {
+        "type": "short-answer",
+        "question": "从算术强度 (Arithmetic intensity) 的角度来看，有序归并 (Ordered Merge) 内核是计算受限 (Compute-bound) 还是内存受限 (Memory-bound) 的？",
+        "expectedAnswer": "极度的内存带宽受限 (Memory bandwidth bound)。因为归并操作的算术强度极低，每次加载 A 和 B 的数据仅仅是为了进行极轻量级的数值比较和内存写入赋值。内核的整体性能几乎完全取决于 GPU DRAM 接口的极限吞吐率。",
+        "explanation": "正因为它是高度内存受限的，我们才值得花费额外的寄存器去计算复杂的循环缓冲区，以换取那 50% 的全局内存带宽节省。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在循环缓冲区归并内核 (Circular-buffer merge kernel) 中，使用了哪两个关键变量来追踪下一轮迭代应从共享内存的哪里开始读取数据？",
+        "expectedAnswer": "`A_S_start` 和 `B_S_start`。它们记录了当前有效数据在环形缓冲区的物理起始偏移，并在每次 while 循环迭代结束时，通过加上本轮的消耗量并对 tile_size 取模 (`% tile_size`) 来完成环形指针的回绕更新。",
+        "explanation": "这是理解循环复用 (Wrap-around) 机制的阵眼，状态变量的正确更新是维持循环不崩溃的唯一保障。"
+      },
+      {
+        "type": "short-answer",
+        "question": "简述引入共享内存的分块归并内核 (Tiled merge kernel) 是如何将全局内存的“非合并访存 (Uncoalesced accesses)”转化为“合并访存”的？",
+        "expectedAnswer": "它不再让每个线程单独去全局内存中“捞”数据，而是先在 Block 级别调用一次 Co-rank，圈定整个 Block 当前迭代需要的连续大块输入 (A 和 B 子段)。接着，利用 Block 内的所有线程协作，将这段连续数据连续地预加载到共享内存中，这就完美触发了全局内存的合并访存。之后所有散乱的动态数据访问都发生在低延迟的片上共享内存中。",
+        "explanation": "“利用共享内存做跳板将散列访存转化为连续访存”是 GPU 性能调优的万能公式之一，尤其适用于数据访问模式不可预知的场景。"
+      }
+    ]
+  }
+}

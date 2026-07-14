@@ -1,0 +1,506 @@
+{
+  "mode": "static",
+  "generatedAt": "2026-07-13T15:29:12.582682Z",
+  "notebook": "pmpp",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "sourceScope": "chapter source ids"
+  },
+  "artifactTypes": [
+    {
+      "id": "study-guide",
+      "label": "Study Guide",
+      "description": "Learning objectives, key concepts, pitfalls, and a practice plan.",
+      "prompt": "Create a compact study guide with:\n- 5-8 learning objectives\n- a section-by-section chapter map\n- key concepts with concise explanations\n- common misunderstandings\n- a 3-session practice plan"
+    },
+    {
+      "id": "briefing",
+      "label": "Briefing",
+      "description": "A concise briefing document for technical review.",
+      "prompt": "Create a briefing document with:\n- executive summary\n- core claims\n- why this chapter matters\n- prerequisites\n- implementation implications"
+    },
+    {
+      "id": "data-table",
+      "label": "Data Table",
+      "description": "Structured concept table for comparison and review.",
+      "prompt": "Create a structured table. Put rows in items, each with:\n- concept\n- definition\n- cudaRelevance\n- performanceConcern\n- commonMistake"
+    },
+    {
+      "id": "flashcards",
+      "label": "Flashcards",
+      "description": "Question-answer cards for spaced repetition.",
+      "prompt": "Create 16-24 flashcards. Put cards in items, each with:\n- front\n- back\n- difficulty: easy, medium, or hard\n- sourceHint"
+    },
+    {
+      "id": "quiz",
+      "label": "Quiz",
+      "description": "Multiple-choice and short-answer questions with explanations.",
+      "prompt": "Create a quiz. Put questions in items:\n- 8 multiple-choice questions with four options, answer, and explanation\n- 5 short-answer questions with expectedAnswer and explanation\n- include a final reviewAdvice section"
+    },
+    {
+      "id": "slide-deck",
+      "label": "Slide Deck",
+      "description": "A presentation outline with speaker notes and visual suggestions.",
+      "prompt": "Create a slide deck outline with 10-14 slides. Put slides in items, each with:\n- slideNumber\n- title\n- bullets\n- speakerNotes\n- visualSuggestion"
+    }
+  ],
+  "chapters": [
+    {
+      "id": "chapter-01-introduction",
+      "number": 1,
+      "title": "Introduction",
+      "pdfPath": "output/pdf/chapters/chapter-01-introduction.pdf",
+      "textPath": "output/site-data/chapters/chapter-01-introduction.txt",
+      "pageCount": 18,
+      "wordCount": 9351,
+      "sourceId": "36d65c10-46f4-41a0-8d73-eea6b485aea1",
+      "sourceTitle": "chapter-01-introduction.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-01-introduction/study-guide.json",
+        "briefing": "artifacts/chapter-01-introduction/briefing.json",
+        "data-table": "artifacts/chapter-01-introduction/data-table.json",
+        "flashcards": "artifacts/chapter-01-introduction/flashcards.json",
+        "quiz": "artifacts/chapter-01-introduction/quiz.json",
+        "slide-deck": "artifacts/chapter-01-introduction/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-02-heterogeneous-data-parallel-computing",
+      "number": 2,
+      "title": "Heterogeneous Data Parallel Computing",
+      "pdfPath": "output/pdf/chapters/chapter-02-heterogeneous-data-parallel-computing.pdf",
+      "textPath": "output/site-data/chapters/chapter-02-heterogeneous-data-parallel-computing.txt",
+      "pageCount": 23,
+      "wordCount": 8936,
+      "sourceId": "9da6fad2-9ec4-460f-b6fc-7e470d872c59",
+      "sourceTitle": "chapter-02-heterogeneous-data-parallel-computing.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-02-heterogeneous-data-parallel-computing/study-guide.json",
+        "briefing": "artifacts/chapter-02-heterogeneous-data-parallel-computing/briefing.json",
+        "data-table": "artifacts/chapter-02-heterogeneous-data-parallel-computing/data-table.json",
+        "flashcards": "artifacts/chapter-02-heterogeneous-data-parallel-computing/flashcards.json",
+        "quiz": "artifacts/chapter-02-heterogeneous-data-parallel-computing/quiz.json",
+        "slide-deck": "artifacts/chapter-02-heterogeneous-data-parallel-computing/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-03-multidimensional-grids-and-data",
+      "number": 3,
+      "title": "Multidimensional Grids And Data",
+      "pdfPath": "output/pdf/chapters/chapter-03-multidimensional-grids-and-data.pdf",
+      "textPath": "output/site-data/chapters/chapter-03-multidimensional-grids-and-data.txt",
+      "pageCount": 21,
+      "wordCount": 8664,
+      "sourceId": "398d28d9-3e81-4b0c-a2c0-69eefc525f0f",
+      "sourceTitle": "chapter-03-multidimensional-grids-and-data.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-03-multidimensional-grids-and-data/study-guide.json",
+        "briefing": "artifacts/chapter-03-multidimensional-grids-and-data/briefing.json",
+        "data-table": "artifacts/chapter-03-multidimensional-grids-and-data/data-table.json",
+        "flashcards": "artifacts/chapter-03-multidimensional-grids-and-data/flashcards.json",
+        "quiz": "artifacts/chapter-03-multidimensional-grids-and-data/quiz.json",
+        "slide-deck": "artifacts/chapter-03-multidimensional-grids-and-data/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-04-compute-architecture-and-scheduling",
+      "number": 4,
+      "title": "Compute Architecture And Scheduling",
+      "pdfPath": "output/pdf/chapters/chapter-04-compute-architecture-and-scheduling.pdf",
+      "textPath": "output/site-data/chapters/chapter-04-compute-architecture-and-scheduling.txt",
+      "pageCount": 26,
+      "wordCount": 12303,
+      "sourceId": "c4dee50c-ba72-41d3-819f-b65012626952",
+      "sourceTitle": "chapter-04-compute-architecture-and-scheduling.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-04-compute-architecture-and-scheduling/study-guide.json",
+        "briefing": "artifacts/chapter-04-compute-architecture-and-scheduling/briefing.json",
+        "data-table": "artifacts/chapter-04-compute-architecture-and-scheduling/data-table.json",
+        "flashcards": "artifacts/chapter-04-compute-architecture-and-scheduling/flashcards.json",
+        "quiz": "artifacts/chapter-04-compute-architecture-and-scheduling/quiz.json",
+        "slide-deck": "artifacts/chapter-04-compute-architecture-and-scheduling/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-05-memory-architecture-and-data-locality",
+      "number": 5,
+      "title": "Memory Architecture And Data Locality",
+      "pdfPath": "output/pdf/chapters/chapter-05-memory-architecture-and-data-locality.pdf",
+      "textPath": "output/site-data/chapters/chapter-05-memory-architecture-and-data-locality.txt",
+      "pageCount": 29,
+      "wordCount": 13217,
+      "sourceId": "bde6b4cd-9cdf-4782-a570-a72e79387d7d",
+      "sourceTitle": "chapter-05-memory-architecture-and-data-locality.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-05-memory-architecture-and-data-locality/study-guide.json",
+        "briefing": "artifacts/chapter-05-memory-architecture-and-data-locality/briefing.json",
+        "data-table": "artifacts/chapter-05-memory-architecture-and-data-locality/data-table.json",
+        "flashcards": "artifacts/chapter-05-memory-architecture-and-data-locality/flashcards.json",
+        "quiz": "artifacts/chapter-05-memory-architecture-and-data-locality/quiz.json",
+        "slide-deck": "artifacts/chapter-05-memory-architecture-and-data-locality/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-06-performance-considerations",
+      "number": 6,
+      "title": "Performance Considerations",
+      "pdfPath": "output/pdf/chapters/chapter-06-performance-considerations.pdf",
+      "textPath": "output/site-data/chapters/chapter-06-performance-considerations.txt",
+      "pageCount": 33,
+      "wordCount": 15299,
+      "sourceId": "5227cb2e-9a3a-4d4a-8fa3-7cd998d7f56d",
+      "sourceTitle": "chapter-06-performance-considerations.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-06-performance-considerations/study-guide.json",
+        "briefing": "artifacts/chapter-06-performance-considerations/briefing.json",
+        "data-table": "artifacts/chapter-06-performance-considerations/data-table.json",
+        "flashcards": "artifacts/chapter-06-performance-considerations/flashcards.json",
+        "quiz": "artifacts/chapter-06-performance-considerations/quiz.json",
+        "slide-deck": "artifacts/chapter-06-performance-considerations/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-07-convolution",
+      "number": 7,
+      "title": "Convolution",
+      "pdfPath": "output/pdf/chapters/chapter-07-convolution.pdf",
+      "textPath": "output/site-data/chapters/chapter-07-convolution.txt",
+      "pageCount": 23,
+      "wordCount": 9629,
+      "sourceId": "b9b94d1a-3608-4143-8559-d3a3037ac123",
+      "sourceTitle": "chapter-07-convolution.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-07-convolution/study-guide.json",
+        "briefing": "artifacts/chapter-07-convolution/briefing.json",
+        "data-table": "artifacts/chapter-07-convolution/data-table.json",
+        "flashcards": "artifacts/chapter-07-convolution/flashcards.json",
+        "quiz": "artifacts/chapter-07-convolution/quiz.json",
+        "slide-deck": "artifacts/chapter-07-convolution/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-08-stencil-computation",
+      "number": 8,
+      "title": "Stencil Computation",
+      "pdfPath": "output/pdf/chapters/chapter-08-stencil-computation.pdf",
+      "textPath": "output/site-data/chapters/chapter-08-stencil-computation.txt",
+      "pageCount": 17,
+      "wordCount": 7126,
+      "sourceId": "216acd9e-1b90-4169-9dd3-45891e57857c",
+      "sourceTitle": "chapter-08-stencil-computation.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-08-stencil-computation/study-guide.json",
+        "briefing": "artifacts/chapter-08-stencil-computation/briefing.json",
+        "data-table": "artifacts/chapter-08-stencil-computation/data-table.json",
+        "flashcards": "artifacts/chapter-08-stencil-computation/flashcards.json",
+        "quiz": "artifacts/chapter-08-stencil-computation/quiz.json",
+        "slide-deck": "artifacts/chapter-08-stencil-computation/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-09-histogram",
+      "number": 9,
+      "title": "Histogram",
+      "pdfPath": "output/pdf/chapters/chapter-09-histogram.pdf",
+      "textPath": "output/site-data/chapters/chapter-09-histogram.txt",
+      "pageCount": 20,
+      "wordCount": 8628,
+      "sourceId": "7f3b148b-9490-4fb1-8047-9a97a835fbee",
+      "sourceTitle": "chapter-09-histogram.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-09-histogram/study-guide.json",
+        "briefing": "artifacts/chapter-09-histogram/briefing.json",
+        "data-table": "artifacts/chapter-09-histogram/data-table.json",
+        "flashcards": "artifacts/chapter-09-histogram/flashcards.json",
+        "quiz": "artifacts/chapter-09-histogram/quiz.json",
+        "slide-deck": "artifacts/chapter-09-histogram/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-10-reduction",
+      "number": 10,
+      "title": "Reduction",
+      "pdfPath": "output/pdf/chapters/chapter-10-reduction.pdf",
+      "textPath": "output/site-data/chapters/chapter-10-reduction.txt",
+      "pageCount": 30,
+      "wordCount": 12953,
+      "sourceId": "32ca4118-c499-4bbc-bd3d-3f5200036719",
+      "sourceTitle": "chapter-10-reduction.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-10-reduction/study-guide.json",
+        "briefing": "artifacts/chapter-10-reduction/briefing.json",
+        "data-table": "artifacts/chapter-10-reduction/data-table.json",
+        "flashcards": "artifacts/chapter-10-reduction/flashcards.json",
+        "quiz": "artifacts/chapter-10-reduction/quiz.json",
+        "slide-deck": "artifacts/chapter-10-reduction/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-11-scan",
+      "number": 11,
+      "title": "Scan",
+      "pdfPath": "output/pdf/chapters/chapter-11-scan.pdf",
+      "textPath": "output/site-data/chapters/chapter-11-scan.txt",
+      "pageCount": 37,
+      "wordCount": 16575,
+      "sourceId": "9cc447c1-78a3-4adb-9800-672372e26c29",
+      "sourceTitle": "chapter-11-scan.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-11-scan/study-guide.json",
+        "briefing": "artifacts/chapter-11-scan/briefing.json",
+        "data-table": "artifacts/chapter-11-scan/data-table.json",
+        "flashcards": "artifacts/chapter-11-scan/flashcards.json",
+        "quiz": "artifacts/chapter-11-scan/quiz.json",
+        "slide-deck": "artifacts/chapter-11-scan/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-12-filter",
+      "number": 12,
+      "title": "Filter",
+      "pdfPath": "output/pdf/chapters/chapter-12-filter.pdf",
+      "textPath": "output/site-data/chapters/chapter-12-filter.txt",
+      "pageCount": 14,
+      "wordCount": 5921,
+      "sourceId": "b72b13d3-d8d2-405c-ba31-db66494d85be",
+      "sourceTitle": "chapter-12-filter.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-12-filter/study-guide.json",
+        "briefing": "artifacts/chapter-12-filter/briefing.json",
+        "data-table": "artifacts/chapter-12-filter/data-table.json",
+        "flashcards": "artifacts/chapter-12-filter/flashcards.json",
+        "quiz": "artifacts/chapter-12-filter/quiz.json",
+        "slide-deck": "artifacts/chapter-12-filter/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-13-merge",
+      "number": 13,
+      "title": "Merge",
+      "pdfPath": "output/pdf/chapters/chapter-13-merge.pdf",
+      "textPath": "output/site-data/chapters/chapter-13-merge.txt",
+      "pageCount": 26,
+      "wordCount": 11317,
+      "sourceId": "fe2cbf02-e8a0-4d31-8236-d29aa0d0b96c",
+      "sourceTitle": "chapter-13-merge.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-13-merge/study-guide.json",
+        "briefing": "artifacts/chapter-13-merge/briefing.json",
+        "data-table": "artifacts/chapter-13-merge/data-table.json",
+        "flashcards": "artifacts/chapter-13-merge/flashcards.json",
+        "quiz": "artifacts/chapter-13-merge/quiz.json",
+        "slide-deck": "artifacts/chapter-13-merge/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-14-sorting",
+      "number": 14,
+      "title": "Sorting",
+      "pdfPath": "output/pdf/chapters/chapter-14-sorting.pdf",
+      "textPath": "output/site-data/chapters/chapter-14-sorting.txt",
+      "pageCount": 20,
+      "wordCount": 8821,
+      "sourceId": "d8373a55-be5e-48d3-8179-2927abe3f03f",
+      "sourceTitle": "chapter-14-sorting.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-14-sorting/study-guide.json",
+        "briefing": "artifacts/chapter-14-sorting/briefing.json",
+        "data-table": "artifacts/chapter-14-sorting/data-table.json",
+        "flashcards": "artifacts/chapter-14-sorting/flashcards.json",
+        "quiz": "artifacts/chapter-14-sorting/quiz.json",
+        "slide-deck": "artifacts/chapter-14-sorting/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-15-advanced-optimizations-for-matrix-multiplication",
+      "number": 15,
+      "title": "Advanced Optimizations For Matrix Multiplication",
+      "pdfPath": "output/pdf/chapters/chapter-15-advanced-optimizations-for-matrix-multiplication.pdf",
+      "textPath": "output/site-data/chapters/chapter-15-advanced-optimizations-for-matrix-multiplication.txt",
+      "pageCount": 22,
+      "wordCount": 9872,
+      "sourceId": "dac4e140-cfba-4620-a0c1-0c865c1ef55e",
+      "sourceTitle": "chapter-15-advanced-optimizations-for-matrix-multiplication.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-15-advanced-optimizations-for-matrix-multiplication/study-guide.json",
+        "briefing": "artifacts/chapter-15-advanced-optimizations-for-matrix-multiplication/briefing.json",
+        "data-table": "artifacts/chapter-15-advanced-optimizations-for-matrix-multiplication/data-table.json",
+        "flashcards": "artifacts/chapter-15-advanced-optimizations-for-matrix-multiplication/flashcards.json",
+        "quiz": "artifacts/chapter-15-advanced-optimizations-for-matrix-multiplication/quiz.json",
+        "slide-deck": "artifacts/chapter-15-advanced-optimizations-for-matrix-multiplication/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-16-dynamic-programming-and-wavefront-parallelism",
+      "number": 16,
+      "title": "Dynamic Programming And Wavefront Parallelism",
+      "pdfPath": "output/pdf/chapters/chapter-16-dynamic-programming-and-wavefront-parallelism.pdf",
+      "textPath": "output/site-data/chapters/chapter-16-dynamic-programming-and-wavefront-parallelism.txt",
+      "pageCount": 28,
+      "wordCount": 11235,
+      "sourceId": "53d954fd-2c4e-4132-a9e4-fa18b0c18262",
+      "sourceTitle": "chapter-16-dynamic-programming-and-wavefront-parallelism.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-16-dynamic-programming-and-wavefront-parallelism/study-guide.json",
+        "briefing": "artifacts/chapter-16-dynamic-programming-and-wavefront-parallelism/briefing.json",
+        "data-table": "artifacts/chapter-16-dynamic-programming-and-wavefront-parallelism/data-table.json",
+        "flashcards": "artifacts/chapter-16-dynamic-programming-and-wavefront-parallelism/flashcards.json",
+        "quiz": "artifacts/chapter-16-dynamic-programming-and-wavefront-parallelism/quiz.json",
+        "slide-deck": "artifacts/chapter-16-dynamic-programming-and-wavefront-parallelism/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-17-sparse-matrix-computation",
+      "number": 17,
+      "title": "Sparse Matrix Computation",
+      "pdfPath": "output/pdf/chapters/chapter-17-sparse-matrix-computation.pdf",
+      "textPath": "output/site-data/chapters/chapter-17-sparse-matrix-computation.txt",
+      "pageCount": 23,
+      "wordCount": 10332,
+      "sourceId": "d5283765-beee-4146-bd22-3fe27fe6e978",
+      "sourceTitle": "chapter-17-sparse-matrix-computation.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-17-sparse-matrix-computation/study-guide.json",
+        "briefing": "artifacts/chapter-17-sparse-matrix-computation/briefing.json",
+        "data-table": "artifacts/chapter-17-sparse-matrix-computation/data-table.json",
+        "flashcards": "artifacts/chapter-17-sparse-matrix-computation/flashcards.json",
+        "quiz": "artifacts/chapter-17-sparse-matrix-computation/quiz.json",
+        "slide-deck": "artifacts/chapter-17-sparse-matrix-computation/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-18-graph-traversal",
+      "number": 18,
+      "title": "Graph Traversal",
+      "pdfPath": "output/pdf/chapters/chapter-18-graph-traversal.pdf",
+      "textPath": "output/site-data/chapters/chapter-18-graph-traversal.txt",
+      "pageCount": 27,
+      "wordCount": 11011,
+      "sourceId": "6170bf2b-3c99-4347-ae81-bf05ea83eac4",
+      "sourceTitle": "chapter-18-graph-traversal.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-18-graph-traversal/study-guide.json",
+        "briefing": "artifacts/chapter-18-graph-traversal/briefing.json",
+        "data-table": "artifacts/chapter-18-graph-traversal/data-table.json",
+        "flashcards": "artifacts/chapter-18-graph-traversal/flashcards.json",
+        "quiz": "artifacts/chapter-18-graph-traversal/quiz.json",
+        "slide-deck": "artifacts/chapter-18-graph-traversal/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-19-convolutional-neural-networks",
+      "number": 19,
+      "title": "Convolutional Neural Networks",
+      "pdfPath": "output/pdf/chapters/chapter-19-convolutional-neural-networks.pdf",
+      "textPath": "output/site-data/chapters/chapter-19-convolutional-neural-networks.txt",
+      "pageCount": 23,
+      "wordCount": 10271,
+      "sourceId": "765c4df9-5672-44d9-9eee-974ff60884f9",
+      "sourceTitle": "chapter-19-convolutional-neural-networks.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-19-convolutional-neural-networks/study-guide.json",
+        "briefing": "artifacts/chapter-19-convolutional-neural-networks/briefing.json",
+        "data-table": "artifacts/chapter-19-convolutional-neural-networks/data-table.json",
+        "flashcards": "artifacts/chapter-19-convolutional-neural-networks/flashcards.json",
+        "quiz": "artifacts/chapter-19-convolutional-neural-networks/quiz.json",
+        "slide-deck": "artifacts/chapter-19-convolutional-neural-networks/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-20-large-language-models",
+      "number": 20,
+      "title": "Large Language Models",
+      "pdfPath": "output/pdf/chapters/chapter-20-large-language-models.pdf",
+      "textPath": "output/site-data/chapters/chapter-20-large-language-models.txt",
+      "pageCount": 36,
+      "wordCount": 15012,
+      "sourceId": "a4b5617c-66a4-46b0-8327-9858947bc83d",
+      "sourceTitle": "chapter-20-large-language-models.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-20-large-language-models/study-guide.json",
+        "briefing": "artifacts/chapter-20-large-language-models/briefing.json",
+        "data-table": "artifacts/chapter-20-large-language-models/data-table.json",
+        "flashcards": "artifacts/chapter-20-large-language-models/flashcards.json",
+        "quiz": "artifacts/chapter-20-large-language-models/quiz.json",
+        "slide-deck": "artifacts/chapter-20-large-language-models/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-21-electrostatic-potential-map",
+      "number": 21,
+      "title": "Electrostatic Potential Map",
+      "pdfPath": "output/pdf/chapters/chapter-21-electrostatic-potential-map.pdf",
+      "textPath": "output/site-data/chapters/chapter-21-electrostatic-potential-map.txt",
+      "pageCount": 16,
+      "wordCount": 6465,
+      "sourceId": "92e442b0-fc5b-4782-bad6-f51b574a393d",
+      "sourceTitle": "chapter-21-electrostatic-potential-map.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-21-electrostatic-potential-map/study-guide.json",
+        "briefing": "artifacts/chapter-21-electrostatic-potential-map/briefing.json",
+        "data-table": "artifacts/chapter-21-electrostatic-potential-map/data-table.json",
+        "flashcards": "artifacts/chapter-21-electrostatic-potential-map/flashcards.json",
+        "quiz": "artifacts/chapter-21-electrostatic-potential-map/quiz.json",
+        "slide-deck": "artifacts/chapter-21-electrostatic-potential-map/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation",
+      "number": 22,
+      "title": "Algorithm Selection Problem Decomposition And Problem Formulation",
+      "pdfPath": "output/pdf/chapters/chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation.pdf",
+      "textPath": "output/site-data/chapters/chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation.txt",
+      "pageCount": 12,
+      "wordCount": 6225,
+      "sourceId": "63fe8416-b018-40da-bcf6-b694e07d8fea",
+      "sourceTitle": "chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation/study-guide.json",
+        "briefing": "artifacts/chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation/briefing.json",
+        "data-table": "artifacts/chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation/data-table.json",
+        "flashcards": "artifacts/chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation/flashcards.json",
+        "quiz": "artifacts/chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation/quiz.json",
+        "slide-deck": "artifacts/chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-23-multi-gpu-programming",
+      "number": 23,
+      "title": "Multi Gpu Programming",
+      "pdfPath": "output/pdf/chapters/chapter-23-multi-gpu-programming.pdf",
+      "textPath": "output/site-data/chapters/chapter-23-multi-gpu-programming.txt",
+      "pageCount": 36,
+      "wordCount": 14936,
+      "sourceId": "e8ad84fc-300d-4465-aea8-8bb6469fefe6",
+      "sourceTitle": "chapter-23-multi-gpu-programming.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-23-multi-gpu-programming/study-guide.json",
+        "briefing": "artifacts/chapter-23-multi-gpu-programming/briefing.json",
+        "data-table": "artifacts/chapter-23-multi-gpu-programming/data-table.json",
+        "flashcards": "artifacts/chapter-23-multi-gpu-programming/flashcards.json",
+        "quiz": "artifacts/chapter-23-multi-gpu-programming/quiz.json",
+        "slide-deck": "artifacts/chapter-23-multi-gpu-programming/slide-deck.json"
+      }
+    },
+    {
+      "id": "chapter-24-conclusion-and-future-outlook",
+      "number": 24,
+      "title": "Conclusion And Future Outlook",
+      "pdfPath": "output/pdf/chapters/chapter-24-conclusion-and-future-outlook.pdf",
+      "textPath": "output/site-data/chapters/chapter-24-conclusion-and-future-outlook.txt",
+      "pageCount": 4,
+      "wordCount": 1633,
+      "sourceId": "db215e45-15c6-4925-84c4-da0f08696004",
+      "sourceTitle": "chapter-24-conclusion-and-future-outlook.pdf",
+      "artifacts": {
+        "study-guide": "artifacts/chapter-24-conclusion-and-future-outlook/study-guide.json",
+        "briefing": "artifacts/chapter-24-conclusion-and-future-outlook/briefing.json",
+        "data-table": "artifacts/chapter-24-conclusion-and-future-outlook/data-table.json",
+        "flashcards": "artifacts/chapter-24-conclusion-and-future-outlook/flashcards.json",
+        "quiz": "artifacts/chapter-24-conclusion-and-future-outlook/quiz.json",
+        "slide-deck": "artifacts/chapter-24-conclusion-and-future-outlook/slide-deck.json"
+      }
+    }
+  ]
+}

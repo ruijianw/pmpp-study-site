@@ -1,0 +1,139 @@
+{
+  "chapterId": "chapter-16-dynamic-programming-and-wavefront-parallelism",
+  "chapterTitle": "Dynamic Programming And Wavefront Parallelism",
+  "sourceId": "53d954fd-2c4e-4132-a9e4-fa18b0c18262",
+  "sourceTitle": "chapter-16-dynamic-programming-and-wavefront-parallelism.pdf",
+  "artifactType": "flashcards",
+  "artifactLabel": "Flashcards",
+  "generatedAt": "2026-07-13T14:37:41.764987Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "闪卡：动态规划与波前并行 (Chapter 16: Dynamic Programming And Wavefront Parallelism)",
+    "summary": "包含 18 张精选闪卡，用于快速复习第十六章中关于动态规划与波前并行 (Wavefront parallelism) 的核心 GPU 架构优化。涵盖了从自底向上迭代策略，到超平面变换 (Hyperplane transformation) 解决 Warp 闲置，以及 Bank 冲突消除与跨块同步等进阶知识点。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Tips)",
+        "points": [
+          "利用简单 (Easy) 难度卡片掌握波前 (Wavefront) 定义及基本依赖模式。",
+          "通过中等 (Medium) 难度卡片理解块级分块 (Block-level tiling)、超平面变换的概念，以及跨块同步 (Inter-block synchronization) 机制。",
+          "挑战困难 (Hard) 难度卡片，死磕 Warp 利用率不足 (Underutilization) 的数学成因、超分块 (Hypertiles) 引发 Bank 冲突的底层逻辑，以及持久化线程块的死锁风险。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "front": "为什么自顶向下 (Top-down) 递归带记忆化 (Memoization) 的动态规划实现极不适合 GPU 架构？",
+        "back": "GPU 编译器无法无限内联深度递归函数，产生极高的调用开销；同时，访问哈希表等关联数组获取中间结果时，会引发极严重的 Warp 内非合并访存 (Uncoalesced memory accesses)。",
+        "difficulty": "easy",
+        "sourceHint": "16.2 Implementation approaches"
+      },
+      {
+        "front": "在动态规划的 GPU 并行化中，什么是波前 (Wavefront)？",
+        "back": "波前是指在迭代计算过程中，一组彼此之间没有数据依赖关系、可以被完全并行计算的中间子问题 (Sub-problems) 集合。",
+        "difficulty": "easy",
+        "sourceHint": "16.2 Implementation approaches"
+      },
+      {
+        "front": "Floyd-Warshall 算法的底层波前 (Wavefront) 并行化规模是动态的还是恒定的？",
+        "back": "是恒定的 (Constant)。在每一轮针对中间节点 k 的迭代中，整个 2D 距离矩阵平面的所有节点对 (i, j) 都可以完全并行更新。",
+        "difficulty": "medium",
+        "sourceHint": "16.3 Wavefront patterns"
+      },
+      {
+        "front": "在 Floyd-Warshall 并行化中，如何保证全局所有线程在进入下一轮迭代 k 之前都已经更新了当前的距离矩阵？",
+        "back": "通过内核终止与主机端重新发射 (Kernel termination and relaunch) 来实现全网格级 (Grid-level) 的全局同步。",
+        "difficulty": "medium",
+        "sourceHint": "16.4 Floyd-Warshall algorithm"
+      },
+      {
+        "front": "为什么 Floyd-Warshall 算法在原地更新唯一的距离矩阵时，不会产生由于多线程读写引发的数据竞态 (Race condition)？",
+        "back": "因为图无负权且顶点到自身的距离为 0 (`dist[k][k]=0`)。本轮更新所依赖的第 k 行和第 k 列元素的值，在迭代前后从数学上保证完全不变，因此无需使用双缓冲 (Double buffering)。",
+        "difficulty": "hard",
+        "sourceHint": "16.4 Floyd-Warshall algorithm"
+      },
+      {
+        "front": "在基因序列比对的 Smith-Waterman 算法中，得分矩阵 (Scoring matrix) 细胞依赖于左侧、上方、左上方的细胞。它的自然波前 (Wavefront) 形状是什么？",
+        "back": "抗角线 (Anti-diagonal)。波前的规模呈现先随迭代次数增长、再逐渐缩小的动态变化规律。",
+        "difficulty": "easy",
+        "sourceHint": "16.5 Genome sequence alignment and Smith-Waterman algorithm"
+      },
+      {
+        "front": "在 Smith-Waterman 算法中引入块级分块 (Block-level tiling) 后，如何最小化昂贵的全局同步开销？",
+        "back": "将大矩阵切分为子块，每个 Thread Block 负责一个子块。块内的抗角线波前迭代利用共享内存 (Shared memory) 和轻量级的 `__syncthreads()` 实现局部同步，仅在跨子块边界时才需要全局同步。",
+        "difficulty": "medium",
+        "sourceHint": "16.6 Wavefront parallelization: block-level tiling"
+      },
+      {
+        "front": "块级分块 (Block-level tiling) 是如何解决向全局内存写回得分时的非合并访存 (Uncoalesced accesses) 问题的？",
+        "back": "虽然计算是沿抗角线散列进行的，但子块在共享内存中缓冲完毕后，Thread Block 可以协同发出按行连续访问的写指令，完美实现合并写回 (Coalesced storing)。",
+        "difficulty": "medium",
+        "sourceHint": "16.6 Wavefront parallelization: block-level tiling"
+      },
+      {
+        "front": "在处理动态波前时，基础的矩形分块 (Square/Rectangular tiles) 存在哪两个致命的架构性能缺陷？",
+        "back": "1) 活跃线程数随抗角线长度先增后减，导致大量 Warp 处于闲置状态 (Underutilization)；2) 跨块的边界数据极易从 L2 缓存 (L2 Cache) 中被逐出，丧失数据局部性。",
+        "difficulty": "hard",
+        "sourceHint": "16.7 Hyperplane transformation"
+      },
+      {
+        "front": "什么是超平面变换 (Hyperplane transformation / Hypertiling)？",
+        "back": "通过剪切变换 (Shear transformation) 将矩形分块转换为平行四边形超分块 (Hypertiles)，使原始矩阵的列在变换后恰好与抗角线方向完全对齐的几何映射技术。",
+        "difficulty": "medium",
+        "sourceHint": "16.7 Hyperplane transformation"
+      },
+      {
+        "front": "超平面变换 (Hypertiling) 是如何解决 Warp 闲置 (Underutilization) 问题并提升计算效率的？",
+        "back": "由于列与抗角线对齐，超分块内部每次迭代的波前长度变为恒定。所有分配的线程在整个子块计算周期内始终保持活跃，避免了空闲周期，使得平均工作效率 (Work efficiency) 直接翻倍。",
+        "difficulty": "hard",
+        "sourceHint": "16.7 Hyperplane transformation"
+      },
+      {
+        "front": "在使用超分块 (Hypertiles) 时，为何必须在共享内存中增加一个显式的 `initialize_tile` 初始化清零步骤？",
+        "back": "因为为了保持恒定并行度，部分物理上已经越界的线程仍会强行参与计算。如果不把共享内存预先清零，这些线程会在后续读取到界外的垃圾值 (Garbage values)，导致非法指令异常。",
+        "difficulty": "hard",
+        "sourceHint": "16.7 Hyperplane transformation"
+      },
+      {
+        "front": "为何采用行主序存储在共享内存中的超分块 (Hypertiles) 极易触发严重的 Bank 冲突？",
+        "back": "因为剪切倾斜后，如果超分块的逻辑宽度恰好等于 Bank 数量 (32) 的倍数或约数，当线程按步幅访问上方或左上方依赖元素时，会精准命中同一个物理 Bank。",
+        "difficulty": "hard",
+        "sourceHint": "16.7 Hyperplane transformation"
+      },
+      {
+        "front": "如何巧妙消除超分块 (Hypertiles) 在共享内存中的 Bank 冲突 (Bank conflicts)？",
+        "back": "引入数据填充 (Padding)。例如使用地址宏 `x + (x >> LOG_NUM_BANKS)` 强行在每行末尾插入偏移量，打乱物理映射，使得连续线程的访存请求均匀错位到不同的 Bank 中。",
+        "difficulty": "medium",
+        "sourceHint": "16.7 Hyperplane transformation"
+      },
+      {
+        "front": "相比于常规的正方形分块，超分块 (Hypertiles) 需要在主机端启动的主循环迭代次数 (Wavefronts) 为什么会增加？",
+        "back": "因为几何倾斜会导致矩阵左右边界出现更多的不完整碎片块。假设横竖各有 N 个子块，总波前迭代次数会从 `2N-1` 次增加到约 `3N-1` 次。",
+        "difficulty": "medium",
+        "sourceHint": "16.7 Hyperplane transformation"
+      },
+      {
+        "front": "跨块同步 (Inter-block synchronization) 是如何避免低效的全局“内核终止与重启”开销的？",
+        "back": "通过在全局内存中预分配标志位数组 (Flags)，配合持久化线程块 (Persistent thread blocks)。每个 Block 仅需在死循环中轮询等待其前驱依赖块的 Flag 被置位，即可无缝启动计算。",
+        "difficulty": "medium",
+        "sourceHint": "16.8 More optimizations"
+      },
+      {
+        "front": "在利用协作组 (Cooperative groups) 或轮询标志位进行跨块同步时，启动的 Grid 大小有什么绝对物理限制？",
+        "back": "Grid 包含的并发线程块总数必须小于或等于目标 GPU 上所有的 SM 所能同时物理驻留的 Block 数量上限。否则会引发灾难性的全局死锁 (Deadlock)。",
+        "difficulty": "hard",
+        "sourceHint": "16.8 More optimizations"
+      },
+      {
+        "front": "NVIDIA Hopper 架构引入的 DPX 硬件指令 (如 `__vimax3_s32_relu()`) 对动态规划算法有何直接加速作用？",
+        "back": "它提供了专用的硬件级 SIMD 加速，能够用单条指令直接算出三个输入值与 0 之间的最大值，完美替代了 Smith-Waterman 等算法中耗时的级联 `max()` 函数调用。",
+        "difficulty": "easy",
+        "sourceHint": "16.8 More optimizations"
+      }
+    ]
+  }
+}

@@ -1,0 +1,175 @@
+{
+  "chapterId": "chapter-17-sparse-matrix-computation",
+  "chapterTitle": "Sparse Matrix Computation",
+  "sourceId": "d5283765-beee-4146-bd22-3fe27fe6e978",
+  "sourceTitle": "chapter-17-sparse-matrix-computation.pdf",
+  "artifactType": "slide-deck",
+  "artifactLabel": "Slide Deck",
+  "generatedAt": "2026-07-13T14:46:21.275063Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "幻灯片大纲：稀疏矩阵计算 (Chapter 17: Sparse Matrix Computation)",
+    "summary": "本幻灯片组系统剖析了在 GPU 上进行稀疏矩阵计算 (SpMV) 的核心架构挑战。详细对比了 COO, CSR, ELL, Hybrid ELL-COO, JDS, 和 CSC 等存储格式在合并访存 (Memory coalescing)、控制流发散 (Control flow divergence) 和原子操作 (Atomic operations) 之间的极致权衡。",
+    "sections": [
+      {
+        "heading": "使用建议 (Usage Tips)",
+        "points": [
+          "第 1-2 页介绍稀疏矩阵背景、SpMV 运算以及存储设计的五大核心权衡（空间、灵活性、访存、负载均衡、可访问性）。",
+          "第 3-6 页对比最基础的 COO 和 CSR 格式：阐释消除原子操作 (Atomic operations) 的代价是如何引出非合并访存 (Uncoalesced accesses) 和发散问题的。",
+          "第 7-10 页进入高级格式：解析 ELL 格式如何利用列主序 (Column-major) 恢复合并访存，以及混合格式与 JDS 格式如何解决 ELL 的空间浪费与发散问题。",
+          "第 11-12 页剖析 CSC 格式：解释为何它在 SpMV 中表现最差，却在 SpMSpV 场景中具有独特优势。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "slideNumber": 1,
+        "title": "稀疏矩阵与 SpMV 挑战 (Sparse Matrix & SpMV)",
+        "bullets": [
+          "核心问题：稀疏矩阵绝大部分元素为零，直接存储与计算极度浪费内存容量和内存带宽 (Memory bandwidth)。",
+          "SpMV 运算：稀疏矩阵-向量乘法 (Sparse Matrix-Vector multiplication, y = Ax + y) 是迭代求解器 (如共轭梯度法) 中最耗时的算子。",
+          "压缩代价：为避免存储和计算零元素，引入了数据表达的不规则性 (Irregularity)，导致严重的数据依赖型性能行为 (Data-dependent performance behavior)。"
+        ],
+        "speakerNotes": "在科学计算中，矩阵往往是极其稀疏的。把这些零去掉能省下大量的空间和算力，但这也是所有噩梦的开始。在 GPU 上，这种为了压缩而带来的不规则性，会直接破坏硬件最喜欢的连续访存和一致性执行，引发一系列严重的底层架构瓶颈。",
+        "visualSuggestion": "展示图 17.1 (一个简单的包含零和非零元素的稀疏矩阵)，并通过动画将所有的“0”淡出，仅留下散乱分布的非零元素，强调不规则性。"
+      },
+      {
+        "slideNumber": 2,
+        "title": "存储格式的设计权衡 (Design Considerations)",
+        "bullets": [
+          "空间效率 (Space efficiency/Compaction)：表示矩阵所需的内存容量，避免无效填充。",
+          "灵活性 (Flexibility)：动态添加或删除非零元素的难易程度。",
+          "可访问性 (Accessibility)：给定行或列，能否快速找到其所有非零元素。",
+          "访存效率 (Memory access efficiency)：能否触发连续的合并访存 (Memory coalescing)，榨干总线带宽。",
+          "负载均衡 (Load balance)：各个线程分配的工作量是否一致，能否避免控制流发散 (Control flow divergence)。"
+        ],
+        "speakerNotes": "在 GPU 上设计或选择稀疏矩阵格式时，没有银弹。我们必须在五个维度上进行博弈：你想要极致的压缩率，就可能失去合并访存；你想要负载均衡，就可能面临极高的预处理开销。接下来我们将逐一检验各大主流格式在这五个维度的表现。",
+        "visualSuggestion": "展示一个雷达图 (Radar chart)，五个顶点分别为上述五个设计考量，用于后续展示每种格式的“能力偏向”。"
+      },
+      {
+        "slideNumber": 3,
+        "title": "COO 格式与完美负载均衡 (COO Format)",
+        "bullets": [
+          "数据结构：使用三个一维数组 (rowIdx, colIdx, value) 分别记录非零元素的行、列及数值。",
+          "线程映射：在 SpMV 中，采用“单线程单非零元素 (One thread per non-zero)”的策略。",
+          "架构优势：连续线程访问连续数组，天然实现合并访存 (Coalesced memory accesses)；所有线程严格执行一次乘加操作，负载绝对均衡。"
+        ],
+        "speakerNotes": "最直观的压缩法是坐标格式 (COO)。每个非零点记下它的 (x,y,value)。给 GPU 的每个线程分配一个元素，大家步调极其一致。不仅没有发散，访存也是完美的连续读取，看起来非常美好。但是，它存在一个致命的计算陷阱。",
+        "visualSuggestion": "展示图 17.3 和 17.4，突出连续线程 (连续的波浪线箭头) 平行且连续地指向 value 数组，旁边打上绿色的 Check mark 代表 Coalescing。"
+      },
+      {
+        "slideNumber": 4,
+        "title": "COO 的原子操作陷阱 (Atomic Operations Pitfall)",
+        "bullets": [
+          "输出冲突：多个线程可能负责矩阵同一行的不同非零元素，从而尝试并发更新同一个输出向量元素 (y[row])。",
+          "性能惩罚：为了避免数据竞态，必须使用高延迟的原子操作 (`atomicAdd`)，导致指令吞吐量暴降。",
+          "精度隐患：原子操作的执行顺序是非确定性的 (Non-deterministic)。对于浮点数，不同的累加顺序会导致舍入误差 (Rounding error) 的累积发生改变，破坏数值稳定性。"
+        ],
+        "speakerNotes": "COO 的死穴在于写入。比如线程 0 和线程 1 都在处理第 0 行的数据，它们最终都要把结果加到 y 里。为了不冲突，只能用 `atomicAdd`。原子操作在 GPU 上很慢，更要命的是，浮点数加法是不满足结合律的。每次跑出来结果最后几位可能不一样，这在严苛的科学计算里往往是无法接受的。",
+        "visualSuggestion": "突出图 17.4 右侧，用红色的闪电符号标出 Thread 0 和 Thread 1 的计算流最终碰撞在同一个输出元素上，标出 `atomicAdd` 警告。"
+      },
+      {
+        "slideNumber": 5,
+        "title": "CSR 格式：消灭原子操作 (CSR Format)",
+        "bullets": [
+          "数据结构：压缩稀疏行，用长度为行数加一的 `rowPtrs` 数组取代了冗长的 `rowIdx` 数组，记录每行起始偏移量。",
+          "线程映射：采用“单线程单行 (One thread per row)”的映射策略。",
+          "架构优势：因为单个线程包揽了整行的内积与累加，最后唯一地写入一个独立的输出元素，彻底消除了对原子操作的依赖，并且空间效率优于 COO。"
+        ],
+        "speakerNotes": "为了干掉原子操作，我们引入 CSR。既然一行最终只写一个结果，那我们就让一个线程负责一整行。CSR 把行索引压缩成了行指针 (rowPtrs)。现在线程互不干涉，彻底摆脱了 atomicAdd。但在吞吐量导向的 GPU 上，这种设计又引发了新的带宽灾难。",
+        "visualSuggestion": "展示图 17.7 (CSR 的数组结构)，并强调 `rowPtrs` 数组比矩阵非零元素数量短得多，展示空间压缩的优势。"
+      },
+      {
+        "slideNumber": 6,
+        "title": "CSR 的灾难：非合并访存与发散 (CSR Pitfalls)",
+        "bullets": [
+          "带宽崩溃：同一 Warp 内相邻线程负责相邻的行，它们在读取 `value` 时，物理地址因为各行长度的累加偏移而相距甚远，导致严重的非合并访存 (Uncoalesced accesses)。",
+          "控制流发散 (Control flow divergence)：各行非零元素数量不一，导致同一 Warp 内的不同线程循环次数悬殊，大量提前结束的线程只能闲置空转。"
+        ],
+        "speakerNotes": "CSR 是 CPU 上的王者，但在 GPU 上是灾难。第一，线程 0 读第 0 行头，线程 1 读第 1 行头，这两个数据在内存里隔着十万八千里，根本没法合并访存，显存带宽直接拉垮。第二，有的行长有的行短，Warp 里的线程只能等那个最慢的线程跑完，造成严重的算力浪费。",
+        "visualSuggestion": "展示图 17.8 下半部分的 Physical View：发出的读取箭头像散弹枪一样打在 `value` 数组的不同位置，打上红色的 Uncoalesced 标签。"
+      },
+      {
+        "slideNumber": 7,
+        "title": "ELL 格式：列主序拯救合并访存 (ELL Format)",
+        "bullets": [
+          "矩阵正则化 (Regularization)：找出最长行，用填充元素 (Padding) 将所有短行补齐，将原本锯齿状的结构变成规则矩形。",
+          "列主序 (Column-major order)：将补齐后的矩阵转置存储，先存所有行的第 0 个元素，再存所有行的第 1 个元素...",
+          "架构优势：相邻线程在同一次循环迭代中，访问的永远是物理连续的内存地址，完美恢复 100% 合并访存。"
+        ],
+        "speakerNotes": "如何把散乱的访存救回来？ELL 给出答案：填充与转置。我们把所有行都用 0 补齐，变成一个规则的方块，然后把它转置（也就是列主序存放）。现在，所有行的第一个元素全部挨在一起了。当相邻线程一起去取数据时，它们的地址完美连续，榨干 GPU 的总线带宽！",
+        "visualSuggestion": "展示图 17.10 演变图：加入 Padding (打星号的方块)，然后箭头向下指示转置重排，最后生成按列连续存储的新数组。"
+      },
+      {
+        "slideNumber": 8,
+        "title": "ELL 的长尾惩罚 (ELL Pitfalls)",
+        "bullets": [
+          "空间效率黑洞：面对具有极端长尾分布 (Long-tail distribution) 的矩阵（如某几行异常长），ELL 会被强迫加入天量的无用 Padding，甚至使体积超过原始密集矩阵。",
+          "未解决发散：即使数据被补齐，核心循环次数依旧看齐最长行，底层 Warp 仍需执行大量无意义的空转计算，控制流发散导致的延迟依然存在。"
+        ],
+        "speakerNotes": "但是 ELL 是一把双刃剑。如果你的矩阵里有几行特别长，ELL 为了对齐它们，会给其他所有行塞满垃圾数据 (Padding)。这不仅瞬间挤爆显存，而且 GPU 的线程还得陪跑，做大量乘零的无用功。控制流发散并没有在本质上解决，反而转化成了无用的填充循环。",
+        "visualSuggestion": "用夸张的图示展示一个长尾矩阵：一行极长，其余行极短，导致周围生成巨大的空白 (Padding) 浪费区，标上巨大的红叉。"
+      },
+      {
+        "slideNumber": 9,
+        "title": "混合 ELL-COO 架构 (Hybrid ELL-COO Format)",
+        "bullets": [
+          "截断长尾：设定行长阈值，将大部分形态正常的元素使用 ELL 格式存储以享受合并访存。",
+          "兜底机制：将少数超长行的溢出部分剥离，转入灵活的 COO 格式数组中独立处理。",
+          "架构优势：既消灭了 ELL 庞大的无效空间浪费，又通过削平最大行长，大幅降低了主循环次数，极大地缓解了控制流发散。"
+        ],
+        "speakerNotes": "解决长尾效应的工程做法是混合架构。我们定一个合理的阈值，把超长行截断。主体部分用 ELL，享受极速的合并访存；被截断的长尾部分用 COO 兜底处理。这样既砍掉了天量的无效 Padding，又削低了 ELL 核心循环的最大次数，一举两得。",
+        "visualSuggestion": "展示图 17.13，用剪刀图形将原矩阵中超长的蓝色和紫色部分“剪下”，移动到旁边独立的 COO 数组区域，展示 ELL 矩阵宽度的骤减。"
+      },
+      {
+        "slideNumber": 10,
+        "title": "JDS 格式：排序消灭发散 (JDS Format)",
+        "bullets": [
+          "锯齿对角线存储 (Jagged Diagonal Storage)：在进行列主序压缩前，先按行内非零元素的数量，对所有行进行降序排序 (Sorting)。",
+          "极致负载均衡：预排序确保了被分配到同一个 Warp 中的相邻线程，其负责的行长度极其相似，从而在根源上消除了控制流发散。",
+          "避免 Padding：不再需要填齐最长行，比 ELL 更加节省空间，但难以强制对齐特定的硬件字节边界。"
+        ],
+        "speakerNotes": "JDS 走的是另一条路：排序。它不用假数据补齐，而是把长行排在一起，短行排在一起。这就确保了分到同一个 Warp 里的 32 个线程，它们手里的活儿基本一样多！这就从物理上彻底消灭了长短不一导致的 Warp 发散。当然，代价是预处理排序很慢，并且一旦矩阵结构变了，重新排序的代价极大。",
+        "visualSuggestion": "展示图 17.14 的排序过程：原本参差不齐的行，经过排序变成了从上到下阶梯状的“锯齿 (Jagged)”形状，然后按列主序紧凑压缩。"
+      },
+      {
+        "slideNumber": 11,
+        "title": "CSC 格式：SpMV 的反面教材 (CSC Format)",
+        "bullets": [
+          "数据结构：压缩稀疏列，逻辑上是 CSR 的镜像，使用 `colPtrs` 记录列偏移。",
+          "集齐三大缺陷：若在常规 SpMV 中给单列分配一个线程，CSC 会同时面临：跨列跳跃引发的非合并访存 (Uncoalesced accesses)。",
+          "发散与原子冲突：列长不一导致严重发散，且不同列的线程必定并发更新同一个输出向量元素，强迫使用原子操作 (Atomic operations)。"
+        ],
+        "speakerNotes": "对于普通的 SpMV，CSC 是个绝对的反面教材。如果让一个线程管一列，它跨列读数据无法合并，列长不一又导致严重发散。最要命的是，这一列算完，要写到输出向量的不同行里，跟别人又撞车，还得用原子操作。它集齐了我们前述的所有缺点。",
+        "visualSuggestion": "列出一个记分卡对比：Coalesced (X), No Divergence (X), No Atomics (X)，全亮红灯，打上“最差设计”标签。"
+      },
+      {
+        "slideNumber": 12,
+        "title": "CSC 的逆袭：SpMSpV 特定场景",
+        "bullets": [
+          "列向遍历的不可替代性：CSC 不适合 SpMV，但极其适合需要列向遍历 (Column-wise traversal) 的场景。",
+          "SpMSpV 运算：当输入向量也是稀疏的 (Sparse Vector)，如果遇到值为零的输入元素，CSC 允许直接跳过 (Skip) 一整列的矩阵数据计算。",
+          "架构启示：数据布局必须严密契合算子的计算维度 (行或列) 与数据特性，没有绝对差的格式。"
+        ],
+        "speakerNotes": "既然 CSC 这么差，为什么还要它？因为某些特定算法是基于列驱动的。比如输入向量本身也是稀疏的 (SpMSpV)。遇到输入向量里的 0，如果你用 CSR，根本没办法跳过；但用 CSC，你可以直接跳过整整一列的无效矩阵数据！不同的访存模式，需要不同的武器。",
+        "visualSuggestion": "展示一个矩阵与稀疏向量相乘的示意图。当向量中某个元素为“0”时，直接用大大的红叉划去矩阵中对应的整整一列，展示这种跳跃式优化的威力。"
+      },
+      {
+        "slideNumber": 13,
+        "title": "总结：压缩与正则化的底层博弈",
+        "bullets": [
+          "数据依赖型性能：GPU 的执行效率与带宽效率深度绑定于输入矩阵的稀疏分布，理论 FLOPS 远低于密集矩阵。",
+          "核心权衡 (Trade-off)：顶级优化是在极致的空间压缩 (Compaction) 与通过适度排序/填充换取的正则化 (Regularization) 之间寻找平衡点。",
+          "工业级实践：对于多数实战场景，预处理代价（如排序、重组）可以在迭代求解器的大量循环中被摊销 (Amortized)。优先使用 cuSPARSE 等专用库。"
+        ],
+        "speakerNotes": "总结一下，稀疏矩阵优化就是一场为了内存带宽和执行一致性而与硬件博弈的游戏。有时候引入一点空间的浪费 (正则化)，反而是打开硬件狂暴性能的钥匙。如果大家在真实项目中遇到稀疏计算，请直接调用 NVIDIA 的 cuSPARSE 库，但今天学到的底层逻辑，是你们未来遇到新问题时，设计更强算子的真正内功。",
+        "visualSuggestion": "展示一个天平图标，左边是紧密的方块标着“Compaction (CSR)”，右边是带有少许空隙的方块标着“Regularization (ELL/JDS)”，保持微妙的平衡。"
+      }
+    ]
+  }
+}

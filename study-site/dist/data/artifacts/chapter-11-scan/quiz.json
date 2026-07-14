@@ -1,0 +1,159 @@
+{
+  "chapterId": "chapter-11-scan",
+  "chapterTitle": "Scan",
+  "sourceId": "9cc447c1-78a3-4adb-9800-672372e26c29",
+  "sourceTitle": "chapter-11-scan.pdf",
+  "artifactType": "quiz",
+  "artifactLabel": "Quiz",
+  "generatedAt": "2026-07-13T14:07:47.685893Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "测试题：扫描 (Chapter 11: Scan)",
+    "summary": "本测试题旨在检验读者对 GPU 并行扫描 (Parallel Scan/Prefix-Sum) 算法的核心优化技巧的掌握。重点考察 Kogge-Stone 与 Brent-Kung 的算法复杂度权衡、双缓冲 (Double-buffering) 技术、内存顺序语义 (Memory order semantics) 以及线程粗化 (Thread coarsening) 对工作效率的提升。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Advice)",
+        "points": [
+          "1. 理解工作效率 (Work efficiency)：并行计算并非仅仅缩短跨度 (Span)。如果在资源受限时，O(N log N) 的 Kogge-Stone 可能比 O(N) 的串行更慢。利用线程粗化 (Thread coarsening) 引入串行阶段是提升整体工作效率的关键。",
+          "2. 辨析同步隐患：原位 (In-place) 扫描需要两次 __syncthreads() 来应对读后写 (RAW) 和写后读 (WAR) 竞态。双缓冲 (Double-buffering) 以空间换时间消除了假依赖。",
+          "3. 慎用多 Kernel 分解：由于扫描是极端内存受限 (Memory-bound) 的内核，多 Kernel 会导致大量的冗余 DRAM 读写。单向同步 (Unidirectional synchronization) 结合动态 Block 索引是实现单 Kernel 全局扫描的最优解。",
+          "4. 深刻理解内存语义：在跨 Block 进行标志位原子轮询时，必须精确使用 acquire 与 release 语义，否则硬件层面的指令乱序执行 (Out-of-order execution) 会直接导致难以复现的数据崩溃。",
+          "5. 警惕 SIMD 陷阱：不要迷信算法在理论上的最优复杂度。在 Warp 锁步执行中，Brent-Kung 节省的操作会变成空转的闲置线程，而其更长的步骤 (Span) 反而会拖慢整个 Warp 的执行速度。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "type": "multiple-choice",
+        "question": "如果为每个输出元素分配一个 GPU 线程，让每个线程独立地从头进行顺序归约（朴素并行扫描），这种设计为什么在 GPU 上表现极差？",
+        "options": [
+          "A. 因为这种方法需要将所有数据加载到常量内存 (Constant memory) 中，导致容量溢出。",
+          "B. 因为其总工作复杂度 (Work complexity) 高达 O(N^2)，跨度依然为 O(N)，在计算资源受限的情况下执行时间远超 O(N) 的串行算法。",
+          "C. 因为每个线程需要调用 __syncthreads() 的次数过多，导致死锁。",
+          "D. 因为算子不满足结合律 (Associativity)。"
+        ],
+        "answer": "B",
+        "explanation": "朴素并行扫描为第 i 个元素执行 i 次加法，总工作量为 N*(N-1)/2 即 O(N^2)。并且最长线程需要 N 步 (跨度 O(N))。这带来了庞大的额外计算开销却没有缩短关键路径，违背了并行加速的初衷。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "Kogge-Stone 并行扫描算法的理论工作复杂度 (Work complexity) 和跨度 (Span) 分别是多少？",
+        "options": [
+          "A. 工作复杂度 O(N)，跨度 O(N)",
+          "B. 工作复杂度 O(N)，跨度 O(log N)",
+          "C. 工作复杂度 O(N log N)，跨度 O(log N)",
+          "D. 工作复杂度 O(N^2)，跨度 O(log N)"
+        ],
+        "answer": "C",
+        "explanation": "Kogge-Stone 算法在 log N 步内完成计算，每一步有逐渐减半的线程不活跃，但总体执行了 O(N log N) 次运算。虽然跨度极短，但因为它执行了多余的运算，因而不具备工作效率 (Not work-efficient)。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在 Kogge-Stone 扫描内核中引入双缓冲 (Double-buffering) 技术的核心性能收益是什么？",
+        "options": [
+          "A. 能够自动触发 L1 缓存的硬件预取 (Hardware prefetching)。",
+          "B. 将算法的总体工作复杂度从 O(N log N) 降至 O(N)。",
+          "C. 彻底消除了写后读 (Write-after-read) 的假依赖，从而省去了循环内部一半的 __syncthreads() 块级同步屏障。",
+          "D. 使共享内存的使用量减半，从而允许启动更多的 Thread Block。"
+        ],
+        "answer": "C",
+        "explanation": "通过使用两组共享内存交替作为输入和输出，线程可以在向新位置写入时安全地读取旧数组，避免了新数据提前覆盖旧数据的问题，从而移除了用于保护“写后读”假依赖的第二个同步屏障。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在实现单 Kernel 全局扫描的单向同步 (Unidirectional synchronization) 时，为什么原子轮询前一个 Block 的完成标志位时必须使用 cuda::memory_order_acquire？",
+        "options": [
+          "A. 强制硬件将标志位锁定，使得其他所有 Block 进入睡眠状态。",
+          "B. 强制获取语义 (Acquire semantics)，防止编译器或硬件将轮询成功后的“读取扫描总和”的内存操作提前重排到读取标志位之前，避免读取到旧数据。",
+          "C. 保证原子操作可以在 1 个时钟周期内返回结果，减小延迟。",
+          "D. 它能自动将全局内存的标志位加载进共享内存 (Shared memory) 中。"
+        ],
+        "answer": "B",
+        "explanation": "在复杂的 GPU 内存模型中，指令可能会被乱序执行。acquire 语义建立了一道内存屏障，确保在标志位未就绪前，绝对不会提前执行对结果数据的读取，这是保障跨 Block 通信正确性的基石。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在采用多 Kernel 策略进行跨块全局扫描时，为什么“归约-扫描-扫描 (Reduce-scan-scan)”模式通常比“扫描-扫描-相加 (Scan-scan-add)”能获得更高的内存带宽利用率？",
+        "options": [
+          "A. 因为归约内核不需要使用寄存器 (Registers)。",
+          "B. 因为扫描操作会自动屏蔽掉数组中的零元素。",
+          "C. 因为第一阶段的归约内核只需向全局内存写出 Block 级别的单一总和，避免了将全部扫描中间结果重复写回 DRAM。",
+          "D. 因为归约操作天然具有 O(1) 的工作复杂度。"
+        ],
+        "answer": "C",
+        "explanation": "Scan-scan-add 的第一步必须将各个分段扫描后的全部中间结果存入全局内存以备最后相加，而 Reduce-scan-scan 的第一步仅产生并写出一个标量总和，这极大地降低了对于极端内存受限内核最致命的 DRAM 写入带宽。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "要想安全地使用“归约-扫描-扫描 (Reduce-scan-scan)”模式替代“扫描-扫描-相加”，该扫描算子除了满足结合律 (Associativity) 外，还必须具备什么数学属性？",
+        "options": [
+          "A. 幂等律 (Idempotence)",
+          "B. 交换律 (Commutativity)",
+          "C. 分配律 (Distributivity)",
+          "D. 必须是无符号整数运算"
+        ],
+        "answer": "B",
+        "explanation": "在高度优化的归约 (Reduce) 操作中，由于采用了并行的树状或交错结构，操作数的物理相加顺序往往会被打乱，因此必须要求算子具备交换律，否则结果可能出错（例如矩阵乘法就不适用该模式）。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在实施线程粗化 (Thread coarsening) 时，如果直接让单个 GPU 线程从全局内存顺序加载它负责的连续数据段，会导致什么性能灾难？",
+        "options": [
+          "A. 导致 GPU 内存泄漏 (Memory leak)。",
+          "B. 导致寄存器溢出 (Register spilling) 到 L1 缓存。",
+          "C. 同一个 Warp 内的相邻线程访问的内存地址跨度极大，严重破坏硬件的合并访存 (Coalesced accesses)，导致带宽断崖式下跌。",
+          "D. 导致 __syncthreads() 的屏障被编译器意外移除。"
+        ],
+        "answer": "C",
+        "explanation": "如果在粗化时线程 i 负责元素 0..3，线程 i+1 负责 4..7。当 Warp 发起首次读取时，线程 0 读元素 0，线程 1 读元素 4，地址在物理上不再连续。正确的做法是先以交错块 (Interleaved chunks) 的方式加载到共享内存，再加载至寄存器分块。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "Brent-Kung 算法理论上具有 O(N) 的最优工作效率，但为什么在 GPU 的 Warp 内部执行时，往往不如理论复杂度较差的 Kogge-Stone 算法快？",
+        "options": [
+          "A. 因为 Brent-Kung 算法需要使用极高延迟的双精度浮点计算单元。",
+          "B. 因为 Brent-Kung 会耗尽所有的共享内存，导致占用率下降。",
+          "C. 因为 GPU 采用 SIMD 锁步执行。Brent-Kung 节省的操作会变成不活跃线程继续消耗执行周期，而 Kogge-Stone 的计算步数 (Span) 更短，反而能更快完赛。",
+          "D. 因为 CUDA 编译器无法理解 Brent-Kung 的反向树结构。"
+        ],
+        "answer": "C",
+        "explanation": "这是理解硬件 SIMD 执行模型的经典案例。在 Warp 级别，节省“部分线程”的指令并不能释放 Warp 的周期。既然必须等待，Kogge-Stone 充分利用了这些本会闲置的线程，用更少的总步骤 (Span) 完成了计算。"
+      },
+      {
+        "type": "short-answer",
+        "question": "为什么在未经双缓冲 (Double-buffering) 优化的原位 (In-place) Kogge-Stone 扫描内核中，每一次循环迭代内部必须调用两次 __syncthreads()？",
+        "expectedAnswer": "第一次调用是为了防止读后写 (Read-after-write) 数据竞态，确保所有线程完成了上一轮的写入；第二次调用是为了防止写后读 (Write-after-read) 假依赖，必须确保所有当前需要读取旧值的线程都已读取完毕，然后才能允许部分执行较快的线程写入新值以覆盖这些旧数据。",
+        "explanation": "如果没有第二次同步，跑得快的线程会将新计算的值写回共享内存，导致跑得慢的线程读取到的是未来的错误值，从而破坏了扫描树的数据流逻辑。"
+      },
+      {
+        "type": "short-answer",
+        "question": "简述“扫描-扫描-相加 (Scan-scan-add)”分解模式在单 Kernel 内部将 Block 扫描任务分解到 Warp 级别的三大具体步骤。",
+        "expectedAnswer": "1) 首先每个 Warp 独立对其子段使用洗牌原语 (Warp shuffle) 进行 Warp 级扫描；2) 各 Warp 将其子段的最后一个元素（即本 Warp 的总和）写入共享内存组成新数组，并对该数组进行第二次扫描（获取各 Warp 的基底值）；3) 每个线程读取其所属 Warp 前面所有 Warp 的累积总和，并将其加到自己第一步算出的扫描结果上。",
+        "explanation": "分治法 (Divide and Conquer) 是并行优化的核心思想。Scan-scan-add 精妙地利用了局部结果与全局偏置的组合，极大提升了利用寄存器原语的空间。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在实现跨 Block 单向同步 (Unidirectional synchronization) 的单回溯 (Single lookback) 方法时，为什么必须在 Kernel 内使用原子操作动态分配 Block ID (Dynamic block assignment)？",
+        "expectedAnswer": "单向同步依赖于较晚执行的 Block 对较早执行的 Block 结果的原子轮询。如果依赖系统默认调度的 blockIdx.x，GPU 可能优先调度并执行后面的 Block，导致它永远等不到未被调度的前面 Block 的结果，引发全局死锁。动态分配 ID 确保了被分配较小 ID 的 Block 必定已开始在 SM 上活跃执行。",
+        "explanation": "在没有全局屏障的硬件架构上建立跨 Block 依赖链，动态保障执行顺序是唯一的安全途径。"
+      },
+      {
+        "type": "short-answer",
+        "question": "引入线程粗化 (Thread coarsening) 是如何解决 Kogge-Stone 算法在硬件资源受限时工作效率不高 (Not work-efficient) 的痛点的？",
+        "expectedAnswer": "线程粗化让每个 GPU 线程在进入并行的 Kogge-Stone 扫描之前，先对自己负责的多个连续元素执行串行扫描。串行扫描具有最优的 O(N) 工作复杂度。随着粗化因子增大，这部分串行 O(N) 的高效操作占比提升，极大地摊薄了 O(N log N) 并行阶段的低效开销，从而使整个算法的总工作复杂度重新逼近理想的 O(N)。",
+        "explanation": "将部分本可并行的任务退化为串行计算，反而在整体上提升了硬件吞吐量，这是处理并发算法额外复杂度开销的经典手段。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在单 Kernel 全局扫描中，当前 Block 准备更新自身“计算完成”标志位供下一个 Block 读取时，为什么必须使用 cuda::memory_order_release，如果误用 relaxed 语义会引发什么灾难性后果？",
+        "expectedAnswer": "release 语义强制充当了内存屏障，确保在标志位被设为“就绪”之前，所有该 Block 负责计算的局部扫描结果都已经实实在在地写回到了全局内存中。若误用 relaxed，硬件或编译器可能将“标志位更新”重排到“结果数据写回”之前，导致下一个 Block 看到标志位已就绪，却读取到了尚未更新的错误（脏）数据。",
+        "explanation": "多处理器环境下的原子操作不仅仅是互斥问题，更是对整个内存状态可见性的控制。乱序执行是追求极致性能的 GPU 的常态，正确指定内存顺序语义是并发编程的基本功。"
+      }
+    ]
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "chapterId": "chapter-08-stencil-computation",
+  "chapterTitle": "Stencil Computation",
+  "sourceId": "216acd9e-1b90-4169-9dd3-45891e57857c",
+  "sourceTitle": "chapter-08-stencil-computation.pdf",
+  "artifactType": "study-guide",
+  "artifactLabel": "Study Guide",
+  "generatedAt": "2026-07-13T13:45:40.878439Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "学习指南：模板计算 (Chapter 8: Stencil Computation)",
+    "summary": "本章重点探讨了 GPU 上的模板计算 (Stencil Computation) 及其优化策略 [1]。通过对比卷积，分析了模板计算特有的低算术强度问题 [1, 2]。深入讲解了如何通过共享内存分块 (Shared Memory Tiling)、线程粗化 (Thread Coarsening) 以及寄存器分块 (Register Tiling) 来突破内存带宽瓶颈、降低共享内存压力并提升硬件资源的占用率 [3-5]。",
+    "sections": [
+      {
+        "heading": "学习目标 (Learning Objectives)",
+        "points": [
+          "1. 区分模板计算与卷积的差异，理解其在求解偏微分方程 (PDEs) 和高精度计算中的应用 [1, 6]。",
+          "2. 掌握计算 3D 模板计算 (如 7-point stencil) 的算术强度 (Arithmetic Intensity)，并评估其内存带宽瓶颈 [7-9]。",
+          "3. 理解基础共享内存分块 (Shared-memory tiling) 在 3D 模板计算中面临的块尺寸限制及高光环单元 (Halo cells) 比例开销 [10, 11]。",
+          "4. 运用线程粗化 (Thread coarsening) 技术沿 z 轴优化 3D 模板计算，减少共享内存占用量并提升算术强度 [4, 12]。",
+          "5. 利用寄存器分块 (Register tiling) 将 z 轴前后层数据存入寄存器，大幅削减共享内存访问开销并权衡寄存器压力 [5, 13, 14]。"
+        ]
+      },
+      {
+        "heading": "章节结构映射 (Section-by-Section Chapter Map)",
+        "points": [
+          "8.1 背景 (Background): 介绍结构化网格离散化、有限差分法及模板的阶数 (Order) 定义 [15-17]。",
+          "8.2 基础并行内核 (Parallel stencil – a basic kernel): 展示 3D 7点模板的基础 CUDA 实现及边界条件处理 [18, 19]。",
+          "8.3 内存带宽考量 (Memory bandwidth considerations): 推导理想算术强度 (1.625 FLOP/B) 与基础内核实际强度 (0.41 FLOP/B) 的差距 [9]。",
+          "8.4 共享内存分块 (Shared-memory tiling): 应用共享内存分块，分析由于硬件 Block 尺寸上限导致的严重光环开销与内存合并访存 (Coalescing) 变差问题 [10, 11, 20]。",
+          "8.5 线程粗化 (Thread coarsening): 沿 z 轴进行线程粗化，将 Block 尺寸从 t^3 降至 t^2，将共享内存消耗降至当前所需的三层 [4, 12]。",
+          "8.6 寄存器分块 (Register tiling): 针对仅包含正交方向邻居的模板模式，将前后层数据保存在寄存器中，进一步降低共享内存消耗量 [5, 21]。"
+        ]
+      },
+      {
+        "heading": "关键概念精解 (Key Concepts)",
+        "points": [
+          "模板计算 (Stencil Computation): 基于结构化网格，使用中心点及周围固定模式的邻居点来近似计算导数，常用于迭代求解偏微分方程 [1, 22]。",
+          "模板阶数 (Stencil Order): 模板在每个维度上从中心点向单侧延伸的网格点数量（如 1D 3点模板为一阶，5点为二阶） [17]。",
+          "算术强度差距 (Arithmetic Intensity Gap): 由于模板通常不包含对角线邻居，其数据复用率远低于尺寸相近的卷积（如 3D 7点模板上限为 1.625 FLOP/B，而 3x3x3 卷积为 85.75 FLOP/B），更容易受限于内存带宽 [2, 23]。",
+          "z 轴线程粗化 (Z-axis Thread Coarsening): 将一个线程的工作量从计算一个输出点扩大为沿 z 轴循环计算一列输出点 [4, 24]。这使得共享内存中只需同时保留三层数据 (Prev, Curr, Next) [25, 26]。",
+          "寄存器分块 (Register Tiling): 利用前后层数据 (Prev, Next) 仅被单个线程在 z 轴推进时使用的特性，将它们分配在寄存器中，仅把需要跨线程共享的当前层 (Curr) 留在共享内存中 [5, 21]。"
+        ]
+      },
+      {
+        "heading": "常见误区与实现缺陷 (Common Misunderstandings & Implementation Mistakes)",
+        "points": [
+          "盲目套用卷积分块策略：误以为 3D 模板可以直接像 2D 卷积一样高效利用 3D 共享内存分块 [27]。实际上，受限于单 Block 最大 1024 线程的限制，3D 块尺寸（如 8x8x8）会导致极高的光环数据比例 (Halo element ratio, 高达 58%)，严重拉低算术强度 [10, 11]。",
+          "忽视小尺寸 Block 的合并访存缺陷：在 8x8x8 的块中，一个包含 32 线程的 Warp 需要读取 4 行（每行 8 个元素），导致访问不连续，无法有效利用全局内存合并访问 (Memory Coalescing) [20]。",
+          "寄存器超载 (Register Pressure) 陷阱：在结合线程粗化与寄存器分块时，每深入一层优化都会增加单个线程的寄存器用量 [13]。如果不监控资源，过高的寄存器使用量会导致占用率 (Occupancy) 大幅下降，抵消优化收益 [13, 14]。"
+        ]
+      },
+      {
+        "heading": "三阶段实践计划 (3-Session Practice Plan)",
+        "points": [
+          "Session 1: 算术强度与基础实现。编写并分析基础 3D 7点模板内核，根据代码推演其内存读取量和浮点运算量，重现 0.41 FLOP/B 的理论值，并在 Nsight Compute 中验证内存受限状态 [9, 19]。",
+          "Session 2: 实施 z 轴线程粗化 (Thread Coarsening)。将 3D 线程块 (如 8x8x8) 改写为 2D 线程块 (如 32x32)，在内核中加入 z 轴循环和三层共享内存滑动窗口 (inPrev_s, inCurr_s, inNext_s)，观察算术强度提升至 1.52 FLOP/B [10, 12, 26]。",
+          "Session 3: 融合寄存器分块 (Register Tiling)。在前一阶段代码基础上，将 inPrev_s 和 inNext_s 替换为线程私有寄存器变量 [21]。通过对比汇编代码和 Profiling 结果，观察共享内存访问量的下降以及单线程额外增加 3 个寄存器对占用率的影响 [13, 21]。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

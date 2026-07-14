@@ -1,0 +1,98 @@
+{
+  "chapter-01-introduction": {
+    "sourceId": "36d65c10-46f4-41a0-8d73-eea6b485aea1",
+    "sourceTitle": "chapter-01-introduction.pdf"
+  },
+  "chapter-02-heterogeneous-data-parallel-computing": {
+    "sourceId": "9da6fad2-9ec4-460f-b6fc-7e470d872c59",
+    "sourceTitle": "chapter-02-heterogeneous-data-parallel-computing.pdf"
+  },
+  "chapter-03-multidimensional-grids-and-data": {
+    "sourceId": "398d28d9-3e81-4b0c-a2c0-69eefc525f0f",
+    "sourceTitle": "chapter-03-multidimensional-grids-and-data.pdf"
+  },
+  "chapter-04-compute-architecture-and-scheduling": {
+    "sourceId": "c4dee50c-ba72-41d3-819f-b65012626952",
+    "sourceTitle": "chapter-04-compute-architecture-and-scheduling.pdf"
+  },
+  "chapter-05-memory-architecture-and-data-locality": {
+    "sourceId": "bde6b4cd-9cdf-4782-a570-a72e79387d7d",
+    "sourceTitle": "chapter-05-memory-architecture-and-data-locality.pdf"
+  },
+  "chapter-06-performance-considerations": {
+    "sourceId": "5227cb2e-9a3a-4d4a-8fa3-7cd998d7f56d",
+    "sourceTitle": "chapter-06-performance-considerations.pdf"
+  },
+  "chapter-07-convolution": {
+    "sourceId": "b9b94d1a-3608-4143-8559-d3a3037ac123",
+    "sourceTitle": "chapter-07-convolution.pdf"
+  },
+  "chapter-08-stencil-computation": {
+    "sourceId": "216acd9e-1b90-4169-9dd3-45891e57857c",
+    "sourceTitle": "chapter-08-stencil-computation.pdf"
+  },
+  "chapter-09-histogram": {
+    "sourceId": "7f3b148b-9490-4fb1-8047-9a97a835fbee",
+    "sourceTitle": "chapter-09-histogram.pdf"
+  },
+  "chapter-10-reduction": {
+    "sourceId": "32ca4118-c499-4bbc-bd3d-3f5200036719",
+    "sourceTitle": "chapter-10-reduction.pdf"
+  },
+  "chapter-11-scan": {
+    "sourceId": "9cc447c1-78a3-4adb-9800-672372e26c29",
+    "sourceTitle": "chapter-11-scan.pdf"
+  },
+  "chapter-12-filter": {
+    "sourceId": "b72b13d3-d8d2-405c-ba31-db66494d85be",
+    "sourceTitle": "chapter-12-filter.pdf"
+  },
+  "chapter-13-merge": {
+    "sourceId": "fe2cbf02-e8a0-4d31-8236-d29aa0d0b96c",
+    "sourceTitle": "chapter-13-merge.pdf"
+  },
+  "chapter-14-sorting": {
+    "sourceId": "d8373a55-be5e-48d3-8179-2927abe3f03f",
+    "sourceTitle": "chapter-14-sorting.pdf"
+  },
+  "chapter-15-advanced-optimizations-for-matrix-multiplication": {
+    "sourceId": "dac4e140-cfba-4620-a0c1-0c865c1ef55e",
+    "sourceTitle": "chapter-15-advanced-optimizations-for-matrix-multiplication.pdf"
+  },
+  "chapter-16-dynamic-programming-and-wavefront-parallelism": {
+    "sourceId": "53d954fd-2c4e-4132-a9e4-fa18b0c18262",
+    "sourceTitle": "chapter-16-dynamic-programming-and-wavefront-parallelism.pdf"
+  },
+  "chapter-17-sparse-matrix-computation": {
+    "sourceId": "d5283765-beee-4146-bd22-3fe27fe6e978",
+    "sourceTitle": "chapter-17-sparse-matrix-computation.pdf"
+  },
+  "chapter-18-graph-traversal": {
+    "sourceId": "6170bf2b-3c99-4347-ae81-bf05ea83eac4",
+    "sourceTitle": "chapter-18-graph-traversal.pdf"
+  },
+  "chapter-19-convolutional-neural-networks": {
+    "sourceId": "765c4df9-5672-44d9-9eee-974ff60884f9",
+    "sourceTitle": "chapter-19-convolutional-neural-networks.pdf"
+  },
+  "chapter-20-large-language-models": {
+    "sourceId": "a4b5617c-66a4-46b0-8327-9858947bc83d",
+    "sourceTitle": "chapter-20-large-language-models.pdf"
+  },
+  "chapter-21-electrostatic-potential-map": {
+    "sourceId": "92e442b0-fc5b-4782-bad6-f51b574a393d",
+    "sourceTitle": "chapter-21-electrostatic-potential-map.pdf"
+  },
+  "chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation": {
+    "sourceId": "63fe8416-b018-40da-bcf6-b694e07d8fea",
+    "sourceTitle": "chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation.pdf"
+  },
+  "chapter-23-multi-gpu-programming": {
+    "sourceId": "e8ad84fc-300d-4465-aea8-8bb6469fefe6",
+    "sourceTitle": "chapter-23-multi-gpu-programming.pdf"
+  },
+  "chapter-24-conclusion-and-future-outlook": {
+    "sourceId": "db215e45-15c6-4925-84c4-da0f08696004",
+    "sourceTitle": "chapter-24-conclusion-and-future-outlook.pdf"
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "chapterId": "chapter-21-electrostatic-potential-map",
+  "chapterTitle": "Electrostatic Potential Map",
+  "sourceId": "92e442b0-fc5b-4782-bad6-f51b574a393d",
+  "sourceTitle": "chapter-21-electrostatic-potential-map.pdf",
+  "artifactType": "data-table",
+  "artifactLabel": "Data Table",
+  "generatedAt": "2026-07-13T15:06:53.649782Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "数据表格：静电势图 (Chapter 21: Electrostatic Potential Map)",
+    "summary": "本数据表格整理了在 GPU 上计算分子静电势图的核心架构优化策略。重点解析了 Scatter 与 Gather 模式的取舍、线程粗化 (Thread Coarsening) 的寄存器复用、合并访存 (Memory Coalescing) 的交错分配技巧，以及处理极大规模数据的截断分箱 (Cutoff Binning) 与异构协同计算。",
+    "sections": [
+      {
+        "heading": "表格说明 (Table Description)",
+        "points": [
+          "系统对比了不同并行化策略对底层微架构 (如原子操作、常量内存、共享内存) 的影响。",
+          "深入剖析了在算法级微优化 (如减少指令数) 与架构级并行度 (如消除访存冲突) 之间进行权衡的“优化悖论”。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "concept": "Scatter 与 Gather 模式 (Scatter vs. Gather)",
+        "definition": "Scatter (发散) 模式中单线程处理一个原子并更新多个网格点；Gather (收集) 模式中单线程处理一个网格点并聚合所有原子的贡献。",
+        "cudaRelevance": "在 GPU 上，Gather 模式完美契合 SIMT 架构，每个线程独立写入自己的网格点，无需同步；而 Scatter 模式会导致所有线程并发更新同一内存地址，强制依赖高延迟的原子操作 (Atomic operations)。",
+        "performanceConcern": "Scatter 带来的 `atomicAdd` 竞争会严重摧毁并行吞吐量；Gather 模式虽牺牲了部分算术优化 (如重复计算 y 坐标差值)，但配合常量缓存 (Constant cache) 可实现无锁的极高吞吐。",
+        "commonMistake": "试图直接将基于 Scatter 模式的高度优化的串行 CPU 代码移植为 CUDA Kernel，导致极端的写冲突，性能甚至不如单核 CPU。"
+      },
+      {
+        "concept": "优化悖论 (Optimization Paradox)",
+        "definition": "在顺序编程中为了减少冗余算术指令而进行的算法重构 (如循环交换)，在并行化时往往会导致糟糕的内存访问拓扑。",
+        "cudaRelevance": "在静电势图应用中，退回到“未优化”的原始串行算法 (Gather 结构) 反而更容易暴露出大规模数据并行性，避免了数据竞争。",
+        "performanceConcern": "妥协少量的浮点运算冗余，换取完全无冲突的内存写入和对硬件缓存的极致利用，是获得最高 GPU 整体执行速度的必经之路。",
+        "commonMistake": "盲目追求最少的浮点指令数 (FLOPs)，忽视了这些指令重排带来的内存访问冲突 (Memory conflicts) 和同步开销 (Synchronization overhead)。"
+      },
+      {
+        "concept": "线程粗化 (Thread Coarsening)",
+        "definition": "让单个线程负责处理同行或相邻的多个网格点计算，从而将公共的计算数据和中间结果保留在寄存器中复用。",
+        "cudaRelevance": "通过一次性从常量内存 (Constant memory) 加载原子的 x、y 坐标和电荷至寄存器 (Registers)，消除了多个网格点对常量内存的重复读取，并减少了冗余的距离差值计算。",
+        "performanceConcern": "可大幅减少指令总数和访存次数 (例如将处理 4 个网格点的 FLOPs 从 48 次降至 24 次，内存访问从 16 次降为 4 次)。但会增加每个线程的寄存器压力，过高的粗化因子可能降低占用率 (Occupancy)。",
+        "commonMistake": "进行线程粗化后，直接使用简单的紧凑内部 for 循环将结果写入连续的全局内存地址，导致原本合并的内存访问被撕裂。"
+      },
+      {
+        "concept": "交错分配与合并访存 (Interleaved Assignment & Coalescing)",
+        "definition": "在实施线程粗化时，按特定的跨度 (如线程块宽度) 为线程分配所负责的多个网格点，确保相邻线程始终访问相邻的内存地址。",
+        "cudaRelevance": "如果单线程处理连续的网格点 `0, 1, 2, 3`，Warp 内的相邻线程将访问相隔很远的地址，产生非合并写入 (Uncoalesced writes)。通过以 `blockDim.x` 为跨度进行交错，完美恢复了全局内存的合并访存 (Memory Coalescing)。",
+        "performanceConcern": "非合并写入会严重浪费全局内存总线带宽 (Memory bandwidth)。通过修改索引逻辑 (如 `x + blockDim.x`) 重新排列写入模式，是维持内存吞吐率的关键。",
+        "commonMistake": "忽视线程粗化对写出模式的副作用，未重新映射计算索引与写入索引，使得内核从计算受限 (Compute-bound) 跌落为内存受限 (Memory-bound)。"
+      },
+      {
+        "concept": "截断分箱 (Cutoff Binning)",
+        "definition": "针对大体积系统，将空间划分为网格箱 (Bins)，单个网格点仅聚合距离在其截断半径 (Cutoff radius) 及其附近箱子内的原子贡献，将复杂度从 $O(V^2)$ 降为 $O(V)$。",
+        "cudaRelevance": "利用相对偏移列表预先确定邻域箱 (Neighborhood list)。由于访问的原子不再是全局统一的，不再适合常量内存，而是通过同一 Block 的线程协作将邻域原子加载至共享内存 (Shared memory) 中再进行筛选。",
+        "performanceConcern": "彻底解决了庞大分子系统规模扩展性差的问题，但自然界原子分布的不均匀性会引发各箱子数据量不同，容易造成 Warp 内部的控制流发散 (Control divergence) 和内存未对齐。",
+        "commonMistake": "为了内存对齐，强行用大量“虚拟原子 (Dummy atoms，电荷为0)”将所有 Bin 填充至相同且巨大的尺寸。这不仅浪费显存，还迫使 GPU 执行海量无意义的乘零操作。"
+      },
+      {
+        "concept": "溢出处理与异构协同 (Overflow Handling & CPU-GPU Synergy)",
+        "definition": "在分箱过程中，设定一个固定且较小的箱子容量 (Bin capacity)。将超出容量的原子装入溢出列表 (Overflow list)，交由主机端 CPU 处理。",
+        "cudaRelevance": "这种架构级分离确保了 GPU 端数据结构的完美规则性与内存对齐，消除了冗余的虚拟原子填充，使 GPU 内核的 SIMT 效率达到最高。",
+        "performanceConcern": "只要溢出原子占比极小 (如小于 3%)，CPU 计算这些溢出原子的时间可以被完全隐藏 (Latency hiding) 在 GPU 执行下一批次计算的时间周期内，实现了极高的整体异构吞吐量。",
+        "commonMistake": "试图让 GPU 处理所有边缘情况和极端分布，导致复杂的条件分支逻辑 (If-else) 拖慢了 99% 正常数据的处理速度，违背了大规模并行处理中“用 CPU 兜底不规则性”的最佳实践。"
+      }
+    ]
+  }
+}

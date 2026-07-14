@@ -1,0 +1,158 @@
+{
+  "chapterId": "chapter-03-multidimensional-grids-and-data",
+  "chapterTitle": "Multidimensional Grids And Data",
+  "sourceId": "398d28d9-3e81-4b0c-a2c0-69eefc525f0f",
+  "sourceTitle": "chapter-03-multidimensional-grids-and-data.pdf",
+  "artifactType": "quiz",
+  "artifactLabel": "Quiz",
+  "generatedAt": "2026-07-13T13:19:40.080794Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "测试题：多维网格与数据 (Chapter 3: Multidimensional Grids and Data)",
+    "summary": "本测试题旨在检验对 CUDA 中多维网格 (Grid) 与线程块 (Block) 配置、动态数组行主序线性化 (Row-major linearization)、以及图像模糊和矩阵乘法中复杂边界与内存映射逻辑的掌握程度。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Advice)",
+        "points": [
+          "1. 深刻理解多维配置：牢记 dim3 的低维到高维声明顺序 (x, y, z)，以及底层硬件对单 Block 1024 个线程的强制上限。",
+          "2. 熟练掌握线性化映射：在 C/C++ 行主序 (Row-major layout) 布局下，能够无缝写出二维 (row * width + col) 和三维数组的展平偏移量公式。",
+          "3. 严谨的边界防御：对于图像模糊等基于补丁 (Patch) 的邻域计算，要养成对目标像素以及周边游动坐标都进行严格上下限边界检查 (Boundary Checking) 的习惯。",
+          "4. 洞察内存访问跨度：通过基础矩阵乘法的实现，深刻认识按行遍历 (连续) 与按列遍历 (跨步 Width) 在一维物理内存中的巨大差异，为后续性能优化铺垫。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "type": "multiple-choice",
+        "question": "在当前的 CUDA 系统架构中，单个线程块 (Thread Block) 最多可以包含多少个物理线程？",
+        "options": [
+          "A. 256",
+          "B. 512",
+          "C. 1024",
+          "D. 2048"
+        ],
+        "answer": "C",
+        "explanation": "单个线程块最多可以包含 1024 个线程。可以将这些线程在三维（x, y, z）中任意分配，但总数乘积不能超过 1024（如 dim3(32, 32, 2) 是非法的，因为总数达到了 2048）。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在定义 `dim3(x, y, z)` 执行配置和 C++ 传统多维数组 `[a][b]` 时，在维度的声明顺序上有什么显著差异？",
+        "options": [
+          "A. 它们完全相同，都是从高维到低维排列",
+          "B. `dim3` 从低维到高维排列（列x, 行y, 深z），而 C++ 多维数组通常从高维到低维排列",
+          "C. `dim3` 从高维到低维排列，而 C++ 多维数组从低维到高维排列",
+          "D. `dim3` 必须强制声明三个维度，而 C++ 数组不支持三维以上的声明"
+        ],
+        "answer": "B",
+        "explanation": "dim3 使用 (x, y, z) 也就是 (列, 行, 深度) 的低维到高维顺序。而 C++ 中如 P[y][x] 习惯是高维在前。混淆这种反向顺序是初学者映射坐标时最易犯的错误。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在 C/C++ 默认的行主序布局 (Row-major layout) 中，对于总宽度为 `Width` 的二维数组，获取 `(row, col)` 元素的一维平坦偏移量 (1D Offset) 公式是什么？",
+        "options": [
+          "A. row + col * Width",
+          "B. row * Width + col",
+          "C. (row + col) * Width",
+          "D. row * col + Width"
+        ],
+        "answer": "B",
+        "explanation": "行主序意味着同一行的元素在内存中是连续的。`row * Width` 用来跳过当前元素上方的所有完整行，`+ col` 则是在当前行内部定位到指定的列。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "为什么在 CUDA 内核中处理多维图像时，通常必须在最外层加入 `if(col < width && row < height)` 这样的边界检查 (Boundary Checking)？",
+        "options": [
+          "A. 防止 C++ 编译器在编译时报错",
+          "B. GPU 硬件要求所有的循环必须包含 if 语句以维持控制流",
+          "C. 强制将非线性的多维数组转换为线性数组",
+          "D. 通过向上取整划分的网格 (Grid) 可能会产生多余的线程，必须防止它们越界访问非法内存"
+        ],
+        "answer": "D",
+        "explanation": "由于通常使用 ceil(n/blockDim) 向上取整来确保覆盖所有数据，若数据尺寸不能被 Block 大小整除，网格边缘将产生冗余线程。缺失此保护将导致内存越界损坏。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在图像模糊 (Image blur) 算法中，如果代码中设定的 `BLUR_SIZE`（模糊半径）为 2，那么每个目标像素平均需要聚合的补丁 (Patch) 总面积是多少个像素？",
+        "options": [
+          "A. 9 个",
+          "B. 16 个",
+          "C. 25 个",
+          "D. 49 个"
+        ],
+        "answer": "C",
+        "explanation": "补丁覆盖的总面积为单边长度的平方，单边长度公式为 (2 * BLUR_SIZE + 1)。当 BLUR_SIZE=2 时，边长为 5，总面积为 5 * 5 = 25 个像素。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在图像模糊算法计算补丁 (Patch) 像素值的内部循环中，为什么必须加入 `if(curRow>=0 && curRow<h && curCol>=0 && curCol<w)` 的判断？",
+        "options": [
+          "A. 用于判断目标中心像素是否位于图像内部",
+          "B. 防止当目标像素位于图像边缘或四角时，其外围参与计算的相邻像素补丁越过物理边界，读取垃圾内存",
+          "C. 为了规避行主序布局带来的列宽计算误差",
+          "D. 这是利用共享内存进行优化的前置要求"
+        ],
+        "answer": "B",
+        "explanation": "即使目标像素 (row, col) 合法，其周边半径范围内的游动坐标 (curRow, curCol) 也可能变为负数或超出图像高宽。这是典型的处理邻域计算时的隐蔽边界陷阱。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在基础矩阵乘法 $P = M \\times N$ 的内核计算中，为了求得一个元素 $P_{row,col}$ 的点积 (Dot product)，线程对输入矩阵 $M$ 和 $N$ 分别是如何遍历的？",
+        "options": [
+          "A. $M$ 按列遍历，$N$ 按行遍历",
+          "B. $M$ 按行遍历，$N$ 按列遍历",
+          "C. $M$ 和 $N$ 均按行遍历",
+          "D. $M$ 和 $N$ 均按列遍历"
+        ],
+        "answer": "B",
+        "explanation": "根据矩阵乘法的数学定义，结果矩阵第 row 行第 col 列的元素，是由矩阵 M 的第 row 行与矩阵 N 的第 col 列进行点积运算得出的。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在一维展平的行主序内存空间中遍历执行矩阵乘法时，读取矩阵 $N$ 第 `col` 列的第 `k` 个元素的代码索引公式是什么？",
+        "options": [
+          "A. N[k * Width + col]",
+          "B. N[col * Width + k]",
+          "C. N[k + col]",
+          "D. N[k * col * Width]"
+        ],
+        "answer": "A",
+        "explanation": "在矩阵 N 中，当前遍历的“深度”是 k（即它在 N 中的行坐标是 k），而固定的目标列是 col。代入行主序公式 (row * width + col)，即得到 k * Width + col。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在主机代码中声明 `dim3 dimBlock(256)` 时，CUDA 编译器如何处理未被显式赋值的维度？",
+        "expectedAnswer": "编译器会利用 C++ 构造函数的默认参数机制，将未赋值的 y 维度和 z 维度自动设置为 1，从而生成一个有效的一维线程块 `dim3(256, 1, 1)`。",
+        "explanation": "这种“简写”允许开发者在处理纯一维或二维数据时，不用冗余地去声明所有三个维度的参数，保持代码的简洁性。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在 CUDA C++ 中，网格 (Grid) 的各个维度 (x, y, z) 在最大允许值上有何显著差异？",
+        "expectedAnswer": "x 维度的上限非常大（高达 2^31 - 1），而 y 维度和 z 维度的上限非常有限，仅为 65535 (2^16 - 1)。",
+        "explanation": "了解这些硬件限制对于部署具有极端长宽比的二维/三维网格非常关键，如果超过 65535 限制，内核将无法成功启动。"
+      },
+      {
+        "type": "short-answer",
+        "question": "为什么对由 `cudaMalloc` 动态分配的设备内存指针直接使用多维下标语法（例如 `P[row][col]`）会导致编译失败？",
+        "expectedAnswer": "因为 C++ 编译器在编译期间必须知道多维数组除最高维之外的每一维的长度（如列宽 Width），才能将二维索引转换为一维物理地址。而动态分配的数组在编译期缺乏此维度信息，因此开发者必须手动进行数组线性化 (Array Linearization)。",
+        "explanation": "这是从 C/C++ 静态数组迁移到 CUDA 动态内存编程时最常遇到的语法与逻辑壁垒，必须显式重构为一维偏移量计算。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在图像模糊 (Image Blur) 算法中，为什么不能使用固定值（如 3x3 补丁面积为 9）作为计算所有输出像素平均值的除数？",
+        "expectedAnswer": "对于位于图像边缘和四角的像素，其补丁区域会越过图像边界被截断（如左上角像素的合法邻域仅有 4 个）。如果依然除以固定值 9，会导致这些边缘像素的最终结果严重偏暗。必须使用变量动态统计实际参与累加的合法像素数量。",
+        "explanation": "在复杂的空间边界处理中，不仅数据的读取受边界限制，归约操作 (Reduction/Averaging) 的基数也必须与实际有效的边界条件严格对齐。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在基础矩阵乘法的最内层遍历循环中，读取语句 `N[k * Width + col]` 在物理内存的访问跨度 (Stride) 上有什么特征？",
+        "expectedAnswer": "每当循环控制变量 `k` 增加 1，该语句在物理内存中的访问地址就会跳跃一整行的宽度 (即跨越 Width 个元素)。",
+        "explanation": "由于矩阵是行主序存储的，按列读取数据会导致极度不连续的访存模式。这种跳跃式的访问模式会极大地破坏数据局部性 (Data Locality)，是基础矩阵乘法性能受限的核心原因。"
+      }
+    ]
+  }
+}

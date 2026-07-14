@@ -1,0 +1,86 @@
+{
+  "chapterId": "chapter-12-filter",
+  "chapterTitle": "Filter",
+  "sourceId": "b72b13d3-d8d2-405c-ba31-db66494d85be",
+  "sourceTitle": "chapter-12-filter.pdf",
+  "artifactType": "data-table",
+  "artifactLabel": "Data Table",
+  "generatedAt": "2026-07-13T14:14:15.498503Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "数据表格：过滤与 Warp 投票 (Chapter 12: Filter)",
+    "summary": "本数据表格梳理了 GPU 上并行过滤 (Parallel Filter) 的底层原理与优化策略。对比了不稳定与稳定过滤的区别，深入剖析了合并原子操作 (Coalesced atomic operations) 与私有化 (Privatization) 如何解除硬件串行化瓶颈，以及如何借助共享内存和排他扫描保障合并访存与原位 (In-place) 计算的数据安全。",
+    "sections": [
+      {
+        "heading": "表格说明 (Table Description)",
+        "points": [
+          "系统整理了在实现并行过滤操作时面临的全局竞争 (Global contention) 与访存碎片化 (Memory fragmentation) 问题。",
+          "详细拆解了 Warp 级原语 (Warp-level primitives)、协作组 (Cooperative groups) 和单向同步在内存移动与原位覆盖场景下的技术细节。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "concept": "不稳定过滤与全局原子竞争 (Unstable Filter & Global Atomic Contention)",
+        "definition": "不保证保留元素相对顺序的过滤操作。在基础并行实现中，所有活跃线程通过对同一个全局计数器执行原子加法来分配输出索引。",
+        "cudaRelevance": "每个满足过滤条件的线程调用 `atomicAdd` 更新全局 `outputSize`，并将其返回的值作为写入输出数组的偏移量。",
+        "performanceConcern": "由于多个线程对同一个全局变量进行极高频的原子操作，硬件会强制将其串行化 (Serialized)，导致严重的竞争冲突 (Contention) 和性能暴跌。",
+        "commonMistake": "开发者误以为在 GPU 上直接对单一全局计数器使用 `atomicAdd` 即可实现高效过滤，忽视了数万个线程争抢同一地址带来的灾难性串行化代价。"
+      },
+      {
+        "concept": "合并原子操作 (Coalesced Atomic Operations)",
+        "definition": "Warp 内的活跃线程通过底层通信协同推选出 Leader 线程，由 Leader 执行单次原子累加获取整块空间的基底偏移，再广播并分配给组内各线程。",
+        "cudaRelevance": "通过 `__activemask()` 获取活跃掩码，`__ffs()` 选定 Leader，`__popc()` 算总增量。Leader 执行原子操作后，用 `__shfl_sync` 广播结果。",
+        "performanceConcern": "将每个 Warp 潜在的最多 32 次全局原子请求合并为 1 次，极大降低了原子冲突。同时确保 Warp 内活跃线程在输出数组的分布是相邻的，大幅提升了后续写入的合并访存 (Memory coalescing) 概率。",
+        "commonMistake": "在手写 Warp 内局部偏移分配时，错误地直接使用 `threadIdx.x`，而未正确使用当前线程之前活跃线程的位掩码前缀和 (Prefix sum on active mask)。"
+      },
+      {
+        "concept": "协作组中的合并组 (Coalesced Group in Cooperative Groups)",
+        "definition": "CUDA 协作组 API 提供的一种特殊句柄，能够安全、便捷地代表当前 Warp 中通过了过滤条件（即处于活跃状态）的线程子集。",
+        "cudaRelevance": "调用 `coalesced_threads()` 获取对象。使用 `.size()` 获取 Warp 活跃线程总数，使用 `.thread_rank()` 直接获取当前线程在活跃组内的局部偏移，替代易出错的手动位运算。",
+        "performanceConcern": "提供了更安全、简洁的代码抽象层来实现合并原子操作。虽然编译器通常能自动合并单 Warp 的原子操作，但掌握它有助于编写更复杂的 Warp 投票 (Warp voting) 逻辑。",
+        "commonMistake": "在复杂的条件分支内部混用块级同步原语或手动掩码，未利用现代的 Cooperative Groups API 导致代码在不同 GPU 架构上出现难以预测的活跃线程评估错误。"
+      },
+      {
+        "concept": "分块私有化 (Block-level Privatization)",
+        "definition": "在共享内存中为每个 Thread Block 预留私有输出列表和私有计数器。块内过滤完成后，再由单个线程进行一次全局原子提交，并执行块级的数据转移。",
+        "cudaRelevance": "在 `__shared__` 内存中声明局部变量。对私有计数器使用 `cuda::thread_scope_block` 原子引用，最后更新全局时使用 `cuda::thread_scope_device`。",
+        "performanceConcern": "通过“降维打击”将全局竞争转化为低延迟共享内存中的局部竞争，进一步减少了向全局内存提交的频率。最后将私有数组转储至全局内存时，能够产生完美的连续合并访存 (Coalesced accesses)。",
+        "commonMistake": "在各个线程向共享内存私有列表写入完毕，准备将数据提交到全局内存之前，遗漏了 `__syncthreads()` 同步屏障，导致全局提交时读取到尚未更新的脏数据。"
+      },
+      {
+        "concept": "稳定过滤与排他扫描 (Stable Filter & Exclusive Scan)",
+        "definition": "必须保留元素输入相对顺序的过滤操作。通过对每个元素的保留标志 (1 或 0) 数组执行全局排他扫描，精确算出其输出位置。",
+        "cudaRelevance": "无法依靠原子操作完成。线程评估条件生成布尔标志位，随后整个网格 (Grid) 协同进行排他扫描，最终通过 `keep == 1` 判断并将数据写入扫描结果指示的 `offset` 处。",
+        "performanceConcern": "稳定过滤的性能天花板受制于底层排他扫描的速度，通常需要基于单次传递扫描 (Single-pass scan) 内核构建以避免多 Kernel 调用的极高带宽消耗。",
+        "commonMistake": "在具有严格保序要求的业务场景中（如处理按时间戳排序的日志流）误用了基于原子操作的不稳定过滤，直接导致输出数据集的顺序被随机打乱。"
+      },
+      {
+        "concept": "共享内存聚合与访存碎片修复 (Gathering & Fixing Memory Fragmentation)",
+        "definition": "在稳定过滤中，若存活的线程直接将数据写入全局内存的各个偏移处，会产生零散的内存访问。必须借助共享内存暂存聚合并配合线程粗化 (Thread coarsening) 修复该问题。",
+        "cudaRelevance": "利用私有共享内存，把零星分布的存活元素先排成连续的一排。随后再以 Warp 为单位，将这连续的一排数据一次性写入全局内存。",
+        "performanceConcern": "存活线程直接向计算出的偏移量写入数据会导致同一 Warp 在物理地址上的访问跨度极大，彻底破坏合并访存。通过聚合组装大块连续写入，能榨干内存总线带宽。",
+        "commonMistake": "认为稳定过滤计算出扫描索引后，直接使用 `output[offset] = val` 就是最高效的，完全忽视了由于线程间歇性不活跃而导致 DRAM 总线带宽大量浪费的底层物理机制。"
+      },
+      {
+        "concept": "原位稳定过滤与前向依赖 (In-place Stable Filter & Read-before-Write)",
+        "definition": "为避免分配与输入等大的新数组，将输出数据直接覆盖到原始内存中。必须确保在任何位置写入新数据之前，旧数据已经被负责的线程读取。",
+        "cudaRelevance": "安全复用的关键在于保障 `Block j` (写方) 的写入必然发生于 `Block i` (读方) 的读取之后 (前提 `j > i`)。设备级排他扫描的天然同步依赖链正好满足了这种前向优先的调度需求。",
+        "performanceConcern": "在处理接近 GPU 显存上限的超大规模数据集时，原位过滤 (In-place filter) 节省了一半的显存占用，避免了由于显存溢出引发的内核崩溃或主板 PCIe 换页惩罚。",
+        "commonMistake": "在实现原位计算时，将读取和写入拆分为两个完全并发、没有显式单向同步依赖的模块。导致被较早调度的后期 Block 的写入直接覆盖了前期 Block 尚未读取的区域，造成数据永久损毁。"
+      },
+      {
+        "concept": "相关模式：扩张与逆向同步 (Expansion Patterns & Reverse Synchronization)",
+        "definition": "类似向矩阵新增行/列的操作，数据在原位模式下向后扩张。此时前序 Block 会把新数据写入到属于后序 Block 的物理地址空间中。",
+        "cudaRelevance": "由于数据流向变为了从前往后挤压，依赖关系彻底反转。必须实施从后往前的逆向块级同步，确保后序 Block 读完，前序 Block 才能写。",
+        "performanceConcern": "保证了复杂的数据结构原位重组 (In-place data movement) 的内存安全。同步方向一旦弄反，就会形成不可解的死锁或数据摧毁。",
+        "commonMistake": "在处理如“重复特定元素”这类使数组变长的操作时，盲目套用稳定过滤的前向依赖机制，导致系统未能保护下游内存区域，引发严重的写入冲突越界。"
+      }
+    ]
+  }
+}

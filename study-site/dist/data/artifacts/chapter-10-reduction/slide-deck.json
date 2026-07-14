@@ -1,0 +1,180 @@
+{
+  "chapterId": "chapter-10-reduction",
+  "chapterTitle": "Reduction",
+  "sourceId": "32ca4118-c499-4bbc-bd3d-3f5200036719",
+  "sourceTitle": "chapter-10-reduction.pdf",
+  "artifactType": "slide-deck",
+  "artifactLabel": "Slide Deck",
+  "generatedAt": "2026-07-13T14:01:36.246866Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "幻灯片大纲：归约 (Chapter 10: Reduction)",
+    "summary": "本幻灯片组提炼了 GPU 上并行归约算法的完整演进与优化路径。从解析基础归约树中的控制流发散与访存缺陷出发，系统讲解了步长递减映射、共享内存优化、Warp 级原语应用以及线程粗化等破除内存带宽与同步瓶颈的高级策略。",
+    "sections": [
+      {
+        "heading": "使用建议 (Usage Tips)",
+        "points": [
+          "前 3 页侧重于归约树的基础概念：工作量 (Work)、跨度 (Span) 及其对算子结合律与交换律的数学约束。",
+          "第 4-7 页深入剖析基础内核“步长倍增 (Stride-doubled)”导致的发散与非合并访存，并引出“步长递减 (Stride-halved)”这一绝佳解决方案。",
+          "第 8-10 页聚焦片上存储资源，讲解如何利用共享内存 (Shared memory) 和极速的 Warp 级原语 (Warp shuffle) 消除全局访存与块级同步开销。",
+          "最后 3 页扩展到工程实践，介绍利用多 Block 与原子操作处理任意长度数据，并通过线程粗化 (Thread coarsening) 解决归约树后期的硬件闲置痛点。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "slideNumber": 1,
+        "title": "并行归约与归约树 (Parallel Reduction & Reduction Trees)",
+        "bullets": [
+          "核心定义：将一个数组的元素通过二元运算提炼为单一结果（如求和、寻找最值）。",
+          "树状并发：改变顺序执行方式，利用归约树在多轮迭代中将数据配对执行。",
+          "工作量与跨度 (Work and Span)：工作量仍为 O(N)；但理论跨度从 O(N) 缩减为 O(log N)。",
+          "性能挑战：归约树每一轮的活跃线程数都会减半，导致严重的硬件利用率递减。"
+        ],
+        "speakerNotes": "归约是极其常见的数据处理模式，更是很多复杂并行算法的基石。通过树状结构，我们能在 log N 步内完成计算，但代价是每轮活跃的计算资源都在减半，这对 GPU 来说是个不小的挑战。",
+        "visualSuggestion": "展示经典的归约树示意图，用动画或层级结构凸显每一步中参与计算的活跃节点呈倒三角形递减的漏斗状分布。"
+      },
+      {
+        "slideNumber": 2,
+        "title": "算子约束：结合律与交换律 (Operator Constraints)",
+        "bullets": [
+          "结合律 (Associativity)：并行归约能够执行的数学基础。允许改变加括号的位置而不影响结果。",
+          "交换律 (Commutativity)：重排操作数组合顺序（如步长递减映射）或跨 Block 原子累加的必须条件。",
+          "浮点数陷阱：严格意义上，浮点数加法并不完全满足结合律。并行归约可能因舍入误差 (Rounding error) 产生与 CPU 顺序执行略微不同的结果。"
+        ],
+        "speakerNotes": "为什么我们可以把线性的 for 循环改成树状？数学基础是结合律。但如果我们为了访存优化改变数据相加的物理顺序，算子还必须具备交换律。另外，实战中要注意浮点数舍入误差带来的微小差异。",
+        "visualSuggestion": "对比公式：(a+b)+c = a+(b+c) [结合律] 与 a+b = b+a [交换律]，旁注警示图标提示浮点数舍入误差的非精确性。"
+      },
+      {
+        "slideNumber": 3,
+        "title": "基础内核：步长倍增 (Basic Kernel: Stride-doubled)",
+        "bullets": [
+          "映射策略：步长 (Stride) 从 1 开始，逐轮倍增 (`stride *= 2`)。",
+          "活跃条件：通过 `threadIdx.x % stride == 0` 来筛选每轮负责相加的活跃线程。",
+          "同步屏障：每轮计算后必须调用 `__syncthreads()` 确保局部和已全部写回全局内存，防止读后写 (Read-after-write) 数据竞争。"
+        ],
+        "speakerNotes": "这是最直观的实现方式：每次让跨度翻倍，比如线程 0 加上线程 1，下一轮线程 0 加上线程 2。虽然逻辑正确，代码简单，但这在底层 SIMD 硬件上会引发严重的性能灾难。",
+        "visualSuggestion": "展示一行代码片段 `if (threadIdx.x % stride == 0)`，配以内存图示，显示活跃线程与非活跃线程交替排列的“梳子”状分布。"
+      },
+      {
+        "slideNumber": 4,
+        "title": "缺陷一：控制流发散 (Flaw 1: Control Divergence)",
+        "bullets": [
+          "SIMD 惩罚：由于活跃与非活跃线程交替出现，Warp 内部会产生严重的控制流发散。",
+          "资源闲置：只要 Warp 内有一个线程处于活跃状态，该 Warp 就必须消耗全部的执行资源和周期。",
+          "低利用率：导致执行资源利用率 (Execution resource utilization efficiency) 被摊薄至仅约 30%，大量算力白白流失。"
+        ],
+        "speakerNotes": "在 GPU 里，Warp 只要有一个线程干活，所有 32 个线程的周期都要被占用。步长倍增这种“梳子”状的活跃分布，让每个 Warp 里充满了发散分支，导致 70% 的执行资源在空转，是对 GPU 算力的极大浪费。",
+        "visualSuggestion": "展示一个 32 线程 Warp 的状态变化，随着迭代，活跃线程（高亮颜色）逐渐变稀疏，但 Warp 依然被整体锁定占用，打上醒目的“30% 效率”警告标志。"
+      },
+      {
+        "slideNumber": 5,
+        "title": "缺陷二：非合并访存 (Flaw 2: Uncoalesced Accesses)",
+        "bullets": [
+          "距离拉大：步长倍增使得同一个 Warp 内相邻活跃线程访问的内存地址距离成倍扩大。",
+          "破坏合并：直接违反了 GPU 硬件进行合并访存 (Memory coalescing) 要求地址连续对齐的规则。",
+          "总线浪费：触发大量冗余的内存事务请求，取回的数据大部分不被使用，致使 DRAM 带宽急剧恶化。"
+        ],
+        "speakerNotes": "在发散的同时，还伴随着访存灾难。Warp 里的兄弟们去拿数据，但读取的地址隔得越来越远，内存控制器不得不分多次去取，取回来的数据块里大部分还是没用的，总线带宽直接见底。",
+        "visualSuggestion": "展示 Warp 内请求的内存地址呈现跨度不断翻倍的跳跃式分布。画一条红色的内存总线，标记“Uncoalesced (非合并访存)”，并用碎片图标表示带宽浪费。"
+      },
+      {
+        "slideNumber": 6,
+        "title": "优化破局：步长递减映射 (Optimization: Stride-halved Mapping)",
+        "bullets": [
+          "逆向思维：将步长初始化为 `blockDim.x / 2`，并逐轮减半 (`stride /= 2`)。",
+          "连续活跃：条件变更为 `threadIdx.x < stride`，使每一轮活跃的线程总是索引最靠前且连续的那些线程。",
+          "发散消除：保证只要活跃线程数大于或等于 32，活跃的 Warp 内部所有线程均 100% 满载，彻底消除控制流发散。"
+        ],
+        "speakerNotes": "我们稍微改变加法的顺序（前提是算子有交换律），让前半部分的线程干活，后半部分彻底休息。这样活跃线程都集中在前面的 Warp 里。只要剩下的活还够一个 Warp 做的，就不会有任何分支发散！",
+        "visualSuggestion": "动画或对比图：连续的活跃线程全部挤在左边，连续的休眠线程全部排在右边。与之前交错的排列形成鲜明对比，并打上“Divergence Free”的标签。"
+      },
+      {
+        "slideNumber": 7,
+        "title": "步长递减的双重红利 (Dual Benefits of Stride-halving)",
+        "bullets": [
+          "恢复合并访存：连续活跃的线程索引，意味着它们自然且必然地去访问物理上相邻的连续内存地址。",
+          "硬件亲和度极高：完美触发底层硬件的合并访存 (Coalesced accesses) 机制，减少冗余内存事务。",
+          "性能飞跃：通过仅改变两行索引代码，同时解除了计算资源空转与 DRAM 带宽阻塞的双重瓶颈。"
+        ],
+        "speakerNotes": "步长递减优化是 GPU 并行编程的精髓。它不仅消灭了控制发散，还顺带解决了合并访存问题。因为连续的线程一定会去读连续的内存，使得一石二鸟，性能和带宽利用率都获得了翻倍的提升。",
+        "visualSuggestion": "图解相邻且连续的活跃线程向下访问连续的内存块，触发一条畅通无阻的绿色通道，标记“100% Coalesced Memory Accesses”。"
+      },
+      {
+        "slideNumber": 8,
+        "title": "引入共享内存 (Introducing Shared Memory)",
+        "bullets": [
+          "瓶颈转移：连续访存解决后，频繁读写全局内存本身的高延迟依然是制约性能的因素。",
+          "暂存中间态：每个线程首次从全局内存读取数据后，将初始相加的结果保存在分配的 `__shared__` 数组中。",
+          "极速迭代：后续的所有归约树迭代都直接在延迟仅需几周期的片上共享内存中完成。",
+          "同步保障：必须确保在每次循环开头执行 `__syncthreads()`，保障读后写数据一致性。"
+        ],
+        "speakerNotes": "即使是完美的合并访存，频繁读写全局内存也太慢了。既然归约过程中产生的大量局部和都是阅后即焚的，我们干脆把它们全放在片上的共享内存里，最后只让一个线程把最终结果写回全局内存即可。",
+        "visualSuggestion": "层次化数据流图：Global Memory (仅用于初始载入) -> 极速下降进入 Shared Memory (闭环多轮极低延迟迭代) -> 只有一条线返回 Global Memory (写入最终输出)。"
+      },
+      {
+        "slideNumber": 9,
+        "title": "Warp 级洗牌原语 (Warp-level Shuffle Primitives)",
+        "bullets": [
+          "单 Warp 时代：当归约树进入最后 5 步（活跃线程数降至 32 及以下），只剩下单个 Warp 在工作。",
+          "寄存器通信：使用 `__shfl_down_sync` 硬件原语，允许线程直接读取同 Warp 内其他线程寄存器 (Registers) 中的变量值。",
+          "移除共享依赖：在该阶段彻底摆脱共享内存的读写，进一步降低长延迟指令占比。"
+        ],
+        "speakerNotes": "归约到了最后，只有一个 Warp 在干活。这时候再用共享内存就显得太重了。CUDA 提供了神奇的洗牌指令，让线程能直接从别人的寄存器里拿数据，速度快到飞起，是单 Warp 内部数据交换的终极武器。",
+        "visualSuggestion": "API 结构图：展示 `__shfl_down_sync(mask, partialSum, stride)` 的工作机制，图解线程 i 直接跨越步长获取线程 i+stride 内部的寄存器值。"
+      },
+      {
+        "slideNumber": 10,
+        "title": "避免过度同步陷阱 (Avoiding Over-synchronization)",
+        "bullets": [
+          "硬件内置同步：Warp 级原语在执行时已由底层硬件保障了单 Warp 内部的隐式同步语义。",
+          "混用惩罚：如果在利用 `__shfl_down_sync` 的单 Warp 归约循环中继续调用 `__syncthreads()`，将引发无谓的延迟与开销。",
+          "极限优化方案：通过实现两阶段 Warp 级归约 (Two-stage warp-wide reduction)，甚至能在初期也使用原语替代部分共享内存操作。"
+        ],
+        "speakerNotes": "用洗牌指令时千万小心，不要画蛇添足地再去调用 __syncthreads()。既然只有单 Warp 活跃，洗牌指令本身就自带同步功能，再用块级屏障不仅没用，还会强行拖慢执行节奏。这就是所谓的过度同步陷阱。",
+        "visualSuggestion": "停止标志图标（Warning）和带有删除线的 `__syncthreads()`，标注文字为“Warp 阶段无需块级同步”，以此强化反面模式的记忆。"
+      },
+      {
+        "slideNumber": 11,
+        "title": "任意长度输入与原子累加 (Arbitrary Length Inputs & Atomics)",
+        "bullets": [
+          "规模限制：单个 Thread Block 最多支持 1024 线程，无法直接处理百万级的大型数组。",
+          "分治切割：将大数组切分为多个段落，启动多个 Block 并发执行各自的局部归约。",
+          "安全汇总：由于 `__syncthreads()` 无法跨 Block 同步，必须使用 `atomicAdd` 让各 Block 的领头线程将结果安全地累加至全局输出。",
+          "不可预测性：原子操作不保证相加顺序，再次强调算子必须具备交换律。"
+        ],
+        "speakerNotes": "真实世界的数据动辄上亿。我们需要切块分给多个 Thread Block。但各个 Block 算完的时间完全不可控，所以最后汇聚时必须用原子操作来防范数据读写碰撞。正因为原子操作不保证顺序，所以算子的交换律极为关键。",
+        "visualSuggestion": "展示多个并行的 Block (Segment 1, Segment 2...) 各自归约成一个局部结果 (Local Sum)，最后所有的局部结果通过红色的 `atomicAdd` 汇聚到一个全局输出 (Global Sum)。"
+      },
+      {
+        "slideNumber": 12,
+        "title": "线程粗化摊薄开销 (Thread Coarsening)",
+        "bullets": [
+          "硬件利用率危机：即便经过重重优化，归约树越往后空闲的线程越多，这是该算法先天的硬件利用不足 (Hardware underutilization)。",
+          "粗化策略：在进入归约树之前，让单个线程先通过串行 for 循环独立累加一段连续数据 (COARSE_FACTOR)。",
+          "收益分析：串行阶段 100% 满载且无需同步。该方法极大地减少了所需启动的 Block 数量，从而成倍摊薄了尾部空转与并发调度的开销。"
+        ],
+        "speakerNotes": "归约树越往后闲着的人越多。线程粗化就是让一个线程一开始先串行干好几个人的活。因为这部分串行工作是 100% 满载的，整体启动的 Block 数量随之锐减，极大地摊薄了后期归约树由于兵力闲置带来的空转成本。",
+        "visualSuggestion": "利用面积图对比：左侧是一个短小的 100% 满载区域（粗化前）；右侧是一个巨大的 100% 满载矩形块（串行粗化部分），连接着明显变小的低利用率三角形区域（归约树）。"
+      },
+      {
+        "slideNumber": 13,
+        "title": "总结：并行归约优化层梯 (Summary of Optimizations)",
+        "bullets": [
+          "步骤 1：步长递减映射。集中活跃线程，彻底消灭控制流发散，并恢复合并访存。",
+          "步骤 2：引入共享内存。避开全局内存高昂的 DRAM 读写延迟，利用片上资源极速迭代。",
+          "步骤 3：Warp 级原语。剥离最后的屏障同步与共享内存依赖，让寄存器直接通信。",
+          "步骤 4：多 Block 原子扩展。支撑起处理任意超大规模数组的能力。",
+          "步骤 5：线程粗化。直击硬件利用率软肋，以适度串行摊薄并发开销，逼近硬件性能极限。"
+        ],
+        "speakerNotes": "并行归约堪称 GPU 优化的教科书。我们从一个资源利用率只有 30%、带宽稀碎的基础版，一路通过调整内存映射、运用片上内存、寄存器原语、再到线程粗化，最终把它打磨成了极限性能的模板。这就是 GPU 底层思维。",
+        "visualSuggestion": "呈现一个向上的阶梯图，每一级台阶标注上述 1 到 5 种优化手段，顶层平台标注“峰值硬件吞吐量 (Peak Hardware Throughput)”。"
+      }
+    ]
+  }
+}

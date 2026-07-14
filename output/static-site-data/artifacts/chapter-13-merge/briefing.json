@@ -1,0 +1,62 @@
+{
+  "chapterId": "chapter-13-merge",
+  "chapterTitle": "Merge",
+  "sourceId": "fe2cbf02-e8a0-4d31-8236-d29aa0d0b96c",
+  "sourceTitle": "chapter-13-merge.pdf",
+  "artifactType": "briefing",
+  "artifactLabel": "Briefing",
+  "generatedAt": "2026-07-13T14:18:54.396091Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "简报：归并 (Chapter 13: Merge)",
+    "summary": "本简报概述了在 GPU 上实现并行有序归并 (Parallel Ordered Merge) 的核心挑战与演进路径。由于输入数据消耗的动态不可预测性，本章引入协同秩 (Co-rank) 算法进行输入边界搜索，并逐步通过共享内存分块 (Tiling)、循环缓冲区 (Circular-buffer) 及线程粗化 (Thread coarsening) 彻底解决非合并访存并最大化内存带宽利用率。",
+    "sections": [
+      {
+        "heading": "执行摘要 (Executive Summary)",
+        "points": [
+          "有序归并 (Ordered Merge) 是归并排序和 Map-Reduce 等大规模分布式框架的核心组件，其关键要求是保持稳定性 (Stability)，即相等键值的元素需维持原输入顺序。",
+          "不同于矩阵乘法等静态内存映射模式，归并内核中每个线程需要的输入数据边界完全取决于数据的值。这种动态输入数据识别 (Dynamic input data identification) 为内存访问优化带来了巨大挑战。",
+          "通过结合 O(log N) 的协同秩 (Co-rank) 二分查找与环形共享内存缓冲区，GPU 能够以极致的合并访存 (Coalesced accesses) 效率完成动态数据归并。"
+        ]
+      },
+      {
+        "heading": "核心主张 (Core Claims)",
+        "points": [
+          "协同秩突破动态划分 (Co-rank for Dynamic Partitioning)：为了让线程并行工作，必须预先知道各自的输入范围。Co-rank 函数利用输出索引 k，通过二分查找在输入数组 A 和 B 中定位唯一的边界 i 和 j (满足 i+j=k)，保证并行阶段互不干扰。",
+          "基础内核引发访存碎片化 (Uncoalesced Accesses in Basic Kernel)：如果直接让相邻线程基于各自的 Co-rank 在全局内存中合并，由于不同线程需要的数据物理跨度不可预测，会触发极其严重的非合并访存，浪费大量 DRAM 带宽。",
+          "循环缓冲区榨干内存带宽 (Circular-Buffer Tiling)：使用基础分块 (Tiling) 预取数据到共享内存时，由于每次迭代消耗的 A 和 B 元素数量不可知，会有部分数据未被使用。直接重新加载会浪费约 50% 带宽。引入循环缓冲区 (Circular-buffer) 通过指针回绕 (Wrap-around) 仅加载新数据，实现了 100% 的带宽利用率。",
+          "线程粗化摊薄搜索开销 (Thread Coarsening)：二分查找的 O(log N) 开销极其高昂。如果为每个输出元素分配一个线程，纯计算工作将被搜索开销淹没。通过让单个线程负责串行合并多个元素，能有效摊薄 Co-rank 成本。"
+        ]
+      },
+      {
+        "heading": "本章重要性 (Why This Chapter Matters)",
+        "points": [
+          "本章揭示了面对“数据依赖型访存” (Data-dependent memory accesses) 这一极端棘手的并行问题时，如何通过反向推导 (由输出找输入) 建立并行边界。",
+          "展示了在追求极致性能时，如何在 GPU 寄存器数量 (Occupancy) 与复杂数据结构 (如循环缓冲区) 之间进行权衡取舍，是深入理解内存受限 (Memory-bound) 内核优化的绝佳案例。"
+        ]
+      },
+      {
+        "heading": "先决条件 (Prerequisites)",
+        "points": [
+          "熟练掌握二分查找 (Binary search) 的边界收敛逻辑及其在处理重复元素时的保序 (Stability) 判定。",
+          "深入理解全局内存的合并访存 (Coalesced memory accesses) 规则以及共享内存 (Shared memory) 在复用与随机访存上的优势。",
+          "理解工作效率 (Work efficiency) 概念，明确过多无谓的并行搜索会拖垮系统整体吞吐量。"
+        ]
+      },
+      {
+        "heading": "实现启示与常见错误 (Implementation Implications)",
+        "points": [
+          "无粗化导致的性能倒退 (Performance Regression without Coarsening)：如果强行实施极限细粒度并行（单线程单元素），二分搜索的开销将占据主导，导致 GPU 甚至跑不过单核 CPU 的顺序合并。",
+          "复杂逻辑硬编码的灾难 (Hardcoding Circular Logic)：在实现循环缓冲区时，若将模运算 (`%`) 逻辑直接硬编码进 Co-rank 二分查找内部，会引发严重的寄存器膨胀与代码不可维护。应提供简化接口 (Simplified model)，仅在访问数据的最终一刻 (`A_S[(start + offset) % size]`) 暴露出环形本质。",
+          "遗漏剩余元素检查 (Missing Bounds Checks)：在迭代加载分块数据的末尾阶段，剩余的输入元素可能无法填满一个 Tile。必须加入严格的边界判断 (`A_length - A_consumed`)，否则会导致越界访问或引入垃圾数据。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "chapterId": "chapter-06-performance-considerations",
+  "chapterTitle": "Performance Considerations",
+  "sourceId": "5227cb2e-9a3a-4d4a-8fa3-7cd998d7f56d",
+  "sourceTitle": "chapter-06-performance-considerations.pdf",
+  "artifactType": "data-table",
+  "artifactLabel": "Data Table",
+  "generatedAt": "2026-07-13T13:35:46.648072Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "数据表格：性能考量 (Chapter 6: Performance Considerations)",
+    "summary": "本数据表格系统整理了《大规模并行处理器编程》第六章的核心性能优化策略，涵盖全局内存合并访问、存储体冲突消除、线程粗化、循环展开与双缓冲机制，深入剖析 CUDA 内核性能推理与常见实现陷阱。",
+    "sections": [
+      {
+        "heading": "表格说明 (Table Description)",
+        "points": [
+          "本表结构化解析了提升计算利用率 (Compute utilization)、内存利用率 (Memory utilization) 和降低同步延迟 (Synchronization latency) 的核心优化技术。",
+          "通过概念定义、CUDA相关性、性能考量及常见误区，辅助开发者建立系统化、基于底层的性能调优 (Performance Tuning) 思维。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "concept": "全局内存合并访问 (Global Memory Coalescing)",
+        "definition": "当 Warp 内的线程执行加载或存储指令时，若访问的全局内存地址连续且对齐，硬件会将其合并为更少的大型内存请求。",
+        "cudaRelevance": "深度契合底层 DRAM 突发读取 (Burst) 特性与缓存行 (Cache line) 机制。针对跨步极大的列主序 (Column-major) 矩阵，常利用共享内存实施“转角 (Corner Turning)”技术以实现合并。",
+        "performanceConcern": "非合并访问 (Uncoalesced access) 会产生大量碎片化内存请求，导致内存带宽利用率骤降。非合并写入比读取的惩罚更为严重，可能触发额外的 ECC 读-改-写 (Read-modify-write) 巨大开销。",
+        "commonMistake": "在处理列主序矩阵时，直接让相邻的线程 (如连续的 threadIdx.x) 访问跨度极大的列元素，导致极度低效的散跃内存访问。"
+      },
+      {
+        "concept": "隐藏内存延迟 (Hiding Memory Latency)",
+        "definition": "通过维持大量活跃线程并发执行，在部分 Warp 等待极长的 DRAM 访问响应时，调度器能无缝切换到其他就绪的 Warp 继续执行的机制。",
+        "cudaRelevance": "高占用率 (Occupancy) 能够确保内核发出足够多的并发内存请求，结合交错数据分布 (Interleaved data distribution)，可以完美打满 DRAM 多通道 (Channels) 和多存储体 (Banks) 的交错带宽。",
+        "performanceConcern": "若活动 Warp 数量不足，内存延迟将完全暴露，导致计算核心停滞。同时，内存子系统多通道和多存储体的数据传输带宽 (Data transfer bandwidth) 也会被严重闲置。",
+        "commonMistake": "仅仅关注提升单线程速度而过度消耗寄存器资源，导致 SM 能容纳的线程总数跌破阈值，使硬件彻底丧失隐藏长延迟访存的核心能力。"
+      },
+      {
+        "concept": "向量加载与存储 (Vector Loads and Stores)",
+        "definition": "通过使用内置的向量数据类型（如 float4），使单个线程能够利用一条汇编指令连续读取或写入最高 16 字节的数据。",
+        "cudaRelevance": "可以通过将普通的一维数组指针强制类型转换为向量指针 (如 float4*) 来实现。它有效缩减了访存指令的数量，是进一步榨取内存带宽的利器。",
+        "performanceConcern": "能够减少高达 75% 的内存指令执行开销 (Instruction execution overhead)。即使在资源受限导致内核以低占用率运行的恶劣场景下，依然能维持极高的并发内存请求量。",
+        "commonMistake": "当处理的数据总量不能被向量长度 (如 4) 完美整除时，开发者极易遗漏添加边界条件检查，导致末尾的标量 (Scalar) 处理缺失，从而触发非法的越界内存访问。"
+      },
+      {
+        "concept": "存储体冲突与数据填充 (Bank Conflicts & Padding)",
+        "definition": "片上共享内存 (SRAM) 被划分为 32 个独立的存储体 (Banks)。当同一 Warp 的多个线程同时访问同一个 Bank 的不同地址时，硬件被迫将这些访问串行化 (Serialize) 处理。",
+        "cudaRelevance": "最常发生于 Warp 按照 32 的步长 (Stride) 按列读写二维共享内存数组时，会触发灾难性的 32-way 冲突。标准解决方案是通过数据填充 (Padding)，在每行末尾增加额外的占位列（如从 32 扩为 33）来打乱地址映射。",
+        "performanceConcern": "串行化会导致原本可以在 1 个时钟周期完成的高速共享内存访问被硬生生拖慢 32 倍，使得本应用于加速的共享内存反向退化为严重的性能瓶颈。",
+        "commonMistake": "开发者很难在字面代码中直接察觉步长隐患。而在实施填充 (Padding) 时，常忽略对多维寻址偏移量公式的更新（例如无法再继续使用移位操作 i >> 5，而需改为 i * 33），引发寻址错误。"
+      },
+      {
+        "concept": "线程粗化 (Thread Coarsening)",
+        "definition": "打破极端细粒度并行的迷信，将多个原本独立的工作单元（如计算多个输出元素）分配给单个线程按顺序循环执行的高级优化技术。",
+        "cudaRelevance": "当硬件资源不足以并发所有 Block、势必发生串行执行时，粗化能减少多线程带来的冗余数据加载、指令分发以及同步屏障的整体成本。",
+        "performanceConcern": "双刃剑：适度粗化能摊薄并行开销；但过度粗化会导致单线程寄存器用量暴涨，从而使占用率 (Occupancy) 跌下悬崖。不合理的粗化系数还会引发部分执行波次算力闲置的尾部效应 (Tail effect)。",
+        "commonMistake": "误以为粗化系数 (Coarsening factor) 越大越好。同时，在不同的设备代际之间迁移代码时，忘记针对具有不同执行资源规模的新设备重新调优粗化系数。"
+      },
+      {
+        "concept": "循环展开 (Loop Unrolling)",
+        "definition": "使用 `#pragma unroll` 指令指示编译器复制循环体代码，大幅减少或彻底消除循环分支和边界判断的编译期优化技术。",
+        "cudaRelevance": "在搭配线程粗化 (Thread coarsening) 使用时极为关键。它能将局部数组的动态变量索引彻底转化为编译期常量索引，从而促使编译器将数据提升至极速寄存器中。",
+        "performanceConcern": "不仅能减少底层分支指令带来的流水线停顿，还能暴露出更多独立的指令，使得编译器可以进行更高效的指令调度 (Instruction scheduling) 来隐藏计算延迟。",
+        "commonMistake": "在应用了线程粗化之后，代码中使用了带有变量索引的局部数组 (如 `x[c]`) 却忘记强制展开循环。这会迫使编译器将该临时数组分配到高延迟的全局本地内存 (Local memory) 中，导致性能不升反降。"
+      },
+      {
+        "concept": "双缓冲 (Double Buffering)",
+        "definition": "通过在循环内部交替轮换使用两个相互独立的内存缓冲区，将数据的“读取”和“覆盖写入”操作物理隔离在不同内存空间的技术。",
+        "cudaRelevance": "专门用于消除为了防止“写后读 (Write-after-read)”冲突而被迫加入的 `__syncthreads()` 屏障同步。",
+        "performanceConcern": "由于写后读依赖本质上是由复用同一块内存引起的“假依赖 (False dependence)”，通过双缓冲消除这种假依赖及相关的屏障同步，能够显著削减同步延迟 (Synchronization latency)。",
+        "commonMistake": "在实现指针轮换或数组切换逻辑时发生错乱，导致在下一轮迭代中读取了未更新的旧缓冲区脏数据；或为了双缓冲而申请了过多共享内存导致硬件占用率受损。"
+      }
+    ]
+  }
+}

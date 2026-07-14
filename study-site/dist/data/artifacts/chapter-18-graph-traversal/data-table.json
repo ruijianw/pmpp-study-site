@@ -1,0 +1,72 @@
+{
+  "chapterId": "chapter-18-graph-traversal",
+  "chapterTitle": "Graph Traversal",
+  "sourceId": "6170bf2b-3c99-4347-ae81-bf05ea83eac4",
+  "sourceTitle": "chapter-18-graph-traversal.pdf",
+  "artifactType": "data-table",
+  "artifactLabel": "Data Table",
+  "generatedAt": "2026-07-13T14:49:14.736306Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "数据表格：图遍历 (Chapter 18: Graph Traversal)",
+    "summary": "本数据表格整理了在 GPU 上加速图遍历 (以广度优先搜索 BFS 为例) 的核心架构优化与算法权衡。详细剖析了以顶点/边为中心的并行策略、边界队列 (Frontiers)、共享内存私有化 (Privatization) 以及协作组 (Cooperative groups) 网格级同步的底层性能特征与常见实现陷阱。",
+    "sections": [
+      {
+        "heading": "表格说明 (Table Description)",
+        "points": [
+          "系统对比了在不同图结构 (低度数道路网 vs. 高方差社交网) 下，各类并行策略的架构适应性与性能瓶颈。",
+          "深入解析了如何利用底层微架构特性 (如原子操作、共享内存合并访存、网格级屏障) 将图遍历的性能推向理论极限。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "concept": "顶点中心 Push 策略 (Vertex-centric Push / Top-down)",
+        "definition": "为每个顶点分配一个线程。线程检查其负责的顶点是否处于前一层的活跃波前中，若是，则遍历该顶点的所有出边并尝试更新未访问的邻居。",
+        "cudaRelevance": "依赖 CSR (压缩稀疏行) 格式以快速获取出边。在 BFS 初期波前较小时效率较高，因为此时活跃顶点少，需要遍历的邻居边列表较短。",
+        "performanceConcern": "当图的顶点度数方差极大 (如社交网络的“长尾分布”) 时，处理明星节点 (超高度数) 的单线程会执行极长的循环，严重拖慢整个 Warp，导致极端的控制流发散 (Control flow divergence) 和负载不均。",
+        "commonMistake": "在无边界 (Frontier-free) 的简单实现中，多线程并发裸写同一邻居的层级标签。虽然此操作在数学上具有幂等性 (Idempotent)，但在 C++ 内存模型中构成未定义的数据竞争 (Race condition)，保守且安全的做法必须使用原子操作。"
+      },
+      {
+        "concept": "顶点中心 Pull 策略 (Vertex-centric Pull / Bottom-up)",
+        "definition": "为每个未访问的顶点分配一个线程。线程遍历其所有入边，以寻找是否存在属于前一层的已访问父节点，一旦找到即可立即跳出循环 (Break early)。",
+        "cudaRelevance": "必须依赖 CSC (压缩稀疏列) 格式以获取入边。通过提前跳出循环，极大地削减了高度数顶点的冗余检查，从而有效降低了负载不均和 Warp 内的控制流发散。",
+        "performanceConcern": "在 BFS 早期，绝大多数顶点未被访问且难以碰到活跃的父节点，导致全图扫描产生大量空转。但结合 Push 策略形成的“方向优化 (Direction-optimized)”混合策略，在波前膨胀的后期切换为 Pull，可大幅提升小世界图 (Small world graphs) 的性能。",
+        "commonMistake": "误以为所有图都能无代价使用 Pull 策略。如果处理的是有向非对称图，为了使用 Pull 策略，必须在显存中额外维护一份庞大的 CSC 格式数据结构，产生高昂的空间开销。"
+      },
+      {
+        "concept": "边中心并行化 (Edge-centric Parallelization)",
+        "definition": "摒弃按顶点分配的思路，直接为图中的每一条边分配一个单独的线程，线程独立检查其源节点状态并尝试更新目标节点。",
+        "cudaRelevance": "依赖 COO (坐标) 格式存储的边列表。由于每个线程严格只处理一条边，从根本上消灭了由顶点度数长短不一引发的底层控制流发散 (Control flow divergence) 和负载失衡。",
+        "performanceConcern": "通过牺牲算法的工作效率 (Work efficiency) 换取了硬件执行的一致性。每一层遍历都会为全图所有边启动线程，产生海量的冗余检查 (理论复杂度退化为 O(d*m))，仅在顶点度数方差极大的极少数图中才能抵消其劣势。",
+        "commonMistake": "在低平均度数且分布均匀的图 (如道路网或 CAD 电路模型) 中盲目使用边中心策略。由于这类图本身负载均衡，边中心策略带来的全图海量线程启动开销会引发严重的性能降级。"
+      },
+      {
+        "concept": "边界队列优化 (Frontiers)",
+        "definition": "在每一层级动态维护一个当前活跃顶点的队列 (Frontier)，仅为该队列中的元素启动线程，从而避免在每层中盲目扫描全图的无关顶点。",
+        "cudaRelevance": "将图遍历的工作复杂度从次优状态优化至理想的 O(n+m)。通过紧凑的内存队列布局，大幅减少了 Kernel 启动的线程总规模和全局内存的无效读取操作。",
+        "performanceConcern": "虽然大幅提升了工作效率，但在向全局边界队列追加新顶点时，需要所有活跃线程高频调用原子加法 (`atomicAdd`) 来竞争更新唯一的队列大小计数器，这成为系统的新性能瓶颈。",
+        "commonMistake": "使用普通读取判断邻居状态后再执行入队操作。并发访问同一邻居的多个线程可能同时发现其“未访问”，导致该邻居被多次重复压入边界队列。必须使用基于 Compare-and-Swap (如 `compare_exchange_strong`) 的单步原子更新来确保唯一入队。"
+      },
+      {
+        "concept": "边界私有化 (Privatization of Frontiers)",
+        "definition": "利用线程块的共享内存 (Shared memory) 建立局部的私有边界队列和计数器，线程优先向局部队列中插入顶点，仅在局部队列满载或结束时才协作转储至全局队列。",
+        "cudaRelevance": "这是并行编程中典型的数据私有化 (Privatization) 优化。它将数万个线程对全局唯一计数器的原子争用，成功降级为同一 Block 内部的低延迟共享内存原子冲突，极大解放了内存吞吐。",
+        "performanceConcern": "显著降低了 `atomicAdd` 的延迟惩罚。同时，在将私有队列转储到全局队列的最终阶段，利用块内线程连续计算的全局索引偏移量，可以触发极高效的全局内存合并访存 (Coalesced memory accesses)。",
+        "commonMistake": "在局部队列溢出 (Overflow) 导致需要向全局队列写入时，未能正确恢复私有计数器的值；或在共享内存初始化时忘记放置 `__syncthreads()` 屏障，导致产生界外写入或丢失顶点数据。"
+      },
+      {
+        "concept": "协作组网格级同步 (Cooperative Groups Grid-wide Barrier)",
+        "definition": "使用 CUDA 提供的 `cudaLaunchCooperativeKernel` 和 `grid.sync()` API，允许在单一内核执行期间，对网格内所有的线程块执行全局屏障同步。",
+        "cudaRelevance": "在标准的 BFS 实现中，由于层级之间存在严格的依赖关系，必须通过主机端 (Host) 循环不断终止并重新启动 Kernel。协作组使得内核能在设备端跨层同步并复用状态，彻底消灭了 Kernel 的启动调度延迟。",
+        "performanceConcern": "对于平均度数极低、BFS 层数极深 (如数万层) 的图，消除每次迭代的 Kernel 启动开销 (Launch overhead) 将带来决定性的总体性能提升。",
+        "commonMistake": "网格死锁 (Grid Deadlock)。如果启动的 Thread Block 总数超出了目标 GPU 所有 SM 能够物理并发容纳的上限 (利用 `cudaOccupancyMaxActiveBlocksPerMultiprocessor` 计算)，已驻留的 Block 会在 `grid.sync()` 处无限期等待未被调度的 Block，导致 GPU 彻底死锁。"
+      }
+    ]
+  }
+}

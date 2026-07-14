@@ -1,0 +1,67 @@
+{
+  "chapterId": "chapter-03-multidimensional-grids-and-data",
+  "chapterTitle": "Multidimensional Grids And Data",
+  "sourceId": "398d28d9-3e81-4b0c-a2c0-69eefc525f0f",
+  "sourceTitle": "chapter-03-multidimensional-grids-and-data.pdf",
+  "artifactType": "study-guide",
+  "artifactLabel": "Study Guide",
+  "generatedAt": "2026-07-13T13:16:21.818318Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "学习指南：多维网格与数据 (Chapter 3: Multidimensional Grids and Data)",
+    "summary": "本章深入探讨了 CUDA 中的多维网格 (Grid) 与线程块 (Block) 组织方式，以及如何将多维线程精确映射到多维数据。通过彩色转灰度、图像模糊 (Image Blur) 和矩阵乘法 (Matrix Multiplication) 三个经典实例，详细解析了动态数组的线性化 (Linearization)、行主序 (Row-major) 内存布局原理，以及应对复杂线程协作时的边界检查 (Boundary Checking) 策略。",
+    "sections": [
+      {
+        "heading": "学习目标 (Learning Objectives)",
+        "points": [
+          "1. 掌握使用 dim3 向量类型配置一维至三维的执行配置，理解单 Block 最多 1024 个线程等底层硬件限制。",
+          "2. 熟练推导多维线程坐标（如 row = blockIdx.y*blockDim.y+threadIdx.y），建立并发线程与多维数据的空间映射关系。",
+          "3. 深入理解行主序 (Row-major layout) 布局机制，掌握动态分配多维数组在 CUDA C++ 中的线性化 (Linearization) 偏移量计算公式。",
+          "4. 能够为包含邻域数据处理（如图像模糊的 Patch 计算）的复杂内核编写严谨的边界检查 (Boundary Checking) 逻辑。",
+          "5. 理解并实现基础的矩阵乘法 (Matrix Multiplication) 内核，掌握按行与按列遍历一维展平数组的内存寻址差异。"
+        ]
+      },
+      {
+        "heading": "章节结构映射 (Section-by-Section Chapter Map)",
+        "points": [
+          "3.1 多维网格组织 (Multidimensional grid organization): 介绍 dim3 结构体、多维执行配置的语法，以及 Grid 和 Block 的维度上限（如 gridDim.y/z 最大 65535，单 Block 最多 1024 线程）。",
+          "3.2 将线程映射到多维数据 (Mapping threads to MultiDimensional data): 以彩色图像转灰度图为例，讲解多维数据的行主序展平和基于线程 ID 的二维坐标映射，以及处理非整除数据的边界过滤。",
+          "3.3 图像模糊内核 (Image blur): 解析包含多对一邻域计算的图像处理内核，重点讨论如何通过嵌套循环处理局部补丁 (Patch) 并实施严密的边界检查以防止越界访存。",
+          "3.4 矩阵乘法 (Matrix multiplication): 演示基础 BLAS Level-3 运算的并行化实现，剖析 M 矩阵（行遍历）与 N 矩阵（列遍历）在一维线性化内存中的跨距计算 (k*Width+col)。"
+        ]
+      },
+      {
+        "heading": "关键概念精解 (Key Concepts)",
+        "points": [
+          "多维执行配置 (Multidimensional Configuration): 通过 dim3 类型的 x, y, z 维度变量启动内核，实现符合数据物理拓扑（如图像的宽高）的线程网格划分。",
+          "数组线性化 (Array Linearization): 由于动态分配的多维数组在编译期缺乏维度信息，必须在代码中显式地将其展平为平坦空间 (Flat memory space) 的一维数组进行计算（例如偏移量公式 row * width + col）。",
+          "行主序布局 (Row-major layout): C/C++ 的多维数组在内存中的默认排列方式，同行元素物理地址连续。这是推导二维甚至三维寻址偏移量的基石。",
+          "图像补丁 (Patch): 在图像模糊等卷积类算法中，计算目标像素不仅需要其自身数据，还需要获取其周围预设半径 (BLUR_SIZE) 内相邻像素值的集合。",
+          "边界检查 (Boundary Checking): 针对因 Block 对齐产生冗余线程，或者图像边缘像素缺少完整计算补丁的情况，使用 if 语句阻断非法内存访问的关键保护机制。"
+        ]
+      },
+      {
+        "heading": "常见误区与实现缺陷 (Common Misunderstandings & Implementation Mistakes)",
+        "points": [
+          "维度顺序倒置：在设定 dim3(x, y, z) 时，x 代表宽度 (列方向)，y 代表高度 (行方向)。但在 C++ 传统多维数组声明 [y][x] 中，行在列之前。混淆二者会导致严重的线程坐标映射翻转。",
+          "动态数组的二维解引用错误：试图在内核中对由 cudaMalloc 分配的设备指针使用类似 P[row][col] 的二维数组语法。由于缺乏编译期列宽信息，这将导致编译错误或内存错乱，必须手动执行 P[row * width + col]。",
+          "边缘像素越界访存：在实现如图像模糊等需要访问周围像素的算法时，仅保护目标线程的 (row, col) 不越界是不够的，如果忽略了对周边坐标 (curRow, curCol) 进行负值 (<0) 和超限 (>=width/height) 检测，会读入非法的垃圾数据甚至引发段错误。"
+        ]
+      },
+      {
+        "heading": "三阶段实践计划 (3-Session Practice Plan)",
+        "points": [
+          "Session 1: 多维索引推演与线性化。在纸上手绘一个 4x4 的矩阵，并用 2x2 的 Block 进行二维划分。手动推导 Thread(0,1) 在 Block(1,0) 中的全局坐标，并套用 row * width + col 公式计算其一维内存偏移。",
+          "Session 2: 图像模糊 (Image Blur) 边界推演。针对图像左上角坐标为 (0,0) 的像素，步进模拟 3x3 补丁的嵌套循环逻辑。写出并验证被 if(curRow>=0 && curCol>=0) 拦截的 5 个非法相邻坐标。",
+          "Session 3: 矩阵乘法 (Matrix Multiplication) 步进分析。基于公式 Pvalue += M[row*Width+k] * N[k*Width+col]，分析并编写基础矩阵乘法内核，对比行遍历 (M) 和列遍历 (N) 在内存中的步长 (Stride) 差异及数据连续性。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

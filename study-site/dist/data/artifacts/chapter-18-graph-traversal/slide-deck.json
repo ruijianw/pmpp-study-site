@@ -1,0 +1,175 @@
+{
+  "chapterId": "chapter-18-graph-traversal",
+  "chapterTitle": "Graph Traversal",
+  "sourceId": "6170bf2b-3c99-4347-ae81-bf05ea83eac4",
+  "sourceTitle": "chapter-18-graph-traversal.pdf",
+  "artifactType": "slide-deck",
+  "artifactLabel": "Slide Deck",
+  "generatedAt": "2026-07-13T14:52:56.268553Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "幻灯片大纲：图遍历 (Chapter 18: Graph Traversal)",
+    "summary": "本幻灯片组系统讲解了 GPU 上图遍历算法 (以 BFS 为例) 的核心架构优化。内容涵盖顶点与边中心策略 (Vertex/Edge-centric) 的底层权衡，边界队列 (Frontiers) 对工作效率的提升，共享内存私有化 (Privatization) 缓解原子冲突，以及协作组 (Cooperative Groups) 实现网格级同步与死锁防御。",
+    "sections": [
+      {
+        "heading": "使用建议 (Usage Tips)",
+        "points": [
+          "第 1-4 页重点对比顶点中心策略中的 Push (CSR) 与 Pull (CSC) 在处理控制流发散 (Control flow divergence) 上的区别。",
+          "第 5-7 页引入边中心 (Edge-centric) 策略与边界队列 (Frontiers)，讨论如何在负载均衡与工作效率 (Work efficiency) 之间寻找平衡，并规避并发重复入队陷阱。",
+          "第 8-10 页深入微架构，讲解如何利用共享内存私有化 (Privatization) 消除高频 atomicAdd 竞争并恢复合并访存。",
+          "第 11-13 页探讨高级调度，涵盖协作组 (Cooperative Groups) 的网格级屏障同步、死锁 (Deadlock) 防御以及基于度数的桶排序映射。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "slideNumber": 1,
+        "title": "图遍历与 GPU 架构挑战 (Graph Traversal Challenges)",
+        "bullets": [
+          "图的极端不规则性 (Irregularity)：度数分布不均会导致严重的控制流发散 (Control flow divergence) 与负载失衡 (Load imbalance)。",
+          "波前扩散特性 (Wavefront diffusion)：广度优先搜索 (BFS) 等算法表现为波前层级推进，波前规模可能呈指数级激增。",
+          "核心权衡：在算法的工作效率 (Work efficiency) 与硬件的执行一致性之间寻找平衡。"
+        ],
+        "speakerNotes": "图结构本质上是高度不规则的，这与 GPU 喜欢的大规模规则并行计算背道而驰。在图遍历中，明星节点可能有一万条边，而普通节点只有一条，这会让处理它们的 Warp 线程组陷入极端的负载不均衡。我们的核心目标是如何重塑算法，迎合底层架构。",
+        "visualSuggestion": "展示一个包含核心“明星节点”和边缘“长尾节点”的社交网络拓扑图，用颜色标记出波前 (Wavefront) 层次。"
+      },
+      {
+        "slideNumber": 2,
+        "title": "顶点中心 Push 策略 (Vertex-Centric Push)",
+        "bullets": [
+          "映射策略：自顶向下 (Top-down)，单线程负责单一顶点，遍历其出边寻找未访问的邻居。",
+          "数据结构依赖：要求高效访问行偏移，必须使用 CSR (压缩稀疏行) 格式。",
+          "实现陷阱：并发写入邻居层级时，虽具数学幂等性 (Idempotent)，但违反 C++ 内存模型构成数据竞争 (Race condition)，必须使用原子操作。"
+        ],
+        "speakerNotes": "Push 策略是最符合直觉的，我是一个节点，我把我的状态‘推’给我的邻居。它需要 CSR 格式。但注意，如果两个线程同时发现同一个未访问邻居并写入相同的层级值，虽然结果没错，但并发盲写是危险的，标准做法仍需使用原子操作。",
+        "visualSuggestion": "代码对比片段：打红叉的无原子操作并发写入 vs 打绿勾的安全 `atomicMin` / `atomicCAS` 更新。"
+      },
+      {
+        "slideNumber": 3,
+        "title": "顶点中心 Pull 策略 (Vertex-Centric Pull)",
+        "bullets": [
+          "映射策略：自底向上 (Bottom-up)，线程负责未访问顶点，反向遍历其入边寻找前一层的父节点。",
+          "数据结构依赖：要求高效获取目标顶点的来源，必须使用 CSC (压缩稀疏列) 格式。",
+          "提前跳出 (Break early) 优化：找到任意一个合法父节点即可立即退出循环，极大削减了高度数顶点的冗余检查并降低了发散。"
+        ],
+        "speakerNotes": "相比于 Push 必须遍历完所有出边，Pull 策略极其聪明：只要我找到一个父节点在上一层，我就能证明我在当前层，直接 Break 跳出！这对于入度上万的明星节点来说，能节省海量的计算周期，大幅缓解 Warp 内部的控制流发散。",
+        "visualSuggestion": "展示 Pull 策略寻找父节点的动画，遍历到第二个入边发现父节点后立刻出现“Break Early!”并终止对后续入边的搜索。"
+      },
+      {
+        "slideNumber": 4,
+        "title": "方向优化策略 (Direction-Optimized BFS)",
+        "bullets": [
+          "动态切换：在单一算法中融合 Push 和 Pull 的优势。",
+          "切换时机：在 BFS 早期波前极小时使用 Push；当波前膨胀、活跃顶点激增时切换为 Pull。",
+          "最佳适用场景：针对平均度数高、度数方差极大的小世界图 (Small world graphs) 具有奇效。"
+        ],
+        "speakerNotes": "既然 Push 适合前期（活跃节点少），Pull 适合后期（容易命中活跃父节点），为什么不结合起来呢？这就是经典的“方向优化”。特别是在社交网络这种“小世界”图中，几步之内波前就会覆盖大半个图，此时切到 Pull 策略，性能会呈现指数级提升。",
+        "visualSuggestion": "展示一个图表，横轴是 BFS 迭代层数，纵轴是活跃波前规模，曲线在低谷时标注“Push”，在高峰期标注“Pull”。"
+      },
+      {
+        "slideNumber": 5,
+        "title": "边中心并行化 (Edge-Centric Parallelization)",
+        "bullets": [
+          "映射策略：摒弃顶点映射，单线程严格对应单条边。依赖 COO (坐标) 格式。",
+          "消灭发散：每个线程工作量绝对一致，从物理上彻底消灭了由顶点度数差异引发的 Warp 闲置与控制流发散。",
+          "致命代价：工作效率 (Work efficiency) 极差，理论复杂度退化至 O(d*m)，每层均会产生海量无效扫描。"
+        ],
+        "speakerNotes": "如果我们被顶点度数不均搞疯了，干脆为每条边分配一个线程！这就是边中心策略。发散没了，负载绝对均衡。但代价极其惨重：哪怕当前波前只有一个点，你也要扫描全图所有的边。它只在度数方差极端夸张的极少数图里才划算。",
+        "visualSuggestion": "天平对比图：左侧是“完美的硬件负载均衡”，右侧是“糟糕的算法工作复杂度 O(d*m)”，显示这是一场极端的微架构交易。"
+      },
+      {
+        "slideNumber": 6,
+        "title": "边界队列优化 (Frontiers for Work Efficiency)",
+        "bullets": [
+          "核心思想：动态维护当前层活跃顶点列表 (Frontier)，仅为队列中的顶点启动线程。",
+          "复杂度收敛：避免盲目扫描全图无关节点，将整体工作复杂度拉回理想的 O(n+m)。",
+          "状态变量缩减：Host 端无需依靠全图扫描检查是否结束，当前边界队列长度为 0 即代表遍历完成。"
+        ],
+        "speakerNotes": "为了救回工作效率，我们引入前沿边界 (Frontiers)。把每一层活跃的顶点装进队列，下一层就只针对这个队列启动线程。那些休眠的节点直接跳过。这就把不必要的全图扫描彻底砍掉了，让算法复杂度逼近最优解。",
+        "visualSuggestion": "层级对比图：上方是“无 Frontier”每层强制扫描所有顶点 (大量灰色失效节点)；下方是“有 Frontier”仅将激活节点 (高亮) 传递给下一层。"
+      },
+      {
+        "slideNumber": 7,
+        "title": "边界入队陷阱：重复排队 (Duplicate Enqueue)",
+        "bullets": [
+          "读后写竞争：若用普通读取 `if(level == UNVISITED)`，多个并发线程会同时读到未访问状态。",
+          "指数级爆炸：这会导致同一邻居被多次并发压入边界队列，下一层会为此启动大量重复线程，工作量爆炸。",
+          "CAS 防线：必须使用 `compare_exchange_strong`，在单一原子事务中完成状态检查与更新，保证入队资格唯一。"
+        ],
+        "speakerNotes": "实现 Frontier 最容易踩坑的地方是入队操作。如果你先读状态再入队，两个线程可能同时发现节点 A 没被访问，然后同时把 A 塞进队列。下一层就会启动两个线程处理 A，导致雪崩式的冗余计算。必须用 CAS 强一致性原子操作来抢入队资格。",
+        "visualSuggestion": "展示 CAS (Compare-and-Swap) 的机制图解：多个线程试图修改 `UNVISITED`，仅有一个线程修改成功并获得“入队许可证 (Enqueue Ticket)”。"
+      },
+      {
+        "slideNumber": 8,
+        "title": "原子操作的竞争瓶颈 (Atomic Contention Bottleneck)",
+        "bullets": [
+          "瓶颈转移：Frontier 虽好，但向全局队列追加元素时，所有活跃线程都必须竞争同一个全局计数器 (`numCurrFrontier`)。",
+          "高频 `atomicAdd`：数万个并发线程疯狂执行原子加法，会导致严重的显存访问序列化 (Serialization) 惩罚。",
+          "带宽受限：这使得内核从计算密集型退化为极度恶劣的内存竞争受限状态。"
+        ],
+        "speakerNotes": "但我们马上遇到了新瓶颈：所有人都要往一个全局队列里塞数据。这意味着成千上万的线程在同时用 atomicAdd 抢同一个计数器。硬件级别的串行化会让内存总线堵死，极大拖慢整体遍历速度。",
+        "visualSuggestion": "绘制一个漏斗 (Funnel)，上方是大量的并发线程 (密集箭头)，下方漏斗颈处是全局唯一计数器 `numCurrFrontier`，标注为“高压竞争区域”。"
+      },
+      {
+        "slideNumber": 9,
+        "title": "边界私有化缓解竞争 (Privatization of Frontiers)",
+        "bullets": [
+          "分层缓冲：在线程块的共享内存 (Shared memory) 中建立局部的私有队列和计数器。",
+          "降级冲突：将数万线程的全局内存原子竞争，成功降级为几十个线程在超低延迟 Shared Memory 内部的竞争。",
+          "同步屏障：需依靠 `__syncthreads()` 确保局部初始化完成以及转储前的数据就绪。"
+        ],
+        "speakerNotes": "为了打通漏斗，我们使用数据私有化技术。每个 Thread Block 在自己的共享内存里建一个小队列。大家先往各自的共享内存里写，这不仅快得多，而且把上万人的全局冲突缩小成了几十个人的局部冲突。这是突破内存竞争的经典并行设计模式。",
+        "visualSuggestion": "展示架构流转图：Threads -> (Atomic) -> Block Shared Memory Queue -> (Dump) -> Global Memory Queue。"
+      },
+      {
+        "slideNumber": 10,
+        "title": "私有队列的全局转储 (Global Dump & Coalesced Access)",
+        "bullets": [
+          "批量分配：局部队列满载或结束时，由单一代表线程一次性利用 `atomicAdd` 在全局队列申请连续空间。",
+          "相对偏移：Block 内线程利用自身相对索引 (`threadIdx.x`) 结合全局起始偏移进行写入。",
+          "合并访存：由于连续线程写入了连续的物理内存地址，完美触发了全局内存的合并访存 (Coalesced memory accesses)。"
+        ],
+        "speakerNotes": "当局部小队列满了，该怎么放回全局呢？我们派一个代表线程去全局计数器上要一块连续的空间。然后大家按照自己的 `threadIdx` 排好队，一人写一个坑。因为是连续的线程写连续的物理地址，这完美触发了合并访存，显存带宽直接起飞！",
+        "visualSuggestion": "图 18.16 的再现：共享内存中杂乱的局部队列，通过 `threadIdx.x` 对齐映射，整齐地平移进全局内存数组中。"
+      },
+      {
+        "slideNumber": 11,
+        "title": "协作组与内核调度开销 (Cooperative Groups)",
+        "bullets": [
+          "Host 同步之痛：对于层数极深 (如道路网 d > 1000) 且边界极小的图，主机端循环启动内核的延迟占比极高。",
+          "设备端跨层：利用 CUDA 协作组 (`cudaLaunchCooperativeKernel`) 将多层迭代循环移入内核内部。",
+          "网格级屏障：使用 `grid.sync()` 在不退出内核的情况下，跨越所有 Thread Block 进行全局同步并互换边界指针。"
+        ],
+        "speakerNotes": "如果图有上万层（比如导航路网），CPU 就要调用一万次 Kernel。Kernel 启动延迟会远远超过计算本身。通过协作组，我们把外层大循环直接塞进 GPU 里。每一层算完用 `grid.sync()` 同步一下所有人，不用退回 CPU，彻底干掉调度开销。",
+        "visualSuggestion": "时序对比图：上方是传统的 CPU-GPU 交互，中间充满大段空白的 Kernel Launch 延迟；下方是一根连贯的 GPU 执行条，内部仅有微小的 `grid.sync` 切分。"
+      },
+      {
+        "slideNumber": 12,
+        "title": "协作组陷阱：网格死锁 (Grid Deadlock)",
+        "bullets": [
+          "死锁成因：`grid.sync()` 要求参与同步的所有 Block 必须能同时活跃。未被调度的 Block 无法触发屏障，已驻留的 Block 死等，引发全局挂起。",
+          "占用率约束：必须调用 `cudaOccupancyMaxActiveBlocksPerMultiprocessor` 计算物理并发上限。",
+          "安全启动：启动的 Thread Block 规模绝不可超过 (单 SM 上限 × SM 总数)，强制保证 100% 常驻执行。"
+        ],
+        "speakerNotes": "但这有一招致命的险棋：网格死锁。GPU 默认是排队执行 Block 的。但 `grid.sync()` 要求大家必须同时在场。如果你发射的 Block 超过了硬件物理极限，排在后面的进不来，前面的死等，GPU 直接锁死。所以必须精确计算 Occupancy 占用率并严格限制启动规模。",
+        "visualSuggestion": "展示一个禁止标识 (Red Warning)：一个 SM 的槽位已满，多余的 Block 在外部排队，内部 Block 在屏障前等待，两者之间标上骷髅头 (Deadlock)。"
+      },
+      {
+        "slideNumber": 13,
+        "title": "进阶负载均衡：度数桶排序 (Degree Bucketing)",
+        "bullets": [
+          "长尾分布的终极解法：按顶点度数分级，将其放入不同的工作桶 (Buckets)。",
+          "异构映射模型：低度数分配给单线程；中度数分配给单 Warp 协同；超级明星顶点分配给整只 Thread Block 协同处理。",
+          "综合调优：将复杂的图算法解构为数据特征分类与多级并行硬件结构的最佳匹配。"
+        ],
+        "speakerNotes": "针对极端长尾图的终极优化是桶排序映射。发散是因为把几万度数的节点和一度数的节点混在了一起。我们提前按度数分桶。小喽啰交给单个线程，中等 V 交给 Warp，超级大 V 直接派整个 Thread Block 去伺候。把不规则的数据拆分为规则的层级，完美匹配底层硬件的调度模型。",
+        "visualSuggestion": "三个分级漏斗图标：Small Degree -> 1 Thread；Medium Degree -> 32 Threads (Warp)；Large Degree -> 1024 Threads (Block)。"
+      }
+    ]
+  }
+}

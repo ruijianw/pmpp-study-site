@@ -1,0 +1,139 @@
+{
+  "chapterId": "chapter-07-convolution",
+  "chapterTitle": "Convolution",
+  "sourceId": "b9b94d1a-3608-4143-8559-d3a3037ac123",
+  "sourceTitle": "chapter-07-convolution.pdf",
+  "artifactType": "flashcards",
+  "artifactLabel": "Flashcards",
+  "generatedAt": "2026-07-13T13:42:39.199999Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "闪卡：卷积 (Chapter 7: Convolution)",
+    "summary": "包含 18 张精选闪卡，用于快速复习《大规模并行处理器编程》第七章的核心概念。涵盖卷积的算术强度 (Arithmetic Intensity)、常量内存 (Constant Memory) 优化、幽灵单元 (Ghost Cells) 与光环单元 (Halo Cells) 的区别，以及解决未对齐访存 (Misaligned memory accesses) 的高级分块与缓存策略。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Tips)",
+        "points": [
+          "利用简单 (Easy) 难度卡片熟悉幽灵单元 (Ghost cells)、光环单元 (Halo cells) 和滤波器半径等基础概念。",
+          "通过中等 (Medium) 难度卡片掌握算术强度的理论推导，以及常量内存 (Constant memory) 和 L2 缓存 (L2 cache) 的应用场景。",
+          "挑战困难 (Hard) 难度卡片，深入理解不对称分块 (Asymmetric tiling) 导致的线程闲置 (Deactivated threads) 与全局内存未对齐访问 (Misaligned accesses) 等实现缺陷。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "front": "在卷积运算中，什么是“幽灵单元 (Ghost Cells)”？",
+        "back": "在计算图像或信号物理边界处的输出时，公式需要访问但实际不存在的输入元素。通常通过逻辑判断为这些缺失元素赋予默认值（如 0.0f）。",
+        "difficulty": "easy",
+        "sourceHint": "7.1 Background"
+      },
+      {
+        "front": "在基础并行卷积内核中，什么情况会导致控制流发散 (Control flow divergence)？",
+        "back": "处理物理边界的幽灵单元 (Ghost cells) 时，边缘线程需要进入 if 条件分支来跳过越界乘加或赋予默认值。但在处理大图像时，仅有极少数边缘线程会发散，整体性能影响通常很小。",
+        "difficulty": "easy",
+        "sourceHint": "7.2 Parallel convolution - a basic kernel"
+      },
+      {
+        "front": "卷积内核的理论理想算术强度 (Arithmetic Intensity) 与滤波器尺寸 (m) 存在怎样的数学关系？",
+        "back": "理想算术强度与滤波器尺寸的平方成正比。计算公式约为 1/4 * m^2 FLOP/B。这意味着滤波器尺寸直接决定了内核是内存受限还是计算受限。",
+        "difficulty": "medium",
+        "sourceHint": "7.3 Memory bandwidth considerations"
+      },
+      {
+        "front": "为什么使用小尺寸滤波器（如 3x3）的卷积通常是内存受限 (Memory-bound) 的？",
+        "back": "因为小尺寸滤波器带来的理论算术强度很低（例如 3x3 对应约 2.25 FLOP/B），这导致计算单元大部分时间都在闲置等待极长的 DRAM 数据加载，无法打满 GPU 峰值计算吞吐量。",
+        "difficulty": "medium",
+        "sourceHint": "7.3 Memory bandwidth considerations"
+      },
+      {
+        "front": "卷积滤波器 (Convolution filter) 具备哪三个特征，使其成为使用常量内存 (Constant memory) 的完美候选？",
+        "back": "1. 尺寸极小（通常远小于 64KB 上限）；2. 在内核执行期间内容为只读不可变；3. 同一个 Warp 内的所有线程在每个周期都以完全相同的顺序访问同一个滤波器元素。",
+        "difficulty": "medium",
+        "sourceHint": "7.4 Constant memory and caching"
+      },
+      {
+        "front": "如何在 CUDA 中正确声明和初始化常量内存 (Constant memory) 变量？",
+        "back": "必须在文件作用域（内核外部）使用 `__constant__` 修饰符声明为全局变量。然后在主机 (Host) 端通过调用专门的 `cudaMemcpyToSymbol()` API 将数据拷贝入该内存。",
+        "difficulty": "hard",
+        "sourceHint": "7.4 Constant memory and caching"
+      },
+      {
+        "front": "如果不使用 `cudaMemcpyToSymbol`，还有什么简洁的方法可以将滤波器权重放入常量内存？",
+        "back": "可以将滤波器权重封装在一个 C++ 结构体 (struct) 中，然后将该结构体按值 (by value) 作为参数传递给 CUDA 内核。CUDA 编译器会自动将按值传递的内核参数放置在常量内存中。",
+        "difficulty": "medium",
+        "sourceHint": "7.4 Constant memory and caching"
+      },
+      {
+        "front": "为什么针对常量内存设计的常量缓存 (Constant cache) 在芯片面积和功耗上比普通的 L1/L2 缓存更高效？",
+        "back": "因为常量内存变量在内核执行期间是只读的，硬件无需设计和支持复杂、昂贵的高吞吐量写入 (Writes) 逻辑，从而使得该专用缓存能以极低的成本实现对全 Warp 的极速广播。",
+        "difficulty": "hard",
+        "sourceHint": "7.4 Constant memory and caching"
+      },
+      {
+        "front": "在卷积的共享内存分块 (Shared memory tiling) 中，什么是光环单元 (Halo Cells)？",
+        "back": "计算当前分块边缘的输出元素时，必须访问的、物理上隶属于相邻分块的周围输入数据。它们导致输入块 (Input tile) 必须向外扩展，尺寸大于输出块 (Output tile)。",
+        "difficulty": "medium",
+        "sourceHint": "7.5 Tiled convolution with halo cells"
+      },
+      {
+        "front": "当线程块尺寸被设定为等于扩展后的输入块 (Input tile) 尺寸时，在计算阶段会产生什么计算资源浪费？",
+        "back": "由于输出块尺寸小于输入块，负责加载光环单元的外围线程在计算阶段必须被停用 (Deactivated)。这种线程闲置对于高度优化的计算受限 (Compute-bound) 内核是高昂的算力浪费。",
+        "difficulty": "hard",
+        "sourceHint": "7.5 Tiled convolution with halo cells"
+      },
+      {
+        "front": "为什么在共享内存中把输入块设定为 32x32 可能会引发严重的全局内存未对齐访存 (Misaligned memory accesses)？",
+        "back": "因为对于 5x5 的滤波器，32x32 的输入块对应的输出块尺寸缩减为 28x28。这种非 2 的幂次方尺寸导致各线程块在将输出结果写回全局内存时无法完美对齐，显著降低了内存带宽效率。",
+        "difficulty": "hard",
+        "sourceHint": "7.5 Tiled convolution with halo cells"
+      },
+      {
+        "front": "在带光环单元的分块卷积中，增大输出块的维度 (t) 会如何影响内核的实际算术强度 (Arithmetic Intensity)？",
+        "back": "增大 t 会提高算术强度，并使其更逼近理想阈值 1/4 * m^2 FLOP/B。因为更大的输出块意味着加载到共享内存的每个输入元素能被更多的输出计算所复用，摊薄了访存成本。",
+        "difficulty": "medium",
+        "sourceHint": "7.5 Tiled convolution with halo cells"
+      },
+      {
+        "front": "如何利用 L2 缓存策略 (Caching for halo cells) 解决传统分块中线程闲置和内存未对齐的问题？",
+        "back": "使共享内存中的输入块与输出块尺寸保持完全一致（均设为 2 的幂次方）。共享内存仅加载核心内部元素，而边缘的光环单元直接从全局内存读取，依靠透明的 L2 缓存自动处理。",
+        "difficulty": "hard",
+        "sourceHint": "7.6 Tiled convolution using caches for halo cells"
+      },
+      {
+        "front": "为什么在使用“基于缓存处理光环单元 (Caching for halo cells)”的策略时，L2 缓存的命中率会极高？",
+        "back": "因为当前 Block 需要读取的光环单元，正是其周围相邻 Block 负责处理的核心内部元素。由于这些相邻 Block 大概率正在并发执行，它们往往已经刚刚将这些数据载入了共享的 L2 缓存中。",
+        "difficulty": "medium",
+        "sourceHint": "7.6 Tiled convolution using caches for halo cells"
+      },
+      {
+        "front": "在基础并行卷积内核（无共享内存，无常量内存）中，其实际算术强度为什么极低（约 0.25 FLOP/B）？",
+        "back": "因为每个线程在每次内循环中都需要独立从高延迟的全局内存读取输入元素和滤波器元素，产生了海量的冗余全局访存 (Global memory accesses)，完全没有利用数据局部性。",
+        "difficulty": "medium",
+        "sourceHint": "7.3 Memory bandwidth considerations"
+      },
+      {
+        "front": "在 1D 卷积定义中，滤波器的“半径 (Radius, r)”代表什么含义？",
+        "back": "它定义了参与加权求和计算时，中心元素左右两侧各自需要包含的相邻元素数量。一个半径为 r 的滤波器，其总尺寸为 2r + 1。",
+        "difficulty": "easy",
+        "sourceHint": "7.1 Background"
+      },
+      {
+        "front": "如果为了支持更大的滤波器尺寸，而在传统分块（输入块包含了光环单元）中被迫缩小输出块尺寸，会带来什么连锁负面反应？",
+        "back": "缩小输出块会导致：1. 核心复用率降低，算术强度 (Arithmetic Intensity) 骤降；2. 更多的边缘线程在计算时被迫闲置；3. 输出块偏离 2 的幂次方，导致更严重的全局内存未对齐写回。",
+        "difficulty": "hard",
+        "sourceHint": "7.5 Tiled convolution with halo cells"
+      },
+      {
+        "front": "在处理光环单元的分块加载阶段，为什么需要调用 `__syncthreads()` 屏障？",
+        "back": "为了解决读后写 (Read-after-write) 数据依赖。必须确保 Block 内的所有线程都已将输入块 (包括光环单元) 完全写入共享内存后，才能允许任何线程开始执行基于这些共享数据的乘加计算。",
+        "difficulty": "medium",
+        "sourceHint": "7.5 Tiled convolution with halo cells"
+      }
+    ]
+  }
+}

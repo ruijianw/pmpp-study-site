@@ -1,0 +1,62 @@
+{
+  "chapterId": "chapter-10-reduction",
+  "chapterTitle": "Reduction",
+  "sourceId": "32ca4118-c499-4bbc-bd3d-3f5200036719",
+  "sourceTitle": "chapter-10-reduction.pdf",
+  "artifactType": "briefing",
+  "artifactLabel": "Briefing",
+  "generatedAt": "2026-07-13T13:57:03.192541Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "简报：归约 (Chapter 10: Reduction)",
+    "summary": "本简报概述了在 GPU 上实现和优化并行归约 (Parallel Reduction) 算法的核心策略。从解决基础归约树中的控制流发散与内存非连续访问出发，深入剖析了如何利用共享内存、Warp 级原语以及线程粗化等技术，系统性地消除同步开销并突破硬件利用率瓶颈。",
+    "sections": [
+      {
+        "heading": "执行摘要 (Executive Summary)",
+        "points": [
+          "并行归约通过 O(log N) 的跨度 (Span) 极大地加速了数组求和、最值等计算，但每步迭代中减半的活跃线程会导致硬件利用不足 (Hardware underutilization)。",
+          "通过将基础内核中的“步长倍增”映射调整为“步长递减”，可将活跃线程集中在连续的 Warp 中，不仅消除了大部分迭代中的控制流发散 (Control divergence)，还完美实现了全局内存的合并访存 (Coalesced accesses)。",
+          "结合共享内存 (Shared memory)、Warp 级洗牌原语 (Warp shuffle) 与线程粗化 (Thread coarsening)，可将归约操作的同步开销与全局访存延迟降至最低。"
+        ]
+      },
+      {
+        "heading": "核心主张 (Core Claims)",
+        "points": [
+          "算法约束与优化前提：运算符必须满足结合律 (Associativity) 以支持归约树的并发执行。若要应用步长递减优化以重排操作数顺序，或使用多 Block 的原子累加，算子还必须满足交换律 (Commutativity)。",
+          "访存与发散的协同优化：使用 `stride *= 2` 的基础分配会导致非活跃线程与活跃线程交错，产生严重发散并破坏连续访存；改用 `stride /= 2` 使前一半线程持续活跃，同时解决控制发散和非合并访存问题，显著提升资源利用率 (Resource utilization efficiency)。",
+          "Warp 级原语打破屏障：当活跃线程数降至单个 Warp (≤32) 时，使用 `__shfl_down_sync` 替代 `__syncthreads()` 和共享内存读写。这使得线程能在寄存器级别极速交换数据，免除高昂的块级同步开销。",
+          "线程粗化提升吞吐：通过让单个 GPU 线程串行累加多个元素 (Coarsening factor)，确保初始阶段硬件 100% 满载。这从根本上减少了启动的 Block 数量，极大摊薄了归约树尾部的空转浪费与同步成本。"
+        ]
+      },
+      {
+        "heading": "本章重要性 (Why This Chapter Matters)",
+        "points": [
+          "归约 (Reduction) 不仅是统计汇总的核心组件，更是前缀和 (Prefix-sum) 等复杂数据并行算法的基础模块。",
+          "本章全面展示了如何根据 GPU 的 SIMD 执行模型、内存总线机制及 Warp 调度特性，一步步重构和调优算法。它是深入理解 CUDA 系统级性能优化的绝佳案例。"
+        ]
+      },
+      {
+        "heading": "先决条件 (Prerequisites)",
+        "points": [
+          "理解 Warp 执行模型与控制流发散 (Control divergence) 的成因。",
+          "熟悉全局内存的合并访存 (Coalesced memory accesses) 规则及其对带宽利用率的影响。",
+          "掌握共享内存 (Shared memory) 的生命周期，以及块级同步屏障 `__syncthreads()` 的作用。"
+        ]
+      },
+      {
+        "heading": "实现启示与常见错误 (Implementation Implications)",
+        "points": [
+          "过度同步缺陷 (Over-synchronization)：在进入单 Warp 归约阶段并使用 `__shfl_down_sync` 原语时，切勿再调用 `__syncthreads()`。Warp 级原语已内置硬件级同步语义，混用块级屏障会导致无谓的延迟或死锁风险。",
+          "浮点数结合律陷阱：严格意义上浮点数加法并不满足结合律 (受舍入误差影响)。改变并行归约的执行顺序会产生与顺序 CPU 计算略微不同的结果，开发者需评估业务逻辑对精度容忍的底线。",
+          "任意长度输入的陷阱：对于超大输入，单 Block 的 1024 线程上限无法满足需求。需将数据切分给多 Block 处理，并在内核末尾用 `atomicAdd` 提交。必须确保算子满足交换律，因为原子操作不保证各个 Block 的写入顺序。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

@@ -1,0 +1,188 @@
+{
+  "chapterId": "chapter-11-scan",
+  "chapterTitle": "Scan",
+  "sourceId": "9cc447c1-78a3-4adb-9800-672372e26c29",
+  "sourceTitle": "chapter-11-scan.pdf",
+  "artifactType": "slide-deck",
+  "artifactLabel": "Slide Deck",
+  "generatedAt": "2026-07-13T14:09:51.119727Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "幻灯片大纲：扫描 (Chapter 11: Scan)",
+    "summary": "本幻灯片组系统讲解了 GPU 上并行扫描 (Parallel Scan/Prefix-Sum) 算法的底层逻辑与优化策略。内容涵盖 Kogge-Stone 算法及其同步缺陷、利用双缓冲和 Warp 级原语消除开销、通过线程粗化提升工作效率，并深入解析基于内存顺序语义的单 Kernel 跨块全局扫描。",
+    "sections": [
+      {
+        "heading": "使用建议 (Usage Tips)",
+        "points": [
+          "前 4 页介绍扫描的基础概念与 Kogge-Stone 算法，重点剖析读后写与写后读引发的同步陷阱及双缓冲 (Double-buffering) 解决方案。",
+          "第 5-9 页聚焦单 Block 内部的极限优化：讲解 Scan-scan-add 模式、Warp 级原语 (Warp-level primitives)、以及通过线程粗化 (Thread coarsening) 与寄存器分块 (Register tiling) 逼近 O(N) 理想工作效率的方法。",
+          "第 10-13 页探讨跨 Block 全局扫描。对比多 Kernel 分解策略对全局内存带宽 (Memory bandwidth) 的消耗，并深度剖析使用单向同步 (Unidirectional synchronization) 与 acquire/release 内存语义实现单 Kernel 扫描的原理。",
+          "最后 1 页对比 Brent-Kung 与 Kogge-Stone 算法，揭示理论复杂度在 SIMD 硬件模型下的真实表现差异。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "slideNumber": 1,
+        "title": "并行扫描基础 (Parallel Scan Background)",
+        "bullets": [
+          "核心定义：基于二元运算符（如加法）的数学递推操作，包含包含扫描 (Inclusive scan) 与排他扫描 (Exclusive scan)。",
+          "应用场景：资源分配、多边形渲染、基数排序等将顺序瓶颈并行化的核心原语。",
+          "串行基线：顺序扫描算法 (Sequential scan) 仅需 N-1 次操作，时间与工作复杂度 (Work complexity) 均为 O(N)。",
+          "朴素并行的灾难：若分配 N 个线程独立顺序累加，工作复杂度高达 O(N^2)，在 GPU 资源受限时将比 CPU 更慢。"
+        ],
+        "speakerNotes": "扫描（或前缀和）是并行计算中极为关键的模块，专门用来解决那些看似只能串行执行的问题，比如动态内存分配。串行算法只需要 O(N) 的工作量，这就给并行化提出了很高的要求：如果并行算法引入了过多的额外计算，一旦硬件资源不够用，它的性能甚至不如单线程串行。",
+        "visualSuggestion": "展示一条 40 英寸香肠被切分给 8 个人的例子（Fig 11.1 场景），说明 Inclusive Scan 如何一次性计算出所有的切割点坐标，实现并行分配。"
+      },
+      {
+        "slideNumber": 2,
+        "title": "Kogge-Stone 算法与工作效率 (Kogge-Stone & Work Efficiency)",
+        "bullets": [
+          "算法设计：基于就地 (In-place) 树状结构的并行扫描，复用部分和 (Partial sums)。",
+          "复杂度特征：通过 O(N log N) 的工作量换取了 O(log N) 的极短跨度 (Span)。",
+          "工作效率 (Work Efficiency) 缺陷：由于总操作数显著多于最优顺序算法的 O(N)，该算法被归类为非工作效率 (Not work-efficient) 算法。",
+          "硬件利用代价：在 SM 数量受限时，O(N log N) 的额外工作会导致计算资源的无效消耗。"
+        ],
+        "speakerNotes": "为了解决朴素并行的 O(N^2) 问题，我们引入了 Kogge-Stone 算法。它能在 log N 步内完成计算，但总共做了 O(N log N) 次加法。这意味着它虽然快，但干了很多额外的活。在硬件资源充足时这没问题，但当数据量巨大时，这种非工作效率的算法就会成为拖累。",
+        "visualSuggestion": "展示 Kogge-Stone 算法的归约树状图 (Fig 11.2)，高亮显示虽然步数只有 log N，但每一层都有大量的并发加法在进行。"
+      },
+      {
+        "slideNumber": 3,
+        "title": "原位扫描的同步陷阱 (Synchronization Traps in In-place Scan)",
+        "bullets": [
+          "并发冲突：Kogge-Stone 在原位数组迭代时，面临着严峻的数据依赖问题。",
+          "读后写 (RAW) 竞态：线程读取旧值前，必须确保上一轮写入已完成（需第一道 `__syncthreads()`）。",
+          "写后读 (WAR) 假依赖：如果线程 i 过早将新值写回，会导致相邻线程 i+stride 读到“未来”的脏数据。",
+          "双重屏障代价：必须在循环底部加入第二道 `__syncthreads()`，导致同步开销翻倍。"
+        ],
+        "speakerNotes": "原位的 Kogge-Stone 扫描中，最容易犯的错误就是漏掉同步。很多开发者只记得等上一轮算完，却忘了等别人“读”完。如果跑得快的线程直接把新值盖在了旧值上，跑得慢的线程就会读到错乱的数据。因此，必须用两道 __syncthreads() 将读和写完全隔离开，但这严重拖慢了性能。",
+        "visualSuggestion": "时序冲突示意图：用红色虚线表示线程 4 提前写回了新值，而线程 6 随后读取到了这个错误的值，标注出“Write-after-read (假依赖)”的危险地带。"
+      },
+      {
+        "slideNumber": 4,
+        "title": "双缓冲技术 (Double-buffering)",
+        "bullets": [
+          "空间换时间：在共享内存 (Shared memory) 中分配两组独立的数组 (buffer1, buffer2)。",
+          "交替身份：在每次循环迭代中，两个缓冲区交替扮演“读取源 (Input)”与“写入目标 (Output)”的角色。",
+          "解耦假依赖：向 Output 写入新值绝对不会覆盖 Input 中的旧值，写后读 (WAR) 依赖被物理消除。",
+          "性能收益：成功砍掉循环内部 50% 的块级同步屏障 `__syncthreads()`。"
+        ],
+        "speakerNotes": "为了砍掉那讨厌的第二道同步屏障，我们使用双缓冲技术。既然怕覆盖旧数据，那我们干脆别覆盖了，直接写到另一块内存里去。每算完一轮，输入和输出的指针互换。这虽然多用了一倍的共享内存，但彻底消除了假依赖，省去了一半的同步开销。",
+        "visualSuggestion": "展示两个缓冲区 buffer1 和 buffer2 (Fig 11.4)。用交替的箭头动画展示 Iteration 0 从 buffer1 读并写向 buffer2，Iteration 1 从 buffer2 读并写向 buffer1。"
+      },
+      {
+        "slideNumber": 5,
+        "title": "任务分解：扫描-扫描-相加 (Scan-Scan-Add Decomposition)",
+        "bullets": [
+          "分治策略：将大规模扫描分解为三个连续阶段以降低并发复杂性。",
+          "阶段一：本地扫描 (Scan)：将数据划分为小段，对每段独立执行扫描，末尾元素即为本段总和。",
+          "阶段二：总和扫描 (Scan)：提取各段总和组成新数组，对其执行扫描，获得各段的全局累积基底。",
+          "阶段三：广播相加 (Add)：将前一段的累积基底值加到当前段的所有元素上，完成最终拼接。"
+        ],
+        "speakerNotes": "无论是跨 Warp 还是跨 Block，我们都需要一种分解任务的方法。Scan-scan-add 是最经典的模型：先关起门来自己算（第一步），然后把每个组的总成绩拿出来再算一次（第二步），最后把之前的总分加回到每个人的头上（第三步）。这种分解非常适合映射到 GPU 的层级架构上。",
+        "visualSuggestion": "展示 Fig 11.6 的分解步骤：四段独立数据 -> 提取出 [1-3] -> 扫描出 [1, 4-6] -> 加回到后续段落中。"
+      },
+      {
+        "slideNumber": 6,
+        "title": "Warp 级原语提速 (Warp-level Primitives)",
+        "bullets": [
+          "硬件捷径：利用 `__shfl_up_sync` 等 Warp 洗牌指令，允许同 Warp 线程直接通过寄存器互访数据。",
+          "消除共享内存：在 Warp 内部进行 Scan-scan-add 时，第一阶段不再需要共享内存暂存。",
+          "无屏障极速扫描：Warp 指令内置了隐式的时钟同步，彻底淘汰了 Warp 内部的 `__syncthreads()`。",
+          "组合出击：Block 级别的扫描转变为：Warp 独立扫描 -> 提取 Warp 总和 -> 扫描 Warp 总和 -> 加上基底。"
+        ],
+        "speakerNotes": "当我们将分解策略应用到 Warp 级别时，可以利用 CUDA 提供的洗牌原语。线程可以直接从隔壁线程的寄存器里“偷”数据，完全不需要经过共享内存，更不需要调用 __syncthreads()。这使得底层的局部扫描快得像闪电一样。",
+        "visualSuggestion": "代码对比图：展示 `val += __shfl_up_sync(mask, val, stride)` 指令如何在一行内完成数据交换与累加，取代了原先冗长的共享内存读写与同步。"
+      },
+      {
+        "slideNumber": 7,
+        "title": "线程粗化回归 O(N) (Thread Coarsening for Work Efficiency)",
+        "bullets": [
+          "并行效率悖论：当参与 O(N log N) 扫描的线程过多时，并发开销将吞噬算力。",
+          "串行接管：让单个线程负责预先扫描一段连续的数据 (例如 COARSE_FACTOR = 4)。",
+          "局部 O(N) 优势：线程内的顺序扫描是 O(N) 的最优复杂度，不涉及任何同步或发散。",
+          "摊薄开销：减少参与 Block 级并行扫描的线程与 Warp 数量，使整体算法复杂度大幅重新逼近 O(N)。"
+        ],
+        "speakerNotes": "为了解决 Kogge-Stone 额外做功太多的缺陷，我们引入线程粗化。与其让所有线程一上来就做低效的并行扫描，不如让每个线程先自己串行扫描几个元素。串行扫描的复杂度是最完美的 O(N)。这样一来，真正需要进行低效并行扫描的数据量就大幅减少了，整体工作效率显著提升。",
+        "visualSuggestion": "天平示意图：一端是“低效的 Block 级并行扫描 (O(N log N))”，另一端是“高效的 Thread 级串行扫描 (O(N))”，通过调整 Coarsening Factor 找到最优平衡点。"
+      },
+      {
+        "slideNumber": 8,
+        "title": "寄存器分块与合并访存 (Register Tiling & Coalesced Accesses)",
+        "bullets": [
+          "实现粗化的陷阱：若单线程直接从全局内存读取连续数据，同 Warp 的相邻线程将产生巨大跨度的地址碎片。",
+          "非合并访存 (Uncoalesced accesses)：这将直接导致 DRAM 带宽断崖式下跌。",
+          "转角缓冲 (Corner Turning)：必须以交替模式 (跨度为 blockDim.x) 将数据载入共享内存。",
+          "寄存器提速：随后从共享内存将连续子段加载至寄存器分块 (Register Tiling) 中完成极速串行扫描。"
+        ],
+        "speakerNotes": "在做线程粗化时有个极易踩坑的地方。如果让线程 0 读 0-3，线程 1 读 4-7，那么当 Warp 发起内存请求时，地址是完全断开的。我们必须先用交替读取的方式，把数据完美合并地读进共享内存。共享内存在这里不为了共享，只是为了“转交”数据给寄存器，保证全局内存总线的高效利用。",
+        "visualSuggestion": "内存阵列图解：打叉的红色箭头表示直接读取全局内存连续段引发的发散；打勾的绿色箭头表示交错加载至 Shared Memory 后，再转移至 Register 的完美合并访存。"
+      },
+      {
+        "slideNumber": 9,
+        "title": "内存带宽极限 (Memory-Bound Nature)",
+        "bullets": [
+          "极低的算术强度：扫描运算处理每个元素仅需 1 次加法，却需 8 字节访存 (读4B+写4B)。",
+          "算术强度值 (Arithmetic Intensity)：约为 1/8 OP/B，远远低于 H100 达到计算受限所需的 20 OP/B。",
+          "带宽决定上限：性能的绝对天花板由 GPU 全局内存峰值带宽决定 (如 3.35 TB/s)。",
+          "优化终极目标：消除一切冗余的全局内存读写，确保唯一的一次读写达到 >80% 的带宽利用率。"
+        ],
+        "speakerNotes": "无论我们在 Warp 和寄存器层面怎么优化，扫描算法在骨子里是一个极度依赖内存带宽的程序。算一个数就要搬 8 个字节的数据，算术强度只有 1/8。这就决定了它不可能跑满计算核心。我们优化的终极目标，是把全局内存总线塞满，并坚决避免数据的重复读写。",
+        "visualSuggestion": "Roofline 模型示意图：将 Scan 标注在斜率极陡的内存受限 (Memory-Bound) 区域，远离顶部的计算峰值。"
+      },
+      {
+        "slideNumber": 10,
+        "title": "跨 Block 全局扫描分解 (Global Scan: Multi-Kernel Strategies)",
+        "bullets": [
+          "挑战：当处理超大规模数据时，需要多个 Thread Block，但 CUDA 缺乏原生的跨 Block 同步屏障。",
+          "策略一：Scan-Scan-Add (三 Kernel)。第一阶段会向全局内存写出所有扫描中间结果，严重浪费带宽。",
+          "策略二：Reduce-Scan-Scan (三 Kernel)。第一阶段仅向全局内存写出 Block 级别的单个总和，节省大量写入操作。",
+          "前提条件：使用 Reduce-Scan-Scan 要求算子不仅具有结合律，还必须具有交换律 (Commutativity)。"
+        ],
+        "speakerNotes": "处理几亿个元素时，必须跨 Block 扫描。如果使用启动三个 Kernel 的传统方法，Reduce-Scan-Scan 要比 Scan-Scan-Add 强得多。因为 Reduce 第一步只需要往全局内存写一个总和，而 Scan 却要写出整个分段。在内存带宽如此宝贵的情况下，少写全局内存就是王道。不过，这要求你的算子具备交换律。",
+        "visualSuggestion": "数据流向对比：左侧 Scan-Scan-Add 写出庞大的数据块到 Global Memory；右侧 Reduce-Scan-Scan 仅写出一个小巧的标量 (Block Sum) 阵列，显著节省带宽。"
+      },
+      {
+        "slideNumber": 11,
+        "title": "单 Kernel 全局扫描：单向同步 (Single Kernel: Unidirectional Sync)",
+        "bullets": [
+          "多 Kernel 痛点：启动多个 Kernel 依然会强制将中间结果刷入 DRAM，无法达到极致带宽。",
+          "单向同步 (Unidirectional Sync)：后序 Block 不用全局屏障，而是通过原子操作轮询前序 Block 的完成标志。",
+          "动态 Block 分配：放弃默认的 `blockIdx.x`，在 Kernel 内使用原子操作动态分配 ID，确保早期 Block 被优先调度。",
+          "单回溯 (Single Lookback)：Block n 只需等待 Block n-1 就绪，提取总和并累加，形成流水线。"
+        ],
+        "speakerNotes": "多 Kernel 的方法还是会让数据在 DRAM 里兜圈子。最极致的优化是在一个 Kernel 里搞定一切！我们不让所有 Block 一起等，而是让后面的 Block 盯着前面的 Block，前面算完一个，后面接着加。通过动态分配 Block ID，我们可以保证前面的 Block 一定在硬件上跑着，绝对不会死锁。这就是单向同步。",
+        "visualSuggestion": "链式依赖图解 (Fig 11.16b)：Block 0 计算完毕 -> 设置 Flag -> Block 1 捕获 Flag 并累加 -> 设置 Flag -> Block 2 捕获... 展示单回溯的接力过程。"
+      },
+      {
+        "slideNumber": 12,
+        "title": "底层控制：内存顺序语义 (Memory Order Semantics)",
+        "bullets": [
+          "乱序执行危机：GPU 的指令调度可能将内存操作重排，普通的标志位轮询存在极大隐患。",
+          "Acquire 语义：轮询前序标志位时必须使用 `cuda::memory_order_acquire`，防止读取结果数据的操作被提前。",
+          "Release 语义：当前 Block 标示自己完成前，必须使用 `cuda::memory_order_release`，保证所有结果已真实写回内存。",
+          "禁忌：在此类原子同步通信中，绝不可使用 `memory_order_relaxed`。"
+        ],
+        "speakerNotes": "在单 Kernel 里跨 Block 传数据有个致命的坑：指令重排。如果你没用正确的内存语义，硬件可能会在确认前面的 Block 算完之前，就把旧数据提前读进来了，或者在数据还没写回内存时，就把完成标志挂出去了。必须精准使用 acquire 和 release 语义，这相当于在内存上打下了两根定海神针。",
+        "visualSuggestion": "代码高亮片段 (Fig 11.17)：将 `fetch_add(0, cuda::memory_order_acquire)` 与 `fetch_add(1, cuda::memory_order_release)` 标红，并通过锁的图标象征内存屏障的保护作用。"
+      },
+      {
+        "slideNumber": 13,
+        "title": "算法对决：Brent-Kung 与 SIMD 陷阱 (Brent-Kung vs. SIMD)",
+        "bullets": [
+          "理论优势：Brent-Kung 算法的总工作复杂度为最优的 O(N)，具备完美的工作效率 (Work-efficient)。",
+          "步骤代价：相比 Kogge-Stone 的 O(log N) 步，Brent-Kung 拥有更长的前向归约树与反向分发树跨度 (Span)。",
+          "SIMD 执行反噬：在 GPU 的 Warp 中，Brent-Kung 省下的操作转变成了不活跃的闲置线程，而这些线程仍会随 Warp 消耗时钟周期。",
+          "实践结论：在 Warp 级别，尽管 Kogge-Stone 做了冗余加法，但其凭借更少的步数在实际执行中击败了 Brent-Kung。"
+        ],
+        "speakerNotes": "学术界有一种 Brent-Kung 算法，理论上非常完美，工作复杂度只有 O(N)。但把它搬到 GPU 上往往跑不过 Kogge-Stone。为什么？因为 GPU 的 Warp 是锁步执行的。你省下来的计算量，只不过变成了站在那里发呆的闲置线程，时钟周期一丁点也没少。既然都要等，不如像 Kogge-Stone 那样大家一起多干点活，反而能用更少的步数完赛。",
+        "visualSuggestion": "博弈对比图：左侧是理论层面的“O(N) 完美复杂度”；右侧是 GPU SIMD 层面的“锁步周期 (Lockstep Cycles) 消耗”，揭示理论与硬件实际的差异。"
+      }
+    ]
+  }
+}

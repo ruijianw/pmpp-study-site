@@ -1,0 +1,63 @@
+{
+  "chapterId": "chapter-14-sorting",
+  "chapterTitle": "Sorting",
+  "sourceId": "d8373a55-be5e-48d3-8179-2927abe3f03f",
+  "sourceTitle": "chapter-14-sorting.pdf",
+  "artifactType": "briefing",
+  "artifactLabel": "Briefing",
+  "generatedAt": "2026-07-13T14:24:14.375382Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "简报：排序 (Chapter 14: Sorting)",
+    "summary": "本简报概述了 GPU 上并行排序算法的核心设计与优化策略。重点解析了并行基数排序 (Parallel Radix Sort) 的底层实现，探讨了利用排他扫描定位全局偏移、利用共享内存缓解非合并访存、调整基数大小权衡同步开销，以及通过线程粗化提升整体架构性能的系统性方法。",
+    "sections": [
+      {
+        "heading": "执行摘要 (Executive Summary)",
+        "points": [
+          "比较类排序（如归并排序）受限于 O(N log N) 的复杂度下限，而非比较类排序（如基数排序）通过按位稳定划分 (Stable partition) 突破了这一理论瓶颈。",
+          "在 GPU 架构中，并行基数排序的最大挑战在于输出目标地址分散导致的严重非合并访存 (Uncoalesced accesses)。",
+          "通过在块级共享内存中引入局部排序 (Local sort)、合理控制基数大小 (Radix value) 并配合线程粗化 (Thread coarsening)，可将散乱的访存重新聚合，大幅逼近内存带宽极限。"
+        ]
+      },
+      {
+        "heading": "核心主张 (Core Claims)",
+        "points": [
+          "规避数据竞争的代价：奇偶排序 (Odd-even sort) 利用交替奇偶索引隔离并发修改，但其工作复杂度高达 O(N^2)。尽管写入完成标志具有幂等性 (Idempotence)，在严谨的 C++ 内存模型下仍必须使用原子操作。",
+          "扫描建立全局映射：并行基数排序巧妙地利用网格级排他扫描 (Exclusive scan) 处理位掩码，通过计算“0的个数”与“1的个数”精确推导出每个元素的全局保序偏移量。",
+          "共享内存拯救碎片访存：相邻线程往往因为键值的比特差异，分别向全局内存的 0 桶和 1 桶进行跳跃式写入。在共享内存中先进行块级保序重组，可确保向全局转储时相邻线程写入连续物理地址。",
+          "基数扩张的双刃剑：多位基数 (Multi-bit radix) 可有效削减内核启动与循环迭代的次数。但它会导致各 Block 内的局部桶 (Local buckets) 呈指数级分裂，桶内元素稀疏将再次摧毁访存合并度，并显著放大全局扫描表格的同步开销。",
+          "线程粗化实现全局平衡：通过让单线程处理多个元素，能有效增大单个 Block 的数据吞吐和局部桶容量，同时减少网格中的 Block 总数，从而一次性解决合并访存退化与扫描表膨胀两大难题。"
+        ]
+      },
+      {
+        "heading": "本章重要性 (Why This Chapter Matters)",
+        "points": [
+          "生动展示了底层数据流动 (Data movement) 模式的极端复杂性：如何将前序章节的过滤 (Filter) 与排他扫描 (Scan) 原语组合，构建出企业级的高性能基数排序流水线。",
+          "深刻阐释了 GPU 优化中“牵一发而动全身”的权衡哲学（例如基数大小、线程粒度与内存吞吐率之间的微妙博弈）。"
+        ]
+      },
+      {
+        "heading": "先决条件 (Prerequisites)",
+        "points": [
+          "深刻理解排他扫描 (Exclusive scan) 的前缀和逻辑及其在资源分配与索引计算中的应用。",
+          "理解比较类排序与非比较类排序的算法复杂度边界，以及稳定排序 (Stable sort) 的定义。",
+          "熟悉合并访存 (Memory coalescing) 原理与共享内存的使用生命周期。"
+        ]
+      },
+      {
+        "heading": "实现启示与常见错误 (Implementation Implications)",
+        "points": [
+          "幂等写入的数据竞争陷阱：在奇偶排序中，多线程同时向 `hasChanged` 标志写入 1。即便结果唯一且正确，但在 C++ 内存模型中这仍是未定义行为 (Undefined behavior)，保守实现必须依赖原子操作以防止编译器激进优化导致的程序崩溃。",
+          "忽略基数膨胀惩罚：盲目采用极大的基数企图减少迭代次数。实际上，多位基数会导致生成庞大数量的小桶，不仅完全丧失向全局转储时的合并访存能力，还会让网格级扫描操作的延迟掩盖掉所有计算收益。",
+          "局部桶扫描表的设计遗漏：在应用共享内存优化时，必须将所有 Block 的局部 0 桶大小与局部 1 桶大小重组为连续的线性表 (Row-major order table) 并进行网格扫描，否则各 Block 无法正确推算其全局转储时的基底偏移量。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

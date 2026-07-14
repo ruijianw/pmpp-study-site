@@ -1,0 +1,61 @@
+{
+  "chapterId": "chapter-04-compute-architecture-and-scheduling",
+  "chapterTitle": "Compute Architecture And Scheduling",
+  "sourceId": "c4dee50c-ba72-41d3-819f-b65012626952",
+  "sourceTitle": "chapter-04-compute-architecture-and-scheduling.pdf",
+  "artifactType": "briefing",
+  "artifactLabel": "Briefing",
+  "generatedAt": "2026-07-13T13:22:35.816701Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "简报：计算架构与调度 (Chapter 4: Compute Architecture and Scheduling)",
+    "summary": "本章揭示了现代 GPU 的底层计算架构与线程调度机制，详细解析了流式多处理器 (SM)、Warp 执行模型与 SIMT 架构的工作原理。通过探讨控制发散 (Control divergence)、延迟容忍 (Latency tolerance) 以及占用率 (Occupancy) 限制，为 CUDA 性能优化和规避硬件级实现陷阱提供了理论基础。",
+    "sections": [
+      {
+        "heading": "执行摘要 (Executive Summary)",
+        "points": [
+          "现代 GPU 架构由多个流式多处理器 (SM) 和流处理器 (Streaming processors) 组成。CUDA 线程块 (Block) 被作为一个整体分配至 SM 执行，以保障同块线程能通过共享内存交互并进行屏障同步。",
+          "GPU 放弃了大容量缓存，转而依靠过载分配 (Oversubscription) 和细粒度多线程 (Fine-grained multithreading) 来实现延迟容忍 (Latency tolerance)。",
+          "由于资源（寄存器、线程槽等）在 SM 内部是动态划分的，内核程序的细微资源增长可能会导致驻留 Block 数量骤减，引发性能暴跌。"
+        ]
+      },
+      {
+        "heading": "核心主张 (Core Claims)",
+        "points": [
+          "Warp 与 SIMT 机制：在 SM 内部，线程块被线性化划分为 32 个线程一组的 Warp。SM 采用 SIMT (Single Instruction, Multiple Thread) 模型，硬件自动将同一指令广播给 Warp 内的所有线程进行 SIMD 风格执行，以摊薄指令获取与调度的硬件成本。",
+          "透明可扩展性 (Transparent scalability)：由于强制要求不同 Block 之间不能相互依赖或显式同步，GPU 硬件能够以任意顺序并发调度 Block。这使得同一套 CUDA 代码可以自动适配从移动端到高端服务器的不同规模 GPU。",
+          "零开销上下文切换 (Zero-overhead scheduling)：与 CPU 切换线程需将寄存器保存至内存不同，GPU SM 将所有驻留 Warp 的状态保留在海量硬件寄存器中，从而能够瞬间切换到就绪的 Warp，完美隐藏内存访问延迟。"
+        ]
+      },
+      {
+        "heading": "本章重要性 (Why This Chapter Matters)",
+        "points": [
+          "奠定性能推理基础：使开发者明白代码逻辑（如分支语句和局部变量）是如何与底层硬件（如 Warp 分发、寄存器分配）发生交互并最终决定执行吞吐量的。",
+          "破除直觉误区：解释了为何在 GPU 编程中，适度的冗余计算（如少量边界发散）往往比加入极其复杂的控制流分支更加高效。"
+        ]
+      },
+      {
+        "heading": "先决条件 (Prerequisites)",
+        "points": [
+          "掌握基础的异构计算与 CUDA 线程层次模型（Grid、Block、Thread 及其内置变量推导）。",
+          "了解基本的冯·诺依曼计算机架构概念（如程序计数器 PC、指令寄存器 IR、计算单元 ALU）。"
+        ]
+      },
+      {
+        "heading": "实现启示与常见错误 (Implementation Implications)",
+        "points": [
+          "致命的死锁缺陷：在可能导致 Warp 内线程走向不同分支（即发生控制发散 Control divergence）的 if-else 代码块中，绝对禁止调用 `__syncthreads()`。这会导致部分线程永远在屏障处等待，造成死锁。",
+          "Warp 内隐式同步的陷阱：自 Volta 架构引入独立线程调度 (Independent thread scheduling) 后，发散的 Warp 线程在分支结束后不再保证自动重新收敛。若需同步，必须显式调用 `__syncwarp()` 等 Warp 级原语，不能仅依赖 32 线程的物理包裹属性。",
+          "性能悬崖 (Performance Cliff)：随意增加内核中的局部变量会导致单个线程消耗更多寄存器 (Registers)。当单线程寄存器用量突破某个阈值时，SM 能够容纳的 Block 总数会断崖式下降（例如占用率从 100% 暴跌至 75%），引发性能危机。",
+          "过度优化边界条件：对于处理大规模数组时的边界检查（如 `if(i < n)`），其造成的发散通常仅影响整个 Grid 中极小比例（如 <1%）的 Warp。为了消除这种微小发散而大幅增加代码复杂度的做法通常是得不偿失的。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

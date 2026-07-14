@@ -1,0 +1,71 @@
+{
+  "chapterId": "chapter-18-graph-traversal",
+  "chapterTitle": "Graph Traversal",
+  "sourceId": "6170bf2b-3c99-4347-ae81-bf05ea83eac4",
+  "sourceTitle": "chapter-18-graph-traversal.pdf",
+  "artifactType": "study-guide",
+  "artifactLabel": "Study Guide",
+  "generatedAt": "2026-07-13T14:47:23.380577Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "学习指南：图遍历 (Chapter 18: Graph Traversal)",
+    "summary": "本章探讨了在 GPU 上并行化图遍历算法（以广度优先搜索 BFS 为例）的核心挑战与微架构优化。重点分析了以顶点为中心 (Vertex-centric) 和以边为中心 (Edge-centric) 的并行策略，引入了边界 (Frontiers) 提高工作效率，利用私有化 (Privatization) 缓解原子操作竞争，并通过协作组 (Cooperative groups) 实现网格级同步以降低内核启动开销。",
+    "sections": [
+      {
+        "heading": "学习目标 (Learning Objectives)",
+        "points": [
+          "1. 区分以顶点为中心 (Vertex-centric) 的 Push (自顶向下) 和 Pull (自底向上) 策略，及其对 CSR/CSC 数据结构的依赖和性能特征。",
+          "2. 理解以边为中心 (Edge-centric) 并行化如何解决长尾顶点带来的控制流发散 (Control divergence) 和负载不均问题。",
+          "3. 分析基础图遍历算法的理论工作复杂度，并应用边界队列 (Frontiers) 将其计算量优化至理想的 O(n+m)。",
+          "4. 识别并发更新边界队列时的原子操作竞争瓶颈，并利用共享内存 (Shared memory) 实现边界私有化 (Privatization)。",
+          "5. 运用协作组 (Cooperative groups) 实现网格级屏障同步 (Grid-wide barrier synchronization)，消除多层 BFS 多次内核启动的开销。",
+          "6. 掌握避免网格级同步死锁的 GPU 占用率 (Occupancy) 计算方法。"
+        ]
+      },
+      {
+        "heading": "章节结构映射 (Section-by-Section Chapter Map)",
+        "points": [
+          "18.1-18.2 图表示与 BFS 背景: 图数据与稀疏矩阵格式 (CSR/CSC/COO) 的映射，BFS 的波前 (Wavefront) 层次扩散特征及迷宫路由应用。",
+          "18.3 以顶点为中心的并行化: 基于 CSR 的 Push 策略 (遍历出边) 与基于 CSC 的 Pull 策略 (遍历入边) 的实现与性能权衡，方向优化 (Direction-optimized) 的混合应用。",
+          "18.4 以边为中心的并行化: 基于 COO 格式为每条边分配线程，缓解高方差度数 (High-variance degrees) 带来的极端负载不均。",
+          "18.5 边界 (Frontiers) 提升效率: 仅为当前活跃顶点启动线程以避免无效检查，引入原子比较交换避免同顶点重复入队。",
+          "18.6 私有化 (Privatization) 降低竞争: 利用块级共享内存维护局部队列，大幅降低向全局前沿队列追加元素时的原子累加冲突。",
+          "18.7 协作组 (Cooperative groups) 减少开销: 利用 grid.sync() 在单一内核中跨层级迭代 BFS，规避主机端循环启动内核的延迟。",
+          "18.8 其他优化: 根据顶点度数进行桶排序 (Bucketing)，分别映射给单线程、Warp 或 Block 处理的长尾终极优化。"
+        ]
+      },
+      {
+        "heading": "关键概念精解 (Key Concepts)",
+        "points": [
+          "Push 与 Pull 策略 (Push/Pull Strategies): Push 让父节点更新未访问的邻居，适合波前较小的前期；Pull 让未访问节点反查属于前一层的父节点，一旦找到即可提前跳出循环 (Break early)，适合活跃节点多且度数高的后期。",
+          "方向优化 (Direction-optimized): 在同一次 BFS 遍历中，前期利用 Push，当活跃波前庞大时自动切换为 Pull，此举在处理高度数小世界图 (Small world graphs) 时性能提升极其显著。",
+          "边界队列 (Frontiers): 记录当前层级波前的活跃顶点列表。通过过滤无关顶点，避免为全图顶点盲目启动线程，将整体工作效率 (Work efficiency) 提升至理想状态。",
+          "私有化边界 (Privatized Frontiers): 在 Shared memory 中维护局部的计数器和队列。这减少了对全局边界大小计数器的 atomicAdd 高频读写冲突，满载时再统一由单一线程将局部数据合并写入全局内存。",
+          "协作组网格屏障 (Cooperative Groups Grid-wide Barrier): cudaLaunchCooperativeKernel 配合 grid.sync() 允许同一个 Kernel 内所有线程块进行同步交互，使得内存缓冲能跨层级驻留并缩减调度开销。"
+        ]
+      },
+      {
+        "heading": "常见误区与实现缺陷 (Common Misunderstandings & Implementation Mistakes)",
+        "points": [
+          "幂等写入陷阱：在无边界的 Push 策略中，多线程可能盲写同一个节点的层级标记。虽然数学上具有幂等性 (Idempotent，写同样的值多次不影响结果)，但在 C++ 内存模型中未定序的并发写入构成数据竞争 (Race condition)，保守且安全的做法仍应使用原子操作。",
+          "边界实现的重复排队缺陷：在引入 Frontiers 优化时，如果不使用 compare_exchange_strong 原子化地完成“检查未访问并标记”，多个并发访问同一邻居的线程会发现它处于未访问状态，导致该邻居被重复多次压入边界队列，造成后续层级极其庞大的指数级冗余计算。",
+          "协作组引发全局死锁 (Cooperative Groups Deadlock)：在使用 grid.sync() 时，若未通过 cudaOccupancyMaxActiveBlocksPerMultiprocessor 精确计算 SM 并发极限，盲目启动超过物理并行上限的 Block 数量，会导致已调度的 Block 苦等未调度的 Block 到达屏障，直接导致 GPU 全局死锁。"
+        ]
+      },
+      {
+        "heading": "三阶段实践计划 (3-Session Practice Plan)",
+        "points": [
+          "Session 1: 基础图遍历架构。基于 CSR 格式编写以顶点为中心的 Push 内核。利用 Profiler 观察具有高度数差异的图在单线程遍历所有出边时引发的控制流发散 (Control flow divergence) 和尾部延迟 (Tail latency)。",
+          "Session 2: 边界提取与私有化调优。重构内核以接受 prevFrontier 和 currFrontier 参数。在 Shared memory 中分配块级局部队列，利用 atomicAdd 完成私有化入队，当局部队列满时触发块级写入，实现极低冲突的高效边界生成。",
+          "Session 3: 消除内核启动瓶颈。使用 Cooperative Groups 库重构上述内核，将外层遍历层级的 Host 端 for 循环移至 Device 端。精确计算 Block 上限以安全调用 grid.sync() 交换边界缓冲，使用 Nsight Systems 验证跨层级内核调用开销是否被彻底消除。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

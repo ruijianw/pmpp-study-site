@@ -1,0 +1,65 @@
+{
+  "chapterId": "chapter-03-multidimensional-grids-and-data",
+  "chapterTitle": "Multidimensional Grids And Data",
+  "sourceId": "398d28d9-3e81-4b0c-a2c0-69eefc525f0f",
+  "sourceTitle": "chapter-03-multidimensional-grids-and-data.pdf",
+  "artifactType": "data-table",
+  "artifactLabel": "Data Table",
+  "generatedAt": "2026-07-13T13:17:45.552371Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "数据表格：多维网格与数据 (Chapter 3: Multidimensional Grids and Data)",
+    "summary": "本数据表格梳理了《大规模并行处理器编程》第三章的核心概念，重点解析多维执行配置、多维数据的行主序线性化、图像模糊算法中的复杂边界检查，以及基础矩阵乘法的内存映射逻辑，帮助开发者掌握多维空间并发思维并规避越界访存风险。",
+    "sections": [
+      {
+        "heading": "表格说明 (Table Description)",
+        "points": [
+          "本表结构化呈现了多维线程组织与多维数据映射的关键技术点。",
+          "按定义、CUDA相关性、性能考量及常见实现陷阱进行拆解，便于快速复习代码重构技巧与底层内存寻址原理。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "concept": "多维执行配置 (Multidimensional Execution Configuration)",
+        "definition": "使用 dim3 向量类型（包含 x, y, z 元素）定义内核启动时的网格(Grid)和线程块(Block)维度的机制。",
+        "cudaRelevance": "允许开发者构建最高三维的并发线程网格结构，从而自然贴合并映射现实世界的多维数据（如 2D 图像、3D 模拟空间）。",
+        "performanceConcern": "硬件限制严格：当前 CUDA 系统规定单个 Block 内包含的线程总数不能超过 1024 个（如 dim3(32,32,2) 是非法的），且 Grid 的 y 和 z 维度上限通常为 65535。",
+        "commonMistake": "声明 dim3 参数时遵循从低维到高维的顺序（列x, 行y, 深度z），而 C++ 多维数组索引通常为高维到低维 [y][x]。混淆二者的顺序会导致线程坐标映射完全翻转。"
+      },
+      {
+        "concept": "行主序布局 (Row-major Layout)",
+        "definition": "C/C++ 语言默认的多维数组内存物理排列方式，即矩阵中同一行的元素被连续放置在平坦的一维内存地址空间中。",
+        "cudaRelevance": "在 GPU 上将二维坐标转换为一维地址偏移量的基础规范。对于宽度为 Width 的矩阵，获取第 row 行第 col 列元素的标准偏移量公式为 row * Width + col。",
+        "performanceConcern": "按照行方向连续读取数据能更好地利用内存带宽（数据局部性）；而像矩阵乘法中读取 N 矩阵（k * Width + col，跨行读取）会导致极其跳跃的内存访问，引发性能瓶颈。",
+        "commonMistake": "当与基于列主序 (Column-major Layout) 设计的传统 FORTRAN 科学计算库混合编程时，遗漏对输入矩阵进行必要的转置预处理。"
+      },
+      {
+        "concept": "数组线性化 (Array Linearization)",
+        "definition": "在代码中显式地将多维数组展平为一维数组进行存储和寻址的过程。",
+        "cudaRelevance": "由于动态分配的设备内存（经由 cudaMalloc）在编译期缺乏多维列宽的类型信息，内核必须摒弃多维下标，通过显式的线性算数表达式来定位数据元素。",
+        "performanceConcern": "显式计算线性索引在内核的每次内存访问时都会发生。必须确保索引映射公式（乘加运算）的精简，避免在嵌套深处的循环内部重复计算不变量。",
+        "commonMistake": "初学者常试图对动态分配的设备端指针直接使用 Matrix[row][col] 语法。由于编译器不知道每一行到底有多宽，这将导致编译报错或生成灾难性的无效寻址指令。"
+      },
+      {
+        "concept": "边界检查 (Boundary Checking)",
+        "definition": "在内核代码的最外层或内存访问前，使用条件分支（如 if(col < width && row < height)）阻断越界执行的安全保护机制。",
+        "cudaRelevance": "当所处理的数据维度（如 76x62 像素）不能被线程块尺寸（如 16x16）完美整除时，利用向上取整启动的网格必然在右侧和下侧产生多出的冗余线程，必须利用该机制予以屏蔽。",
+        "performanceConcern": "虽然条件分支在高度并行的 GPU 架构中可能会造成微小的控制流散度 (Control flow divergence)，但在异构平坦内存中防止非法越界访问是保证正确性的强制底线。",
+        "commonMistake": "在实现图像模糊 (Image Blur) 的补丁(Patch)循环时，仅保护了目标中心像素不越界，却遗漏了对参与求和的相邻游动坐标 (curRow, curCol) 进行 <0 或 >=边界的检查，导致读取垃圾内存或直接触发段错误。"
+      },
+      {
+        "concept": "补丁处理与归约 (Patch Processing)",
+        "definition": "在图像模糊或卷积算法中，计算某一目标位置的输出像素时，需要获取并聚合其周围指定半径 (BLUR_SIZE) 内所有相邻像素值的计算模式。",
+        "cudaRelevance": "体现了多维数据映射中多对一的复杂线程协作，即同一个输入像素将被其周围的多个线程重复读取。",
+        "performanceConcern": "如果每个线程都直接从全局内存 (Global Memory) 中独立获取其所需的补丁像素，会导致极高频的冗余访问，使得该内核迅速成为内存带宽受限型 (Memory-bound) 应用。",
+        "commonMistake": "在处理处于图像角落或边缘的像素时，其有效的补丁面积会缩小。如果程序在计算平均值时仍除以固定的全量补丁面积（如恒定除以 9），会导致图像边缘区域产生不正确的暗区。"
+      }
+    ]
+  }
+}

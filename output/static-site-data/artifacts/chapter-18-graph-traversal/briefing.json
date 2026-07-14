@@ -1,0 +1,63 @@
+{
+  "chapterId": "chapter-18-graph-traversal",
+  "chapterTitle": "Graph Traversal",
+  "sourceId": "6170bf2b-3c99-4347-ae81-bf05ea83eac4",
+  "sourceTitle": "chapter-18-graph-traversal.pdf",
+  "artifactType": "briefing",
+  "artifactLabel": "Briefing",
+  "generatedAt": "2026-07-13T14:48:12.093474Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "简报：图遍历 (Chapter 18: Graph Traversal)",
+    "summary": "本简报概述了在 GPU 上并行化图遍历 (Graph Traversal) 算法（以广度优先搜索 BFS 为例）的核心架构挑战。探讨了以顶点为中心 (Vertex-centric) 和以边为中心 (Edge-centric) 的并行策略权衡，并介绍了如何通过边界队列 (Frontiers)、共享内存私有化 (Privatization) 以及协作组 (Cooperative groups) 实现网格级同步以逼近理想的工作效率与硬件吞吐量。",
+    "sections": [
+      {
+        "heading": "执行摘要 (Executive Summary)",
+        "points": [
+          "图数据本质上具有高度不规则性和稀疏性，在 GPU 上容易引发严重的负载不均衡 (Load imbalance) 和控制流发散 (Control flow divergence)。",
+          "基础的并行遍历策略需要在算法层面的工作效率 (Work efficiency) 与硬件层面的执行一致性之间做出权衡。以顶点为中心的策略工作量较少但发散严重；以边为中心的策略发散小但存在冗余检查。",
+          "通过结合算法层面的优化（前沿队列、方向优化）与硬件层面的优化（原子操作、共享内存私有化、网格级同步），可以将图遍历的性能推向理论极限。"
+        ]
+      },
+      {
+        "heading": "核心主张 (Core Claims)",
+        "points": [
+          "方向优化 (Direction-optimized)：在 BFS 早期使用基于 CSR 的 Push（自顶向下）策略遍历出边，在波前膨胀的后期切换到基于 CSC 的 Pull（自底向上）策略，后者能凭借提前跳出 (Break early) 大幅降低发散，尤其适用于小世界图 (Small world graphs)。",
+          "以边为中心 (Edge-centric) 缓解负载不均：通过为每条边 (COO 格式) 分配一个线程，虽然增加了总检查次数 (O(d*m))，但彻底消灭了长尾顶点带来的极端 Warp 闲置，适合高方差度数的图（如社交网络）。",
+          "边界队列 (Frontiers) 逼近理想复杂度：仅为处于当前活跃波前的顶点启动计算，避免了对全图顶点的无效扫描，将工作复杂度优化至理想的 O(n+m)。",
+          "私有化 (Privatization) 消除原子冲突：全局前沿队列的计数器极易成为高频访问的性能瓶颈。利用线程块级别的共享内存 (Shared memory) 构建局部边界，能极大减少全局 atomicAdd 的竞争。",
+          "协作组 (Cooperative Groups) 消灭启动开销：利用 `cudaLaunchCooperativeKernel` 和 `grid.sync()`，在单一内核中跨多层级完成同步，消灭了主机端依靠循环频繁重启内核的巨大调度延迟。"
+        ]
+      },
+      {
+        "heading": "本章重要性 (Why This Chapter Matters)",
+        "points": [
+          "本章展示了高级的动态工作负载映射 (Dynamic workload mapping) 技巧，是理解和开发复杂不规则算法（如推荐系统、社区发现）的基石。",
+          "深刻揭示了 CUDA 协作组 (Cooperative groups) 的强大威力与死锁风险，以及 C++ 内存模型中并发写入的潜在问题，是进阶 GPU 开发者的必修课。"
+        ]
+      },
+      {
+        "heading": "先决条件 (Prerequisites)",
+        "points": [
+          "熟练掌握稀疏矩阵表示法（CSR、CSC、COO）及其与图数据结构（出边、入边、边列表）的等价映射关系。",
+          "深刻理解 CUDA 内存一致性模型、原子操作 (Atomic operations) 及其性能代价。",
+          "理解 SM (流式多处理器) 占用率 (Occupancy) 概念，以及活跃线程块 (Active blocks) 在硬件层面的调度机制。"
+        ]
+      },
+      {
+        "heading": "实现启示与常见错误 (Implementation Implications)",
+        "points": [
+          "幂等写入陷阱：在多线程标记顶点层级时，虽然操作具有数学上的幂等性 (Idempotent)，但无序的并发裸写违反了 C++ 内存模型，构成数据竞争 (Race condition)。保守安全的实现必须依赖原子操作。",
+          "重复入队缺陷：在实现边界 (Frontiers) 时，若只用普通原子读取，多个并发访问同一未访问邻居的线程会将其多次压入队列，导致工作量呈指数级暴增。必须使用 `compare_exchange_strong`（Compare-and-swap）在一个原子事务中完成检查与更新。",
+          "协作组引发全局死锁 (Cooperative Groups Deadlock)：在使用 `grid.sync()` 跨层级同步时，如果启动的 Thread Block 数量超过了所有 SM 所能物理并发容纳的上限 (通过 `cudaOccupancyMaxActiveBlocksPerMultiprocessor` 计算)，未调度的 Block 将永远无法到达屏障，导致整个 GPU 死锁。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

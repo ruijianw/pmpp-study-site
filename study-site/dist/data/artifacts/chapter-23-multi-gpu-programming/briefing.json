@@ -1,0 +1,62 @@
+{
+  "chapterId": "chapter-23-multi-gpu-programming",
+  "chapterTitle": "Multi Gpu Programming",
+  "sourceId": "e8ad84fc-300d-4465-aea8-8bb6469fefe6",
+  "sourceTitle": "chapter-23-multi-gpu-programming.pdf",
+  "artifactType": "briefing",
+  "artifactLabel": "Briefing",
+  "generatedAt": "2026-07-13T15:17:47.052687Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "简报：多 GPU 编程 (Chapter 23: Multi-GPU programming)",
+    "summary": "本简报概述了在多 GPU 及集群环境下扩展 CUDA 应用的核心架构模型。以 2D 模板计算的光环交换 (Halo exchange) 为例，深入剖析了如何通过 MPI、NCCL 和 NVSHMEM 三种编程范式实现计算与通信的极致重叠 (Overlapping)，并探讨了主机同步延迟、锁页内存以及从双边通信向单边通信演进的微架构意义。",
+    "sections": [
+      {
+        "heading": "执行摘要 (Executive Summary)",
+        "points": [
+          "多 GPU 编程的核心挑战在于解决跨设备的数据交换问题。通过 1D 域分解 (1D domain decomposition) 结合行主序 (Row-major) 布局，可以使光环交换 (Halo exchange) 的边界数据在内存中保持连续，从而简化传输。",
+          "通过将边界计算与内部计算分离，并结合 CUDA 流 (Streams)、事件 (Events) 和异步拷贝，可以有效地将网络通信时间隐藏在 GPU 内部计算时间中。",
+          "多 GPU 通信模型正经历架构演进：从高度依赖主机 CPU 进行调度同步的双边模型 (MPI)，发展到将通信直接注入流的无主机干预模型 (NCCL)，最终演进到由 GPU 设备线程直接发起的极低延迟单边模型 (NVSHMEM)。"
+        ]
+      },
+      {
+        "heading": "核心主张 (Core Claims)",
+        "points": [
+          "支持 CUDA 的 MPI (CUDA-aware MPI)：传统 MPI 需要将设备数据拷贝到主机，而 CUDA-aware MPI 能识别设备指针，利用 DMA 或 RDMA 直接在显存间传输数据，彻底消除了显式主机中转带来的代码臃肿与延迟。",
+          "流优先级决定重叠效率：仅使用多个 CUDA 流并不足以保证重叠。必须赋予执行边界计算的流更高的优先级 (Stream Priority)，强制其率先执行，才能尽早触发随后的通信网络传输。",
+          "NCCL 的流注入与组调用：NCCL 将通信原语移入 GPU 执行并放入 CUDA 流中，释放了主机 CPU。由于缺乏原生的融合收发函数，NCCL 采用组调用 (Group Calls, ncclGroupStart/End) 机制，强制底层硬件并发执行双向传输以避免死锁。",
+          "NVSHMEM 与单边通信内核融合：NVSHMEM 引入对称堆 (Symmetric heap) 和单边通信 (One-sided communication)。它允许 GPU 线程直接使用 put/get 操作访问远程显存，无需目标主机参与。这使得原本必须拆分为三个内核的计算与通信任务，可以融合到单个内核 (Kernel fusion) 中异步完成。"
+        ]
+      },
+      {
+        "heading": "本章重要性 (Why This Chapter Matters)",
+        "points": [
+          "本章揭示了从单节点单 GPU 走向大规模超算集群的必经之路，是开发工业级分布式深度学习框架和科学计算程序的基石。",
+          "它深刻剖析了软件层面的流调度如何与底层硬件 (DMA、互连网络) 协同工作，展示了消除主机同步开销 (Synchronization overhead) 的完整架构演进过程。"
+        ]
+      },
+      {
+        "heading": "先决条件 (Prerequisites)",
+        "points": [
+          "深刻理解分布式内存模型与单节点共享内存模型的本质差异。",
+          "熟练掌握 CUDA 流 (Streams) 的并发执行逻辑，以及使用事件 (Events) 进行流间依赖控制的方法。",
+          "理解操作系统级的虚拟内存与物理内存分页 (Paging) 机制，以及 DMA 传输的底层要求。"
+        ]
+      },
+      {
+        "heading": "实现启示与常见错误 (Implementation Implications)",
+        "points": [
+          "未绑定锁页内存的异步陷阱：在使用 cudaMemcpyAsync 时，如果主机端缓冲区使用普通的 malloc 分配，操作系统分页机制可能随时将该物理页换出，破坏 DMA 传输。CUDA 运行时将被迫退回到使用隐藏缓冲区的同步传输，彻底破坏异步重叠设计。必须使用 cudaMallocHost 分配锁页内存 (Pinned memory)。",
+          "主机同步导致的网络空闲：在基于 MPI 的实现中，如果在主机端频繁使用 cudaStreamSynchronize 阻塞等待内核完成，主机 CPU 调度的延迟 (Synchronization overhead) 会显著推迟后续 MPI 通信的发射，导致网络带宽未能与计算核心完美并行。",
+          "忽视单边通信的粒度：在 NVSHMEM 的设备内核中，如果简单地让每个线程对单一的浮点数执行独立的 put 操作 (nvshmem_float_p)，在非 NVLink 等较慢网络下会产生灾难性的网络包头开销。实际工程中通常需要使用 Block 级原语 (如 nvshmemx_float_put_block) 进行粗粒度的聚合传输。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

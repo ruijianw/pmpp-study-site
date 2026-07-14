@@ -1,0 +1,145 @@
+{
+  "chapterId": "chapter-18-graph-traversal",
+  "chapterTitle": "Graph Traversal",
+  "sourceId": "6170bf2b-3c99-4347-ae81-bf05ea83eac4",
+  "sourceTitle": "chapter-18-graph-traversal.pdf",
+  "artifactType": "flashcards",
+  "artifactLabel": "Flashcards",
+  "generatedAt": "2026-07-13T14:50:13.271509Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "闪卡：图遍历 (Chapter 18: Graph Traversal)",
+    "summary": "包含 19 张精选闪卡，用于快速复习第十八章中关于 GPU 图遍历 (以 BFS 为例) 的核心知识。涵盖了顶点/边中心 (Vertex/Edge-centric) 策略对比、方向优化 (Direction-optimized)、利用边界 (Frontiers) 提升工作效率、共享内存私有化 (Privatization) 缓解竞争，以及协作组 (Cooperative groups) 网格级同步与死锁陷阱。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Tips)",
+        "points": [
+          "利用简单 (Easy) 难度卡片掌握顶点中心与边中心策略的基础数据结构映射 (CSR vs CSC vs COO)。",
+          "通过中等 (Medium) 难度卡片深入理解方向优化 (Direction-optimized) 的切换时机、边界队列 (Frontiers) 的工作效率提升，以及私有化 (Privatization) 的同步机制。",
+          "挑战困难 (Hard) 难度卡片，死磕 C++ 内存模型中的并发幂等写入陷阱、`compare_exchange_strong` 避免重复入队的逻辑，以及协作组 (Cooperative Groups) 导致网格死锁的底层物理限制。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "front": "在以顶点为中心的 Push 策略 (Vertex-centric push / Top-down) 中，线程是如何映射的？需要哪种图表示格式？",
+        "back": "每个线程分配给一个顶点，检查其是否处于前一层，然后遍历其所有“出边”更新邻居。因为需要高效访问出边，必须使用 CSR (压缩稀疏行) 格式。",
+        "difficulty": "easy",
+        "sourceHint": "18.3 Vertex-centric parallelization of BFS"
+      },
+      {
+        "front": "在无边界的顶点中心 Push 内核中，多线程并发裸写同一邻居的层级标记为何是不安全的？",
+        "back": "虽然此操作具有幂等性 (Idempotent，多次写入相同值结果不变)，但在 C++ 内存模型中，无序的并发写入构成了未定义的数据竞争 (Race condition)。保守安全的做法是使用原子操作 (Atomic operations)。",
+        "difficulty": "hard",
+        "sourceHint": "18.3 Vertex-centric parallelization of BFS"
+      },
+      {
+        "front": "在以顶点为中心的 Pull 策略 (Vertex-centric pull / Bottom-up) 中，线程是如何映射的？需要哪种图表示格式？",
+        "back": "每个线程分配给一个未访问的顶点，遍历其所有“入边”以寻找属于前一层的父节点。因为需要高效访问入边，必须使用 CSC (压缩稀疏列) 格式。",
+        "difficulty": "medium",
+        "sourceHint": "18.3 Vertex-centric parallelization of BFS"
+      },
+      {
+        "front": "为什么 Pull (自底向上) 策略能够有效缓解高度数顶点带来的控制流发散 (Control flow divergence)？",
+        "back": "因为线程在遍历入边时，只要找到“一个”属于前一层的父节点，就可以立即跳出循环 (Break early)，无需遍历剩余入边，大幅减少了高度数节点的无用检查时间。",
+        "difficulty": "medium",
+        "sourceHint": "18.3 Vertex-centric parallelization of BFS"
+      },
+      {
+        "front": "什么是图遍历中的“方向优化 (Direction-optimized)”？它最适合哪类图结构？",
+        "back": "在 BFS 早期波前较小时使用 Push 策略，当波前膨胀到后期时动态切换为 Pull 策略。它极其适合度数高且方差大的小世界图 (Small world graphs)。",
+        "difficulty": "medium",
+        "sourceHint": "18.3 Vertex-centric parallelization of BFS"
+      },
+      {
+        "front": "在以边为中心的并行化 (Edge-centric parallelization) 中，线程是如何映射的？使用哪种数据格式？",
+        "back": "每个线程严格分配给“一条边”，检查其源顶点状态并更新目标顶点。依赖 COO (坐标) 格式以直接获取边的源和目标节点。",
+        "difficulty": "easy",
+        "sourceHint": "18.4 Edge-centric parallelization of BFS"
+      },
+      {
+        "front": "相比于顶点中心策略，以边为中心 (Edge-centric) 策略的核心架构优势是什么？",
+        "back": "每个线程只遍历一条边，从根本上消灭了由顶点度数差异引发的负载不均衡 (Load imbalance) 和极端的控制流发散 (Control flow divergence)。",
+        "difficulty": "medium",
+        "sourceHint": "18.4 Edge-centric parallelization of BFS"
+      },
+      {
+        "front": "以边为中心 (Edge-centric) 策略的致命性能缺陷是什么？",
+        "back": "工作效率 (Work efficiency) 极差。在 d 层 BFS 中，无论边是否与当前层相关，每一层都会为全图所有边启动线程，其理论工作复杂度高达 O(d*m)，产生海量冗余检查。",
+        "difficulty": "hard",
+        "sourceHint": "18.4 Edge-centric parallelization of BFS"
+      },
+      {
+        "front": "引入“边界队列 (Frontiers)”优化的核心目的是什么？",
+        "back": "通过仅为当前活跃波前 (Active wavefront) 中的顶点启动线程，避免盲目扫描全图的无关顶点，将 BFS 的整体工作复杂度逼近理想的 O(n+m)。",
+        "difficulty": "easy",
+        "sourceHint": "18.5 Improving work efficiency with frontiers"
+      },
+      {
+        "front": "在基于边界 (Frontiers) 的内核中，如果仅仅使用普通读取判断邻居“未访问”再进行入队，会引发什么严重的算法缺陷？",
+        "back": "多个并发访问同一邻居的线程可能同时读到“未访问”，从而导致该邻居被重复多次压入边界队列。这会让下一层的冗余工作量呈指数级暴增。",
+        "difficulty": "hard",
+        "sourceHint": "18.5 Improving work efficiency with frontiers"
+      },
+      {
+        "front": "为了实现安全的原子入队，代码使用了 `compare_exchange_strong` (CAS)。它如何实现防重入队的？",
+        "back": "它在一个不可分割的事务中：检查顶点层级是否为 `UNVISITED`，若是则将其更新为 `currLevel`。只有唯一成功执行交换的那个线程，才会被允许将该邻居追加到当前边界队列中。",
+        "difficulty": "hard",
+        "sourceHint": "18.5 Improving work efficiency with frontiers"
+      },
+      {
+        "front": "在向全局边界队列追加顶点时，系统会面临什么新的性能瓶颈？",
+        "back": "所有找到未访问邻居的活跃线程，都会高频调用原子加法 (`atomicAdd`) 来争抢更新同一个全局边界大小计数器 (`numCurrFrontier`)，这会导致严重的内存竞争惩罚。",
+        "difficulty": "medium",
+        "sourceHint": "18.5 Improving work efficiency with frontiers"
+      },
+      {
+        "front": "什么是边界私有化 (Privatization of Frontiers) 优化？",
+        "back": "在线程块的共享内存 (Shared memory) 中建立局部的私有边界队列和计数器。线程优先向局部队列中插入顶点，极大减少了对全局唯一计数器的原子读写冲突。",
+        "difficulty": "medium",
+        "sourceHint": "18.6 Reducing contention with privatization"
+      },
+      {
+        "front": "在私有化队列满载并向全局队列转储 (Dump) 时，它是如何实现极高的全局内存带宽利用率的？",
+        "back": "一个线程代表 Block 提前在全局计数器中分配好所需空间，随后 Block 内的线程利用其相对偏移量 (`threadIdx.x`) 进行写入，完美触发了全局内存的合并访存 (Coalesced memory accesses)。",
+        "difficulty": "hard",
+        "sourceHint": "18.6 Reducing contention with privatization"
+      },
+      {
+        "front": "对于平均度数低且层数极深的图 (如道路网)，哪种调度开销会成为性能杀手？",
+        "back": "由于边界极小且层数极多，主机端 (Host) 依靠 for 循环在层与层之间频繁终止并重新启动 Kernel (Kernel launch overhead) 会占据极高的延迟比例。",
+        "difficulty": "medium",
+        "sourceHint": "18.7 Reducing launch overhead with cooperative groups"
+      },
+      {
+        "front": "协作组 (Cooperative Groups) 是如何消除 Kernel 启动开销的？",
+        "back": "使用 `cudaLaunchCooperativeKernel` 和 `grid.sync()` API，允许在单一内核执行期间对网格内所有的线程块进行全局屏障同步。这使得 BFS 的多层迭代能在设备端一次性完成。",
+        "difficulty": "medium",
+        "sourceHint": "18.7 Reducing launch overhead with cooperative groups"
+      },
+      {
+        "front": "在使用 `grid.sync()` 进行网格级同步时，如果启动的 Thread Block 数量过多，会触发什么灾难性后果？",
+        "back": "会导致网格全局死锁 (Grid Deadlock)。已在 SM 上驻留的 Block 会在屏障处无限期等待，而未被调度的 Block 无法进入 SM 执行，导致所有线程互相死锁挂起。",
+        "difficulty": "hard",
+        "sourceHint": "18.7 Reducing launch overhead with cooperative groups"
+      },
+      {
+        "front": "在使用协作组时，如何安全地计算允许启动的最大 Block 数量以避免死锁？",
+        "back": "调用 `cudaOccupancyMaxActiveBlocksPerMultiprocessor` 计算单 SM 活跃 Block 上限，并乘以 GPU 的总 SM 数量 (`multiProcessorCount`)，确保发射的规模绝不超出物理并发极限。",
+        "difficulty": "hard",
+        "sourceHint": "18.7 Reducing launch overhead with cooperative groups"
+      },
+      {
+        "front": "针对度数方差极其极端的图，除了切换到边中心策略外，还有什么基于桶排序 (Bucketing) 的高级工作负载映射优化？",
+        "back": "将顶点按其度数大小排序并分配到不同桶中。小度数桶映射给单线程处理，中度数桶映射给 Warp 协同处理，极大度数桶映射给整个 Thread Block 协同处理，以此实现极致的负载均衡。",
+        "difficulty": "medium",
+        "sourceHint": "18.8 Other optimizations"
+      }
+    ]
+  }
+}

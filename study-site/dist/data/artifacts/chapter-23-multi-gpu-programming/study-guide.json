@@ -1,0 +1,71 @@
+{
+  "chapterId": "chapter-23-multi-gpu-programming",
+  "chapterTitle": "Multi Gpu Programming",
+  "sourceId": "e8ad84fc-300d-4465-aea8-8bb6469fefe6",
+  "sourceTitle": "chapter-23-multi-gpu-programming.pdf",
+  "artifactType": "study-guide",
+  "artifactLabel": "Study Guide",
+  "generatedAt": "2026-07-13T15:16:30.134507Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "学习指南：多 GPU 编程 (Chapter 23: Multi-GPU programming)",
+    "summary": "本指南探讨了在集群和多 GPU 环境下扩展 CUDA 应用的编程模型。以 2D 模板计算 (Stencil computation) 的边界交换 (Halo exchange) 为例，深入分析了使用 MPI、NCCL 和 NVSHMEM 实现计算与通信重叠 (Overlapping computation and communication) 的微架构原理、同步开销以及从双边通信向单边通信演进的架构优势。",
+    "sections": [
+      {
+        "heading": "学习目标 (Learning Objectives)",
+        "points": [
+          "1. 掌握多 GPU 模板计算中 1D 域分解 (1D domain decomposition) 和光环交换 (Halo exchange) 的基础数据依赖概念。",
+          "2. 理解支持 CUDA 的 MPI (CUDA-aware MPI) 如何通过直接操作设备指针消除主机中转，并掌握 MPI_Sendrecv 和 MPI_Allreduce 的应用。",
+          "3. 应用 CUDA 流 (Streams) 和事件 (Events) 机制分离边界与内部计算，实现计算与通信的重叠 (Overlap)，并理解锁页内存 (Pinned memory) 的必要性。",
+          "4. 评估主机端流同步 (Host stream synchronization) 的延迟开销，掌握使用 NCCL 将通信操作直接放入 CUDA 流的优势。",
+          "5. 理解 NCCL 中组调用 (Group calls) 在融合发送和接收操作中的作用，以及它如何解决非阻塞通信场景中的同步问题。",
+          "6. 区分双边通信 (Two-sided) 与单边通信 (One-sided)，掌握 NVSHMEM 如何利用对称堆 (Symmetric heap) 实现设备端发起的 (Device-initiated) 内存访问，从而实现内核融合 (Kernel fusion)。"
+        ]
+      },
+      {
+        "heading": "章节结构映射 (Section-by-Section Chapter Map)",
+        "points": [
+          "23.1 模板计算贯穿示例 (Stencil as a running example): 介绍 2D Jacobi 迭代、行主序 (Row-major layout) 带来的 1D 域分解优势，以及相邻 GPU 间的光环交换 (Halo exchange) 需求。",
+          "23.2 使用 MPI (Multi-GPU stencil with MPI): 讲解分布式内存模型，介绍 CUDA-aware MPI 的点对点通信 (MPI_Sendrecv) 与计算 L2 范数的集体通信 (MPI_Allreduce)。",
+          "23.3 计算与通信重叠 (Overlapping computation and communication): 将核心划分为边界和内部独立运行，利用高优先级 Streams、Events 依赖控制与 cudaMemcpyAsync 隐藏通信延迟，分析主机同步 (Host synchronization) 引起的延迟瓶颈。",
+          "23.4 使用 NCCL (Multi-GPU stencil with NCCL): 引入将通信原语移入 GPU 执行的 NCCL。利用 ncclGroupStart/End 融合双向通信，并通过直接向流中注入通信原语，彻底解放主机 CPU。",
+          "23.5 使用 NVSHMEM (Multi-GPU stencil with NVSHMEM): 引入全局分区地址空间 (PGAS) 和单边通信模型。在内核内部调用 nvshmem_float_p 实现极致的重叠与融合，无需切分多个计算内核。"
+        ]
+      },
+      {
+        "heading": "关键概念精解 (Key Concepts)",
+        "points": [
+          "光环交换 (Halo Exchange): 在域分解中，GPU 需要获取相邻 GPU 边缘的输入数据以计算自身边界。基于行主序的 1D 分解使得待交换的边界数据在内存中连续，从而极大简化了网络拷贝。",
+          "支持 CUDA 的 MPI (CUDA-aware MPI): 传统的 MPI 需将设备数据显式拷贝到主机再发送；CUDA-aware MPI 的底层实现能识别 GPU 指针，并利用 DMA 或 RDMA 直接从显存传输，消除显式的 cudaMemcpy 冗余。",
+          "流优先级重叠 (Stream Priority Overlap): 利用 cudaStreamCreateWithPriority 赋予边界计算内核最高优先级。这是保障通信网络与内部计算内核在时间线上能够真正并行的微架构基础。",
+          "锁页内存 (Pinned Memory / Page-locked Memory): 操作系统的分页机制可能在 DMA 传输时将物理页换出，导致数据损坏。cudaMallocHost 分配的内存被操作系统锁定，是实现异步传输 (cudaMemcpyAsync) 的硬性要求。",
+          "组调用 (Group Calls): NCCL 缺乏原生的融合发送-接收函数 (如 MPI_Sendrecv)。通过将 ncclSend 和 ncclRecv 夹在 ncclGroupStart 和 ncclGroupEnd 之间，可强制底层硬件兵分两路并发执行双向传输，防止单向阻塞导致的死锁。",
+          "单边通信与对称堆 (One-sided Communication & Symmetric Heap): NVSHMEM 中，各处理元件(PE)在虚拟地址空间的相同偏移处分配内存。发起方内核可直接根据自身指针推导出目标 PE 的显存地址，通过网络直接 put/get 数据，无需目标主机 CPU/GPU 的任何主动响应。"
+        ]
+      },
+      {
+        "heading": "常见误区与实现缺陷 (Common Misunderstandings & Implementation Mistakes)",
+        "points": [
+          "误区：只要将不同的 Kernel 放入多个独立的 CUDA Streams，底层就一定能实现理想的计算与通信重叠。真相：如果庞大的内部计算内核率先启动并占据所有流式多处理器 (SM)，边界计算将被推迟，导致通信网络空闲。必须使用高优先级流强制边界 Kernel 先行。",
+          "实现缺陷：在使用 cudaMemcpyAsync 执行设备到主机的异步数据传输时，目标主机内存使用了普通的 malloc 分配。真相：这会导致 DMA 操作失去锁页保护，CUDA Runtime 将被迫使用隐藏的同步锁页缓冲中转，直接破坏异步重叠甚至引发程序崩溃。",
+          "误区：在多 GPU 编程中，NCCL 能够完全替代 MPI。真相：NCCL 专注于优化 GPU 间的高性能通信（通过 NVLink、PCIe 等），但其环境初始化、进程间标识广播（如 ncclGetUniqueId 分发）通常仍需借助 MPI 协助完成，两者是协作关系。",
+          "实现缺陷：在 NVSHMEM 内核中，对于每一个 float 数据点都让单线程执行独立的 put 操作 (nvshmem_float_p)。真相：在细粒度高频通信时，虽然在极低延迟的 NVLink 尚可接受，但在较慢的互连网络下会引发极端的网络包头开销。工业级代码应在 Block 级协作使用粗粒度原语 (如 nvshmemx_float_put_block) 进行聚合传输。"
+        ]
+      },
+      {
+        "heading": "三阶段实践计划 (3-Session Practice Plan)",
+        "points": [
+          "Session 1: MPI 基础域分解。基于示例的 2D Jacobi 迭代，使用 MPI_Sendrecv 实现粗放式的阻塞型光环交换。确保 CUDA-aware MPI 环境正确开启，并利用 MPI_Allreduce 实现分布式的残差 L2 范数 (L2 norm) 计算与同步。",
+          "Session 2: CUDA Streams 与主机同步延迟分析。重构代码，将核心逻辑剥离为 Top, Bottom, Internal 三个内核，放入不同优先级的 Stream。通过 cudaEventRecord 建立流间依赖。使用 Nsight Systems 捕捉 Timeline，重点观察主机端等待 MPI_Sendrecv 阻塞造成的 Stream 发射间隔 (Synchronization overhead)。",
+          "Session 3: 极致异步 (NCCL/NVSHMEM 融合)。用 NCCL 组调用 (Group Calls) 替换 MPI 传输并注入 Stream，验证主机同步被彻底消灭的 Timeline 表现。最后引入 NVSHMEM，废弃多内核划分模式，在单一 Kernel 的边界线程中通过单边通信 (Put) 发起传输，体验极致的设备驱动级 (Device-initiated) 并行融合。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

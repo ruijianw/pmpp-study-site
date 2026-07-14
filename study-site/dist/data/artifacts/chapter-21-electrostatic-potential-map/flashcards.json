@@ -1,0 +1,138 @@
+{
+  "chapterId": "chapter-21-electrostatic-potential-map",
+  "chapterTitle": "Electrostatic Potential Map",
+  "sourceId": "92e442b0-fc5b-4782-bad6-f51b574a393d",
+  "sourceTitle": "chapter-21-electrostatic-potential-map.pdf",
+  "artifactType": "flashcards",
+  "artifactLabel": "Flashcards",
+  "generatedAt": "2026-07-13T15:07:51.791237Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "闪卡：静电势图 (Chapter 21: Electrostatic Potential Map)",
+    "summary": "包含 18 张精选闪卡，专为复习分子静电势图计算在 GPU 上的架构级优化而设计。涵盖了 Scatter/Gather 模式的取舍、线程粗化 (Thread Coarsening) 带来的寄存器复用与访存合并问题，以及利用截断分箱 (Cutoff Binning) 解决超大规模数据扩展性的软硬件异构协同方案。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Tips)",
+        "points": [
+          "利用简单和中等难度卡片掌握 Scatter 与 Gather 模式的微架构差异，以及线程粗化 (Thread Coarsening) 的基础概念。",
+          "挑战困难难度卡片，深入理解如何通过交错分配 (Interleaved Assignment) 修复非合并访存，以及 CPU-GPU 异步处理溢出列表 (Overflow List) 的深层架构设计。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "front": "在直接库仑求和 (DCS) 方法中，计算量的时间复杂度与什么成正比？",
+        "back": "计算量与系统中的原子总数和网格点总数的乘积成正比。对于体积增大的系统，该复杂度呈现二次方增长 $O(V^2)$。",
+        "difficulty": "easy",
+        "sourceHint": "21.1 Background"
+      },
+      {
+        "front": "为什么将高度优化的串行 CPU 代码 (采用发散 Scatter 模式) 直接移植到 GPU 并行化会导致性能极其糟糕？",
+        "back": "因为 Scatter 模式是按原子遍历，多个线程会同时尝试把不同原子的贡献累加到同一个网格点上。这强制要求使用高延迟的原子操作 (`atomicAdd`) 以避免写冲突，从而摧毁了 GPU 的并行吞吐量。",
+        "difficulty": "medium",
+        "sourceHint": "21.2 Scatter vs. gather in kernel design"
+      },
+      {
+        "front": "在 DCS 内核设计中，收集 (Gather) 模式是如何彻底避免原子操作 (Atomic operations) 瓶颈的？",
+        "back": "在 Gather 模式下，每个线程被分配计算一个独立的网格点。线程通过遍历所有原子来累加总势能，最终只需在寄存器中算完后写入一次全局内存。由于线程间没有写冲突，完全不需要原子操作。",
+        "difficulty": "medium",
+        "sourceHint": "21.2 Scatter vs. gather in kernel design"
+      },
+      {
+        "front": "在并行计算中，什么是“优化悖论 (Optimization Paradox)”？请结合静电势图的案例解释。",
+        "back": "优化悖论是指：在 CPU 上经过指令级优化的顺序代码 (Scatter模式，减少了距离的重复计算)，往往因为打破了无冲突的数据访问拓扑，变得极难高效并行化。相反，退回到未优化的顺序代码 (Gather模式) 却能释放 GPU 大规模并行的威力。",
+        "difficulty": "hard",
+        "sourceHint": "21.2 Scatter vs. gather in kernel design"
+      },
+      {
+        "front": "在 Gather 模式的 DCS 内核中，原子的坐标和电荷数据通常存储在 GPU 的哪种内存中以最大化带宽？",
+        "back": "常量内存 (Constant memory)。因为所有线程在同一时刻通常都会读取相同的原子数据，硬件常量缓存能够将一次内存读取广播 (Broadcast) 给整个 Warp 中的所有线程，极其高效。",
+        "difficulty": "easy",
+        "sourceHint": "21.2 Scatter vs. gather in kernel design"
+      },
+      {
+        "front": "在 DCS 内核中应用“线程粗化 (Thread Coarsening)”的主要动机是什么？",
+        "back": "为了减少对常量内存的访问指令开销，并消除网格点之间的冗余计算。通过让单个线程处理多个网格点，原子的坐标数据和公共距离计算 (如 dy, dz) 可以被保存在寄存器 (Registers) 中大量复用。",
+        "difficulty": "medium",
+        "sourceHint": "21.3 Thread coarsening"
+      },
+      {
+        "front": "线程粗化是如何减少 DCS 内核中的浮点运算 (FLOPs) 数量的？",
+        "back": "在处理同一行 (y 和 z 坐标相同) 的多个网格点时，原子到这些网格点的 y 和 z 坐标差值的平方 (`dy*dy + dz*dz`) 是完全相同的。线程粗化将此计算提取出来复用，将处理 4 个网格点的运算量从 48 次降到了 24 次。",
+        "difficulty": "medium",
+        "sourceHint": "21.3 Thread coarsening"
+      },
+      {
+        "front": "朴素的线程粗化实现 (例如让单线程在内部 for 循环处理索引 0,1,2,3 的网格点) 会引发什么严重的内存性能缺陷？",
+        "back": "会导致非合并访存 (Uncoalesced memory access)。因为 Warp 内相邻的线程 (如线程0和线程1) 此时写入的全局内存地址会被错开 4 个元素的距离，内存总线请求会被撕裂，严重浪费带宽。",
+        "difficulty": "hard",
+        "sourceHint": "21.4 Memory coalescing"
+      },
+      {
+        "front": "为了修复线程粗化带来的非合并访存问题，应当如何重构网格点到线程的分配逻辑？",
+        "back": "必须采用交错分配 (Interleaved Assignment)。通过以线程块的维度 (例如 `blockDim.x`) 作为地址步长跨度来分配网格点。这样可以确保同一个 Warp 中的 32 个线程在任何写指令下，访问的永远是连续的 32 个内存地址。",
+        "difficulty": "hard",
+        "sourceHint": "21.4 Memory coalescing"
+      },
+      {
+        "front": "为什么直接库仑求和 (DCS) 方法无法扩展到体积极其庞大的生物分子模拟系统中？",
+        "back": "因为它的计算复杂度随系统的物理体积呈二次方 $O(V^2)$ 增长 (网格点数量增加，同时原子数量也成比例增加)。对于大体积系统，即使是 GPU 也无法承受这种暴增的计算量。",
+        "difficulty": "easy",
+        "sourceHint": "21.5 Cutoff binning for data size scalability"
+      },
+      {
+        "front": "截断求和 (Cutoff summation) 策略是如何将静电势计算的复杂度从 $O(V^2)$ 降低到 $O(V)$ 的？",
+        "back": "它基于物理特性，认为距离网格点极远的原子对势能的贡献微乎其微。因此，只计算落在特定“截断半径”内的原子的贡献。这使得每个网格点的计算量变成常数，整体复杂度降低为线性 $O(V)$。",
+        "difficulty": "medium",
+        "sourceHint": "21.5 Cutoff binning for data size scalability"
+      },
+      {
+        "front": "在实现截断求和的“分箱 (Binning)”算法中，什么是邻域列表 (Neighborhood list)？",
+        "back": "邻域列表是一组相对坐标偏移量 (例如 (-1, 0), (0, 1) 等)，用于指出哪些空间箱子 (Bins) 与当前线程块所覆盖的空间存在重叠或位于截断半径之内，线程只需扫描这些箱子内的原子。",
+        "difficulty": "medium",
+        "sourceHint": "21.5 Cutoff binning for data size scalability"
+      },
+      {
+        "front": "为什么在截断分箱 (Cutoff Binning) 算法中，使用常量内存 (Constant memory) 存储原子数据不再是最佳选择？",
+        "back": "因为不同的线程块 (Thread Blocks) 现在处理不同的空间区域，它们需要访问不同的邻域原子子集。由于常量内存容量极小，无法同时容纳所有活跃线程块所需的所有原子组合。",
+        "difficulty": "medium",
+        "sourceHint": "21.5 Cutoff binning for data size scalability"
+      },
+      {
+        "front": "在截断分箱算法中，如果不使用常量内存，线程块应当如何高效地读取邻域原子数据？",
+        "back": "应当利用共享内存 (Shared memory)。同一个线程块内的线程相互协作，将它们共同需要的邻域箱 (Neighborhood bins) 内的原子数据从全局内存拉取到共享内存中，然后再各自从中读取以进行计算。",
+        "difficulty": "hard",
+        "sourceHint": "21.5 Cutoff binning for data size scalability"
+      },
+      {
+        "front": "在截断分箱算法中，为什么 Warp 内部可能会发生控制流发散 (Control divergence)？",
+        "back": "即使线程块共同加载了邻域箱内的原子，但并非该箱内的所有原子都严格落在每个线程独立的截断半径内。每个线程必须计算实际距离并使用 `if` 分支来决定是否累加该原子，从而引发执行路径的分歧。",
+        "difficulty": "medium",
+        "sourceHint": "21.5 Cutoff binning for data size scalability"
+      },
+      {
+        "front": "为了保证内存对齐和消除分支，强行用“虚拟原子 (Dummy atoms)”将所有 Bin 填充至相同尺寸会带来什么致命代价？",
+        "back": "由于实际分子空间分布极度不均，这会导致绝大多数内存被无用的虚拟原子占据。不仅严重浪费全局和共享内存容量与带宽，还会迫使硬件执行海量无意义的乘零运算，极大地拖慢整体执行速度。",
+        "difficulty": "hard",
+        "sourceHint": "21.5 Cutoff binning for data size scalability"
+      },
+      {
+        "front": "在截断分箱算法中，如何优雅地处理分布不均的原子，而不使用浪费资源的虚拟原子？",
+        "back": "设定一个较小且固定的 Bin 容量 (以覆盖绝大多数正常情况)。在预处理时，将超出该容量的原子放入一个单独的溢出列表 (Overflow list)，最后将这个小型的溢出列表交由 CPU 补充计算。",
+        "difficulty": "hard",
+        "sourceHint": "21.5 Cutoff binning for data size scalability"
+      },
+      {
+        "front": "在异构计算架构中，如何巧妙地隐藏 CPU 处理溢出列表 (Overflow list) 的延迟 (Latency)？",
+        "back": "利用流与异步并发。当 GPU 正在全速执行当前批次的内核计算时，主机端 CPU 可以并行地处理上一批次内核遗留的溢出原子。只要溢出比例足够低，CPU 的计算时间可以被完美掩盖 (Latency hiding)。",
+        "difficulty": "medium",
+        "sourceHint": "21.5 Cutoff binning for data size scalability"
+      }
+    ]
+  }
+}

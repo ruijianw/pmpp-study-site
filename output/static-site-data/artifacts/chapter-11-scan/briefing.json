@@ -1,0 +1,62 @@
+{
+  "chapterId": "chapter-11-scan",
+  "chapterTitle": "Scan",
+  "sourceId": "9cc447c1-78a3-4adb-9800-672372e26c29",
+  "sourceTitle": "chapter-11-scan.pdf",
+  "artifactType": "briefing",
+  "artifactLabel": "Briefing",
+  "generatedAt": "2026-07-13T14:04:04.704304Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "简报：扫描 (Chapter 11: Scan)",
+    "summary": "本简报总结了并行扫描 (Scan/Prefix-Sum) 算法的优化演进，从基础的 Kogge-Stone 算法到消除假依赖的双缓冲技术，再到利用 Warp 级原语、线程粗化和单向同步实现高带宽利用率的全局单 Kernel 扫描。",
+    "sections": [
+      {
+        "heading": "执行摘要 (Executive Summary)",
+        "points": [
+          "并行扫描常用于处理资源分配等存在数学递推关系的串行瓶颈问题，其极端依赖高效的内存访问。",
+          "Kogge-Stone 算法具有 O(log N) 的极低跨度，但其 O(N log N) 的工作复杂度导致工作效率 (Work efficiency) 不高，在资源受限时极易成为性能短板。",
+          "通过引入双缓冲 (Double-buffering)、Warp 级原语、线程粗化 (Thread coarsening) 及跨块单向同步 (Unidirectional synchronization)，可以大幅削减同步开销，并有效逼近全局内存带宽极限。"
+        ]
+      },
+      {
+        "heading": "核心主张 (Core Claims)",
+        "points": [
+          "双缓冲消除同步开销 (Double-buffering)：利用两组共享内存交替作为输入和输出，消除了写后读 (Write-after-read) 假依赖，从而成功减免了循环内部一半的 `__syncthreads()` 屏障。",
+          "分解模式的差异化应用：在 Warp 与 Thread 级别推荐使用“扫描-扫描-相加 (Scan-scan-add)”分解；而在多 Kernel 跨块全局扫描中，“归约-扫描-扫描 (Reduce-scan-scan)”因写出数据更少而能提供更好的带宽利用率，但前提是算子必须满足交换律 (Commutativity)。",
+          "工作效率与资源权衡：Kogge-Stone 算法虽然执行了多余的操作，但在 SIMD 硬件模型上比 O(N) 的 Brent-Kung 算法表现更好。结合线程粗化将部分计算串行化，不仅摊薄了并行开销，还能使整体工作复杂度重新逼近 O(N)。",
+          "单 Kernel 全局扫描：通过动态 Block 索引与原子轮询 (Atomic polling) 实现单向同步 (Unidirectional synchronization)，构建单回溯 (Single lookback) 机制，彻底避免了多 Kernel 启动带来的冗余全局内存读写惩罚。"
+        ]
+      },
+      {
+        "heading": "本章重要性 (Why This Chapter Matters)",
+        "points": [
+          "揭示了针对极低算术强度 (Arithmetic intensity, 约 1/8 OP/B) 的内存受限 (Memory-bound) 内核该如何进行极致带宽优化。",
+          "深入讲解了如何在缺乏全局屏障的 GPU 环境中，安全地通过底层的内存顺序语义 (Memory order semantics) 构建高性能的跨线程块通信机制。"
+        ]
+      },
+      {
+        "heading": "先决条件 (Prerequisites)",
+        "points": [
+          "深入理解 Warp 的 SIMD 执行模型，以及控制流发散现象。",
+          "熟悉全局内存的合并访存 (Memory Coalescing) 原则，以及共享内存 (Shared memory) 中避免 Bank Conflict 的基础技巧。",
+          "掌握原子操作 (Atomic operations) 概念及其作用域特性，理解数据在线程间的可见性问题。"
+        ]
+      },
+      {
+        "heading": "实现启示与常见错误 (Implementation Implications)",
+        "points": [
+          "同步遗漏导致的竞态 (Race Condition)：在未应用双缓冲的原始 Kogge-Stone 内核中，若遗漏循环底部的第二个 `__syncthreads()`，会引发致命的写后读冲突，导致旧值被其他线程的新值错误覆盖。",
+          "访存与粗化设计冲突：在实施线程粗化时，若让单线程直接从全局内存连续加载其负责的子段数据，会导致 Warp 内严重的非合并访存 (Uncoalesced accesses)。必须先将数据交替分块加载至共享内存，再加载进寄存器进行分块 (Register tiling)。",
+          "内存顺序语义错误：在实现跨块单向同步的原子轮询时，必须使用 `cuda::memory_order_acquire` 确保轮询后读取的数据不会被硬件提前执行，同时使用 `cuda::memory_order_release` 确保标志位更新前所有数据已安全写入。误用 `memory_order_relaxed` 会导致不可预测的数据不同步灾难。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

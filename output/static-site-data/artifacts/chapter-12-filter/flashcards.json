@@ -1,0 +1,145 @@
+{
+  "chapterId": "chapter-12-filter",
+  "chapterTitle": "Filter",
+  "sourceId": "b72b13d3-d8d2-405c-ba31-db66494d85be",
+  "sourceTitle": "chapter-12-filter.pdf",
+  "artifactType": "flashcards",
+  "artifactLabel": "Flashcards",
+  "generatedAt": "2026-07-13T14:15:11.012188Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "闪卡：过滤与 Warp 投票 (Chapter 12: Filter)",
+    "summary": "包含 19 张精选闪卡，用于快速复习《大规模并行处理器编程》第十二章关于并行过滤 (Filter) 模式的核心知识。内容涵盖不稳定过滤的原子合并与私有化、稳定过滤的排他扫描机制、以及原位 (In-place) 计算中的跨 Block 同步依赖规则。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Tips)",
+        "points": [
+          "利用简单 (Easy) 难度卡片理解稳定/不稳定过滤的区别，以及原位 (In-place) 计算的初衷。",
+          "通过中等 (Medium) 难度卡片掌握共享内存私有化 (Privatization) 与合并原子操作 (Coalesced atomic operations) 降低竞争的原理。",
+          "挑战困难 (Hard) 难度卡片，深入分析位级 Warp 投票指令的底层逻辑、原位计算的读写数据依赖图，以及数据扩张模式下的逆向同步机制。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "front": "稳定过滤 (Stable filter) 与不稳定过滤 (Unstable filter) 的核心区别是什么？",
+        "back": "稳定过滤在输出列表中严格保留了被保留元素的原始相对顺序；而不稳定过滤不保证原始顺序，通常由于硬件执行原子操作 (Atomic operations) 的无序性导致数据位置随机分布。",
+        "difficulty": "easy",
+        "sourceHint": "12.1 Background"
+      },
+      {
+        "front": "基础的不稳定过滤 (Unstable filter) 算法在 GPU 上面临的最严重的性能瓶颈是什么？",
+        "back": "全局内存原子操作引发的严重争用 (Contention)。所有满足过滤条件的线程都试图用原子操作去递增同一个全局计数器，导致这些操作被硬件强制串行化 (Serialized)，极大拖慢了执行速度。",
+        "difficulty": "medium",
+        "sourceHint": "12.2 A simple parallel unstable filter"
+      },
+      {
+        "front": "什么是过滤算法中的“合并原子操作 (Coalesced atomic operations)”？",
+        "back": "不是让 Warp 内的每个活跃线程独立执行原子操作，而是先协同推选出一个 Leader 线程，由 Leader 执行单次原子操作申请一块总空间，然后将起始偏移量广播给其他线程，从而将潜在的最多 32 次原子请求合并为 1 次。",
+        "difficulty": "medium",
+        "sourceHint": "12.3 Coalescing atomic operations with warp-level primitives"
+      },
+      {
+        "front": "在底层实施合并原子操作时，`__activemask()` 和 `__popc()` 指令分别起到什么作用？",
+        "back": "`__activemask()` 返回一个 32 位的整数，其中设置为 1 的位代表当前处于活跃状态的线程集合；`__popc()` 用于统计掩码中 1 的数量，从而快速得出当前 Warp 中有多少个线程通过了过滤条件（即需要申请的总偏移量）。",
+        "difficulty": "hard",
+        "sourceHint": "12.3 Coalescing atomic operations with warp-level primitives"
+      },
+      {
+        "front": "在合并原子操作中，Warp 内的线程获取了 Leader 广播的基底偏移后，如何计算自身具体的局部偏移 (Local offset)？",
+        "back": "通过对其活跃掩码 (Active mask) 执行位级的二进制前缀和 (Binary prefix sum) 来实现。线程 i 会生成一个表示其前面所有线程的掩码，与全局活跃掩码按位与之后，再调用 `__popc()` 即可知道排在自己前面的活跃线程数量，这就是它的局部偏移。",
+        "difficulty": "hard",
+        "sourceHint": "12.3 Coalescing atomic operations with warp-level primitives"
+      },
+      {
+        "front": "CUDA 协作组 (Cooperative Groups) API 提供了哪个特定的对象来简化 Warp 内活跃线程的管理与合并原子操作？",
+        "back": "提供了合并组 (Coalesced group)。可以通过调用 `coalesced_threads()` 来获取代表当前 Warp 内所有活跃线程的分组对象，极大简化了复杂位运算的编写。",
+        "difficulty": "medium",
+        "sourceHint": "12.3 Coalescing atomic operations with warp-level primitives"
+      },
+      {
+        "front": "使用 `coalesced_group` 时，如何不通过底层的位运算直接获取当前活跃线程的局部偏移？",
+        "back": "直接调用组对象的 `.thread_rank()` 方法。它会自动返回当前线程在处于活跃状态的线程集合中的相对排位（索引），完美替代了复杂的前缀和位运算逻辑。",
+        "difficulty": "medium",
+        "sourceHint": "12.3 Coalescing atomic operations with warp-level primitives"
+      },
+      {
+        "front": "在过滤操作中应用“分块私有化 (Block-level privatization)”优化的核心做法是什么？",
+        "back": "在共享内存 (Shared memory) 中为每个 Thread Block 分配一份私有的局部计数器和局部输出数组。所有线程先在极低延迟的共享内存中完成局部的原子分配与过滤，最后再由 Block 统一向全局内存提交结果。",
+        "difficulty": "easy",
+        "sourceHint": "12.4 Privatization"
+      },
+      {
+        "front": "在实施私有化 (Privatization) 的内核中，为什么在把私有输出数组的数据复制到全局内存之前，必须调用一次 `__syncthreads()`？",
+        "back": "为了防止读后写 (Read-after-write) 竞态。必须确保 Block 内所有线程都已经彻底完成了对局部共享内存的更新和写入，才能允许线程开始读取这些局部数据并转储到全局内存中。",
+        "difficulty": "hard",
+        "sourceHint": "12.4 Privatization"
+      },
+      {
+        "front": "除了大幅降低对全局计数器的原子竞争，私有化 (Privatization) 对最终向全局内存写出数据有什么访存优势？",
+        "back": "它自然地促进了合并访存 (Memory coalescing)。由于局部过滤后的有效数据在共享内存中已经被排列成紧凑连续的块，最后向全局内存转储时，Warp 内的相邻线程会写入连续的物理地址，极大提升了带宽利用率。",
+        "difficulty": "medium",
+        "sourceHint": "12.4 Privatization"
+      },
+      {
+        "front": "为什么稳定过滤 (Stable filter) 不能像不稳定过滤那样使用简单的原子加法来分配输出索引？",
+        "back": "因为稳定过滤必须严格保留元素在输入列表中的相对顺序。由于硬件多线程执行的速度和原子操作的抢占顺序完全不可预测，使用原子加法必然会打乱元素的相对排位。",
+        "difficulty": "medium",
+        "sourceHint": "12.5 A simple parallel stable filter"
+      },
+      {
+        "front": "稳定过滤 (Stable filter) 如何精确计算每个保留元素在输出数组中的保序偏移量？",
+        "back": "首先让每个线程对其负责的元素评估过滤条件，生成一个 1 (保留) 或 0 (丢弃) 的标志数组。然后对这个标志数组执行全局的排他扫描 (Exclusive scan)，计算出的扫描结果就是该保留元素在输出列表中的绝对偏移量。",
+        "difficulty": "easy",
+        "sourceHint": "12.5 A simple parallel stable filter"
+      },
+      {
+        "front": "如果基础的稳定过滤让存活的线程直接将数据写入由排他扫描算出的全局偏移量，会破坏什么硬件机制？",
+        "back": "会破坏合并访存 (Coalesced accesses)。因为只有部分散布在 Warp 中的线程处于活跃状态并执行写入，这导致同一 Warp 在向全局内存写入时跨越了极大的物理地址间隙，引发了严重的内存碎片化事务。",
+        "difficulty": "hard",
+        "sourceHint": "12.6 Improving memory coalescing with shared memory and thread coarsening"
+      },
+      {
+        "front": "如何通过共享内存 (Shared memory) 改善稳定过滤中向全局内存写入时的非合并访存现象？",
+        "back": "先在共享内存中进行一轮局部的数据聚合。由于共享内存的非合并读写惩罚极低，我们可以先把零星分布的存活元素在共享内存中排列成连续紧凑的一行，然后再让连续的线程把这块紧凑的数据一次性写入全局内存。",
+        "difficulty": "medium",
+        "sourceHint": "12.6 Improving memory coalescing with shared memory and thread coarsening"
+      },
+      {
+        "front": "引入线程粗化 (Thread coarsening) 是如何改善稳定过滤 (Stable filter) 的整体性能的？",
+        "back": "线程粗化让每个 Block 负责更多元素，使得在共享内存中聚合出的连续输出数据块变得更大，进一步增加了全局内存的合并写入机会。更重要的是，它大幅提升了底层支撑的排他扫描 (Scan) 操作的工作效率。",
+        "difficulty": "medium",
+        "sourceHint": "12.6 Improving memory coalescing with shared memory and thread coarsening"
+      },
+      {
+        "front": "什么是原位过滤 (In-place filter)，它主要解决了什么痛点？",
+        "back": "原位过滤是指过滤操作的输出直接覆盖原始的输入数组，不需要再分配一块与输入同等大小的独立内存。它主要用于在处理超大规模数据集时，避免由于 GPU 全局显存 (Global memory) 容量不足而导致内存溢出。",
+        "difficulty": "easy",
+        "sourceHint": "12.7 In-place stable filter"
+      },
+      {
+        "front": "在执行原位过滤 (In-place filter) 时，必须严格遵守的跨 Block 内存读写依赖规则 (Dependence rule) 是什么？",
+        "back": "读后写 (Read-before-Write) 原则。必须绝对保证对于任意两个 Block i 和 j (假设 j > i，即 j 处理靠后的数据)，Block i 的数据读取必须发生在 Block j 向同一物理区域写入之前，否则前序数据将被摧毁。",
+        "difficulty": "hard",
+        "sourceHint": "12.7 In-place stable filter"
+      },
+      {
+        "front": "为什么基于单次传递扫描 (Single-pass scan) 构建的原位稳定过滤能够自然地避免数据被错误覆盖的依赖危机？",
+        "back": "因为单次传递扫描本身就包含了一条严格的单向同步依赖链。Block i 的读取发生在其扫描前；而 Block j 的扫描必须等待 Block i 的扫描完成才能进行。因此自然保证了 Block i 的读取一定早于 Block j 的最终写入。",
+        "difficulty": "hard",
+        "sourceHint": "12.7 In-place stable filter"
+      },
+      {
+        "front": "在实现类似“矩阵新增行/列”这样使数据向外扩张 (Expansion) 的原位操作时，跨 Block 的同步方向必须做何调整？",
+        "back": "必须使用逆向同步 (Reverse synchronization)。因为数据向外扩张，前序 Block 会把新数据写入到本属于后序 Block 的物理空间。所以必须确保后序 Block 完全读取完数据后，前序 Block 才能写入（即由最后一块同步到第一块）。",
+        "difficulty": "hard",
+        "sourceHint": "12.8 Related patterns"
+      }
+    ]
+  }
+}

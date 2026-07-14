@@ -1,0 +1,220 @@
+{
+  "chapters": [
+    {
+      "id": "chapter-01-introduction",
+      "number": 1,
+      "title": "Introduction",
+      "pdfPath": "output/pdf/chapters/chapter-01-introduction.pdf",
+      "textPath": "output/site-data/chapters/chapter-01-introduction.txt",
+      "pageCount": 18,
+      "wordCount": 9351
+    },
+    {
+      "id": "chapter-02-heterogeneous-data-parallel-computing",
+      "number": 2,
+      "title": "Heterogeneous Data Parallel Computing",
+      "pdfPath": "output/pdf/chapters/chapter-02-heterogeneous-data-parallel-computing.pdf",
+      "textPath": "output/site-data/chapters/chapter-02-heterogeneous-data-parallel-computing.txt",
+      "pageCount": 23,
+      "wordCount": 8936
+    },
+    {
+      "id": "chapter-03-multidimensional-grids-and-data",
+      "number": 3,
+      "title": "Multidimensional Grids And Data",
+      "pdfPath": "output/pdf/chapters/chapter-03-multidimensional-grids-and-data.pdf",
+      "textPath": "output/site-data/chapters/chapter-03-multidimensional-grids-and-data.txt",
+      "pageCount": 21,
+      "wordCount": 8664
+    },
+    {
+      "id": "chapter-04-compute-architecture-and-scheduling",
+      "number": 4,
+      "title": "Compute Architecture And Scheduling",
+      "pdfPath": "output/pdf/chapters/chapter-04-compute-architecture-and-scheduling.pdf",
+      "textPath": "output/site-data/chapters/chapter-04-compute-architecture-and-scheduling.txt",
+      "pageCount": 26,
+      "wordCount": 12303
+    },
+    {
+      "id": "chapter-05-memory-architecture-and-data-locality",
+      "number": 5,
+      "title": "Memory Architecture And Data Locality",
+      "pdfPath": "output/pdf/chapters/chapter-05-memory-architecture-and-data-locality.pdf",
+      "textPath": "output/site-data/chapters/chapter-05-memory-architecture-and-data-locality.txt",
+      "pageCount": 29,
+      "wordCount": 13217
+    },
+    {
+      "id": "chapter-06-performance-considerations",
+      "number": 6,
+      "title": "Performance Considerations",
+      "pdfPath": "output/pdf/chapters/chapter-06-performance-considerations.pdf",
+      "textPath": "output/site-data/chapters/chapter-06-performance-considerations.txt",
+      "pageCount": 33,
+      "wordCount": 15299
+    },
+    {
+      "id": "chapter-07-convolution",
+      "number": 7,
+      "title": "Convolution",
+      "pdfPath": "output/pdf/chapters/chapter-07-convolution.pdf",
+      "textPath": "output/site-data/chapters/chapter-07-convolution.txt",
+      "pageCount": 23,
+      "wordCount": 9629
+    },
+    {
+      "id": "chapter-08-stencil-computation",
+      "number": 8,
+      "title": "Stencil Computation",
+      "pdfPath": "output/pdf/chapters/chapter-08-stencil-computation.pdf",
+      "textPath": "output/site-data/chapters/chapter-08-stencil-computation.txt",
+      "pageCount": 17,
+      "wordCount": 7126
+    },
+    {
+      "id": "chapter-09-histogram",
+      "number": 9,
+      "title": "Histogram",
+      "pdfPath": "output/pdf/chapters/chapter-09-histogram.pdf",
+      "textPath": "output/site-data/chapters/chapter-09-histogram.txt",
+      "pageCount": 20,
+      "wordCount": 8628
+    },
+    {
+      "id": "chapter-10-reduction",
+      "number": 10,
+      "title": "Reduction",
+      "pdfPath": "output/pdf/chapters/chapter-10-reduction.pdf",
+      "textPath": "output/site-data/chapters/chapter-10-reduction.txt",
+      "pageCount": 30,
+      "wordCount": 12953
+    },
+    {
+      "id": "chapter-11-scan",
+      "number": 11,
+      "title": "Scan",
+      "pdfPath": "output/pdf/chapters/chapter-11-scan.pdf",
+      "textPath": "output/site-data/chapters/chapter-11-scan.txt",
+      "pageCount": 37,
+      "wordCount": 16575
+    },
+    {
+      "id": "chapter-12-filter",
+      "number": 12,
+      "title": "Filter",
+      "pdfPath": "output/pdf/chapters/chapter-12-filter.pdf",
+      "textPath": "output/site-data/chapters/chapter-12-filter.txt",
+      "pageCount": 14,
+      "wordCount": 5921
+    },
+    {
+      "id": "chapter-13-merge",
+      "number": 13,
+      "title": "Merge",
+      "pdfPath": "output/pdf/chapters/chapter-13-merge.pdf",
+      "textPath": "output/site-data/chapters/chapter-13-merge.txt",
+      "pageCount": 26,
+      "wordCount": 11317
+    },
+    {
+      "id": "chapter-14-sorting",
+      "number": 14,
+      "title": "Sorting",
+      "pdfPath": "output/pdf/chapters/chapter-14-sorting.pdf",
+      "textPath": "output/site-data/chapters/chapter-14-sorting.txt",
+      "pageCount": 20,
+      "wordCount": 8821
+    },
+    {
+      "id": "chapter-15-advanced-optimizations-for-matrix-multiplication",
+      "number": 15,
+      "title": "Advanced Optimizations For Matrix Multiplication",
+      "pdfPath": "output/pdf/chapters/chapter-15-advanced-optimizations-for-matrix-multiplication.pdf",
+      "textPath": "output/site-data/chapters/chapter-15-advanced-optimizations-for-matrix-multiplication.txt",
+      "pageCount": 22,
+      "wordCount": 9872
+    },
+    {
+      "id": "chapter-16-dynamic-programming-and-wavefront-parallelism",
+      "number": 16,
+      "title": "Dynamic Programming And Wavefront Parallelism",
+      "pdfPath": "output/pdf/chapters/chapter-16-dynamic-programming-and-wavefront-parallelism.pdf",
+      "textPath": "output/site-data/chapters/chapter-16-dynamic-programming-and-wavefront-parallelism.txt",
+      "pageCount": 28,
+      "wordCount": 11235
+    },
+    {
+      "id": "chapter-17-sparse-matrix-computation",
+      "number": 17,
+      "title": "Sparse Matrix Computation",
+      "pdfPath": "output/pdf/chapters/chapter-17-sparse-matrix-computation.pdf",
+      "textPath": "output/site-data/chapters/chapter-17-sparse-matrix-computation.txt",
+      "pageCount": 23,
+      "wordCount": 10332
+    },
+    {
+      "id": "chapter-18-graph-traversal",
+      "number": 18,
+      "title": "Graph Traversal",
+      "pdfPath": "output/pdf/chapters/chapter-18-graph-traversal.pdf",
+      "textPath": "output/site-data/chapters/chapter-18-graph-traversal.txt",
+      "pageCount": 27,
+      "wordCount": 11011
+    },
+    {
+      "id": "chapter-19-convolutional-neural-networks",
+      "number": 19,
+      "title": "Convolutional Neural Networks",
+      "pdfPath": "output/pdf/chapters/chapter-19-convolutional-neural-networks.pdf",
+      "textPath": "output/site-data/chapters/chapter-19-convolutional-neural-networks.txt",
+      "pageCount": 23,
+      "wordCount": 10271
+    },
+    {
+      "id": "chapter-20-large-language-models",
+      "number": 20,
+      "title": "Large Language Models",
+      "pdfPath": "output/pdf/chapters/chapter-20-large-language-models.pdf",
+      "textPath": "output/site-data/chapters/chapter-20-large-language-models.txt",
+      "pageCount": 36,
+      "wordCount": 15012
+    },
+    {
+      "id": "chapter-21-electrostatic-potential-map",
+      "number": 21,
+      "title": "Electrostatic Potential Map",
+      "pdfPath": "output/pdf/chapters/chapter-21-electrostatic-potential-map.pdf",
+      "textPath": "output/site-data/chapters/chapter-21-electrostatic-potential-map.txt",
+      "pageCount": 16,
+      "wordCount": 6465
+    },
+    {
+      "id": "chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation",
+      "number": 22,
+      "title": "Algorithm Selection Problem Decomposition And Problem Formulation",
+      "pdfPath": "output/pdf/chapters/chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation.pdf",
+      "textPath": "output/site-data/chapters/chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation.txt",
+      "pageCount": 12,
+      "wordCount": 6225
+    },
+    {
+      "id": "chapter-23-multi-gpu-programming",
+      "number": 23,
+      "title": "Multi Gpu Programming",
+      "pdfPath": "output/pdf/chapters/chapter-23-multi-gpu-programming.pdf",
+      "textPath": "output/site-data/chapters/chapter-23-multi-gpu-programming.txt",
+      "pageCount": 36,
+      "wordCount": 14936
+    },
+    {
+      "id": "chapter-24-conclusion-and-future-outlook",
+      "number": 24,
+      "title": "Conclusion And Future Outlook",
+      "pdfPath": "output/pdf/chapters/chapter-24-conclusion-and-future-outlook.pdf",
+      "textPath": "output/site-data/chapters/chapter-24-conclusion-and-future-outlook.txt",
+      "pageCount": 4,
+      "wordCount": 1633
+    }
+  ]
+}

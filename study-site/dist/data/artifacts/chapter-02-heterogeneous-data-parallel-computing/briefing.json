@@ -1,0 +1,61 @@
+{
+  "chapterId": "chapter-02-heterogeneous-data-parallel-computing",
+  "chapterTitle": "Heterogeneous Data Parallel Computing",
+  "sourceId": "9da6fad2-9ec4-460f-b6fc-7e470d872c59",
+  "sourceTitle": "chapter-02-heterogeneous-data-parallel-computing.pdf",
+  "artifactType": "briefing",
+  "artifactLabel": "Briefing",
+  "generatedAt": "2026-07-13T12:11:46.563947Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "简报：异构数据并行计算 (Chapter 2: Heterogeneous Data Parallel Computing)",
+    "summary": "本章以向量加法为例，介绍了 CUDA C++ 异构数据并行计算的基础编程模型。通过剖析设备全局内存(Global Memory)管理、主机(Host)与设备(Device)间的数据传输机制，以及基于网格(Grid)和线程块(Block)的两级线程调度层次，展示了如何将传统的串行循环重构为 SPMD 风格的大规模并行内核。",
+    "sections": [
+      {
+        "heading": "执行摘要 (Executive Summary)",
+        "points": [
+          "数据并行性 (Data Parallelism) 是实现可扩展性(Scalability)并行加速的核心，适用于处理海量且相互独立的计算任务（如像素处理、向量运算）。",
+          "CUDA C++ 采用异构计算架构，程序源文件包含在 CPU 上执行的 Host 代码与在 GPU 上并发执行的 Device 代码 (Kernel)。",
+          "通过分离式的编译流程 (NVCC)，标准的 C++ 逻辑留给主编译器，而 CUDA 扩展语法被编译为 PTX (Parallel Thread Execution) 供设备执行。"
+        ]
+      },
+      {
+        "heading": "核心主张 (Core Claims)",
+        "points": [
+          "循环并行化 (Loop Parallelism)：CUDA 编程本质上消除了传统代码中的循环控制变量，将数万次迭代直接映射为并发线程(Concurrent threads)。",
+          "轻量级线程开销：与 CPU 线程调度需要消耗数千个时钟周期不同，GPU 硬件支持极速生成和调度数百万个线程。",
+          "SPMD (单程序多数据) 执行模型：所有线程执行完全相同的内核代码，但通过内置硬件变量 (Built-in Variables) 获取唯一坐标，处理不同的数据分片。"
+        ]
+      },
+      {
+        "heading": "本章重要性 (Why This Chapter Matters)",
+        "points": [
+          "建立标准执行骨架：奠定了所有 CUDA 程序的基本执行流程：设备内存分配 (cudaMalloc) -> 传输数据到设备 (cudaMemcpy) -> 执行内核 (<<<>>>) -> 传回结果 -> 释放内存 (cudaFree)。",
+          "掌握核心映射公式：教授了并行计算中最基础的全局线程索引计算公式 (i = blockIdx.x * blockDim.x + threadIdx.x)，这是理解数据局部性与高级内存优化的第一步。",
+          "重塑计算思维：引导开发者放弃“时间步进”的串行循环思维，转而采用“空间全量展开”的并行思维处理大规模数组。"
+        ]
+      },
+      {
+        "heading": "先决条件 (Prerequisites)",
+        "points": [
+          "熟练掌握 C++ 指针 (Pointers)：必须清楚指针的声明、地址传递 (&)、多级指针概念以及通过指针访问底层数组的原理。",
+          "理解基本内存空间隔离：能够区分主机内存 (Host Memory) 与设备内存 (Device Global Memory) 在物理与虚拟地址上的独立性。"
+        ]
+      },
+      {
+        "heading": "实现启示与常见错误 (Implementation Implications)",
+        "points": [
+          "主机代码解引用陷阱：绝不能在 Host 代码中直接解引用指向 Device 内存的指针（通常带有 _d 后缀）。跨边界解引用会直接引发运行时异常或段错误。",
+          "API 指针参数缺陷：由于 cudaMalloc 需通过返回值报告错误码 (cudaError_t)，它必须接收二级指针 (void**) 来修改内存地址。错误地传递一级指针会导致内存分配失效。",
+          "缺失边界检查 (Boundary Check)：GPU 线程块大小(Block Size)通常设为 32 的倍数。当处理的数据总量 (如 N) 不能被 Block Size 整除时，Grid 尾部会产生多余的线程。若内核中缺少 if (i < n) 的边界保护，这些多余线程将引发越界访存 (Out-of-bounds Memory Access)，破坏数据。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "chapterId": "chapter-12-filter",
+  "chapterTitle": "Filter",
+  "sourceId": "b72b13d3-d8d2-405c-ba31-db66494d85be",
+  "sourceTitle": "chapter-12-filter.pdf",
+  "artifactType": "briefing",
+  "artifactLabel": "Briefing",
+  "generatedAt": "2026-07-13T14:13:17.701776Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "简报：过滤与 Warp 投票 (Chapter 12: Filter)",
+    "summary": "本简报总结了在 GPU 上并行实现过滤 (Filter) 模式的核心技术。涵盖了不稳定过滤中的合并原子操作与私有化优化，以及稳定过滤中基于排他扫描和线程粗化的合并访存策略，并探讨了原位操作的跨 Block 内存依赖规则。",
+    "sections": [
+      {
+        "heading": "执行摘要 (Executive Summary)",
+        "points": [
+          "过滤 (Filter) 操作用于移除列表中的特定元素并压缩剩余数据，是内存碎片整理和数据检索等场景的关键组件。",
+          "不稳定过滤 (Unstable filter) 允许改变元素原始顺序，其并发写入的性能瓶颈在于全局原子操作引起的硬件串行化 (Serialization)。",
+          "稳定过滤 (Stable filter) 必须保持元素原始顺序，其核心依赖于对保留标志执行全局排他扫描 (Exclusive scan) 来精确计算输出偏移量。"
+        ]
+      },
+      {
+        "heading": "核心主张 (Core Claims)",
+        "points": [
+          "合并原子操作 (Coalesced atomic operations)：利用 Warp 级原语 (如 `__activemask()`, `__popc()`) 或协作组 (Cooperative groups) 选出 Leader 线程执行单次原子累加，极大地缓解了 Warp 内的竞争串行化。",
+          "块级私有化 (Block-level privatization)：在共享内存 (Shared memory) 中维护私有计数器和输出数组，不仅降维了全局竞争，还通过连续输出触发了合并访存 (Memory coalescing)。",
+          "共享内存与粗化修复访存碎片：在稳定过滤中，散乱的存活线程直接写入会导致访存碎片。通过共享内存聚合以及线程粗化 (Thread coarsening) 组装成连续的块再写入，是修复非合并访存的关键。",
+          "原位操作的依赖传递 (In-place dependence)：在原位稳定过滤中，必须保障“读后写 (Read-before-Write)”的顺序。单趟扫描 (Single-pass scan) 天然的单向同步机制恰好满足了前序 Block 优先读取旧数据的安全要求。"
+        ]
+      },
+      {
+        "heading": "本章重要性 (Why This Chapter Matters)",
+        "points": [
+          "展示了如何巧妙运用底层架构特性（如 Warp 投票机制与协作组 API）来化解极端的单点数据竞争瓶颈。",
+          "揭示了如何将复杂的结构重组任务（如数据保序压缩）拆解并构建在已有的并行原语（如 Scan）之上，是深入理解内存移动与原位 (In-place) 计算模式的基石。"
+        ]
+      },
+      {
+        "heading": "先决条件 (Prerequisites)",
+        "points": [
+          "理解底层 Warp 的 SIMD 执行模型及线程分化现象。",
+          "掌握全局内存的合并访存 (Coalesced accesses) 规则与共享内存的生命周期。",
+          "熟悉基础的原子操作 (Atomic operations) 竞争代价以及排他扫描 (Exclusive scan) 算法机制。"
+        ]
+      },
+      {
+        "heading": "实现启示与常见错误 (Implementation Implications)",
+        "points": [
+          "无视串行化惩罚 (Ignoring Serialization Penalty)：在不稳定过滤中，直接让成千上万个线程竞争同一个全局计数器会彻底瘫痪 GPU，必须利用私有化 (Privatization) 或合并原子操作进行优化。",
+          "直接散列写入破坏访存 (Direct Scattered Writes)：在稳定过滤中，若存活线程直接向其计算出的全局偏移量写入数据，必然产生细碎的非合并访存。必须先在共享内存中暂存，聚合成连续大块后再写入 DRAM。",
+          "原位依赖方向错误 (Incorrect In-place Synchronization Direction)：原位过滤的核心是保障安全。如果过滤衍生为向外扩张的模式（如矩阵新增行），前序 Block 可能会写入到后序 Block 还未读取的区域，此时必须逆转同步方向（从后往前同步），否则会引发不可挽回的数据覆写灾难。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

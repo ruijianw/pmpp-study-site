@@ -1,0 +1,158 @@
+{
+  "chapterId": "chapter-12-filter",
+  "chapterTitle": "Filter",
+  "sourceId": "b72b13d3-d8d2-405c-ba31-db66494d85be",
+  "sourceTitle": "chapter-12-filter.pdf",
+  "artifactType": "quiz",
+  "artifactLabel": "Quiz",
+  "generatedAt": "2026-07-13T14:16:19.163395Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "测试题：过滤与 Warp 投票 (Chapter 12: Filter)",
+    "summary": "本测试题旨在检验读者对 GPU 上并行过滤算法 (Parallel Filter) 底层优化机制的掌握程度。内容涵盖稳定与不稳定过滤的核心差异、合并原子操作 (Coalesced atomic operations)、共享内存私有化 (Privatization) 优化，以及原位计算 (In-place computation) 中的单向同步与内存依赖规则。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Advice)",
+        "points": [
+          "1. 明辨数据保序需求：稳定过滤 (Stable filter) 严格保序，必须依赖排他扫描 (Exclusive scan) 计算全局偏移；不稳定过滤 (Unstable filter) 不保序，可通过原子操作直接分配索引，但面临严重的竞争串行化 (Serialization) 瓶颈。",
+          "2. 掌握抗争竞争的两大利器：合并原子操作 (Coalesced atomic operations) 通过 Warp 投票选出 Leader 执行一次原子累加，解决极细粒度的冲突；分块私有化 (Privatization) 通过共享内存 (Shared memory) 暂存局部结果，实现“降维打击”并自然触发合并访存 (Memory coalescing)。",
+          "3. 熟悉协作组 (Cooperative Groups) API：利用 coalesced_group 的 size() 和 thread_rank() 可以安全、优雅地取代 __activemask() 与 __popc() 的手动位运算逻辑。",
+          "4. 洞悉原位计算 (In-place) 的读写依赖：输出覆盖输入时，核心是防止旧数据被未读先覆。对于压缩操作 (Filter)，前向 Block 必须先读，后向 Block 才能写；对于扩张操作 (Expansion)，同步方向必须彻底反转 (Reverse synchronization)。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "type": "multiple-choice",
+        "question": "稳定过滤 (Stable filter) 与不稳定过滤 (Unstable filter) 的主要区别是什么？",
+        "options": [
+          "A. 稳定过滤只能在共享内存 (Shared memory) 中执行。",
+          "B. 稳定过滤严格保留过滤后元素在输入列表中的原始相对顺序。",
+          "C. 不稳定过滤的算术强度 (Arithmetic intensity) 显著更高。",
+          "D. 稳定过滤不需要使用任何形式的块级同步屏障。"
+        ],
+        "answer": "B",
+        "explanation": "顾名思义，稳定过滤必须保持元素原有的先后顺序，通常用于需要排序的检索结果中。不稳定过滤不保证顺序，因为底层硬件调度原子操作的顺序是随机的。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在基础的并行不稳定过滤算法中，性能最致命的瓶颈 (Bottleneck) 来自于哪里？",
+        "options": [
+          "A. 全局内存读取时导致的非合并访存 (Uncoalesced accesses)。",
+          "B. 所有的存活线程对同一个全局计数器频繁执行原子操作 (Atomic operations)，导致的严重硬件串行化 (Serialization)。",
+          "C. 分支条件评估引起的严重 Warp 内部控制流发散 (Control divergence)。",
+          "D. 对局部数组的越界访问引发的段错误。"
+        ],
+        "answer": "B",
+        "explanation": "成千上万个线程如果都去抢夺同一个全局内存地址上的计数器进行原子递增，硬件为了保证正确性只能让它们排队依次执行，这种极端的竞争 (Contention) 会彻底瘫痪 GPU 的高并发优势。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "“合并原子操作 (Coalesced atomic operations)” 是如何大幅减少 Warp 内部原子操作竞争的？",
+        "options": [
+          "A. 编译器自动将所有的全局原子操作转换为无需锁定的浮点乘加操作。",
+          "B. 强制每个线程分别向私有的 L2 缓存段发起独立的原子操作以避免锁争用。",
+          "C. Warp 内协作推选出一个 Leader 线程，由 Leader 计算总需求量并代表全 Warp 执行单次原子累加，最后将基底偏移广播给其余活跃线程。",
+          "D. 利用全局的排他扫描 (Exclusive scan) 完全替代掉代码中的原子操作。"
+        ],
+        "answer": "C",
+        "explanation": "合并原子操作利用 Warp 投票机制 (Warp voting)，将一个 Warp 内最多可能发生的 32 次独立全局原子请求，合并并缩减为仅 1 次，极大地缓解了内存控制器的压力。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在使用 CUDA 协作组 (Cooperative Groups) API 实现合并原子操作时，如何最安全、快捷地获取当前活跃线程在 Warp 内部的局部偏移 (Local offset)？",
+        "options": [
+          "A. 调用 __popc() 计算活跃掩码。",
+          "B. 直接读取内置的 threadIdx.x 变量。",
+          "C. 获取合并组 (coalesced group) 对象的 .thread_rank() 属性。",
+          "D. 循环调用 __ffs() 指令进行迭代查找。"
+        ],
+        "answer": "C",
+        "explanation": "通过调用 coalesced_threads() 得到 coalesced group 后，直接使用 .thread_rank() 即可获得当前线程在所有活跃线程中的相对排位，这完美地替代了容易出错的掩码前缀和 (Prefix sum) 位运算逻辑。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在不稳定过滤中应用“分块私有化 (Block-level privatization)”优化，除了能将原子竞争降维至共享内存外，最终在向全局内存写入时还能带来什么极为关键的性能红利？",
+        "options": [
+          "A. 将全局内存写入完全缓存在 L1 缓存中，永久避免 DRAM 写回。",
+          "B. 因为共享内存中的有效数据已经被紧凑排列，向全局内存转储时线程会连续写入相邻的物理地址，自然触发了高效的合并访存 (Memory coalescing)。",
+          "C. 允许编译器完全跳过对无效数据的条件评估指令，减少 ALU 负载。",
+          "D. 彻底消除了代码对 __syncthreads() 块级屏障的所有需求。"
+        ],
+        "answer": "B",
+        "explanation": "私有化在共享内存中建立了一个紧凑的连续数组。最后统一提交给全局内存时，相邻线程会搬运连续的数据，将原本可能的散列写入变成了完美的连续合并写入，从而榨干显存总线带宽。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "为什么稳定过滤 (Stable filter) 绝对不能依靠简单的全局原子操作来分配输出数组的索引位置？",
+        "options": [
+          "A. 因为原子操作在底层硬件层面不支持 32 位无符号整数。",
+          "B. 因为全局原子操作在处理超过一定数量的线程时必定会引发死锁 (Deadlock)。",
+          "C. 因为硬件执行和调度原子操作的顺序是完全随机的，这必然会彻底打乱存活元素的原始相对顺序，违反“稳定”的定义。",
+          "D. 因为执行全局原子操作比执行一次排他扫描消耗更多的片上共享内存资源。"
+        ],
+        "answer": "C",
+        "explanation": "稳定过滤的核心要求是保序。而原子操作的非确定性调度会导致哪怕是后评估的元素也可能先抢到靠前的索引，因此必须采用排他扫描 (Exclusive scan) 来精确推导偏移量。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在稳定过滤 (Stable filter) 的优化中，为什么需要先将存活元素聚合 (Gather) 到共享内存中，而不是让存活的线程直接将数据写入其扫描出的全局偏移地址？",
+        "options": [
+          "A. 避免因为直接向全局内存散列写入 (Scattered writes) 而导致跨度极大的非合并访存 (Uncoalesced accesses)，浪费 DRAM 带宽。",
+          "B. 为了防止两个不同的线程向全局内存的同一个偏移地址写入数据，产生冲突。",
+          "C. 因为只有共享内存支持浮点数类型的快速移动。",
+          "D. 这样做可以绕过 __syncthreads() 限制，实现无锁并发。"
+        ],
+        "answer": "A",
+        "explanation": "如果不通过共享内存聚合，Warp 内处于活跃状态的线程往往是不连续的。它们跨越极大的地址跨度去写入数据会产生碎片化的内存事务。先在共享内存排成连续一行，再连续写入全局内存，是修复非合并访存的经典策略。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "当执行类似“矩阵新增行/列”这种数据体积向外扩张 (Expansion) 的原位 (In-place) 操作时，跨 Block 的同步方向必须做何调整？",
+        "options": [
+          "A. 必须使用不需要顺序的双向随机同步。",
+          "B. 必须采用完全不加锁的松弛 (Relaxed) 写入模式。",
+          "C. 继续使用从前往后的前向单向同步即可。",
+          "D. 必须彻底反转使用从后往前的逆向同步 (Reverse synchronization)，因为扩张会导致前序数据写入后序数据的物理地址，必须确保后序数据已读完。"
+        ],
+        "answer": "D",
+        "explanation": "由于数据在扩张，处理前排数据的 Block 最终写出的空间会向后延伸侵占后排数据的原有空间。因此必须让后排先读完（即由最后一块同步到第一块），否则后排数据将被无情摧毁。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在不使用协作组 (Cooperative Groups) 的情况下，底层代码如何通过 `__activemask()` 和 `__popc()` 计算出当前 Warp 内共有多少个活跃线程通过了过滤条件？",
+        "expectedAnswer": "首先，代码中调用 `__activemask()` 会返回一个 32 位的整数掩码 (Active mask)，其中置为 1 的位精确代表了当前 Warp 中满足过滤条件且正在活跃执行的线程。然后，将这个掩码作为参数传给 `__popc()` (Population Count) 内置指令，该指令会统计并返回二进制中 1 的总个数，这个数值即为本 Warp 需要申请的总偏移量。",
+        "explanation": "理解位级指令是如何映射并管理底层 SIMD 线程状态的，是深入掌握 Warp 投票 (Warp voting) 和极速线程协作的根基。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在实现不稳定过滤的分块私有化 (Block-level privatization) 内核时，为什么在将计算好的局部私有数组数据复制回全局输出数组之前，必须调用一次 `__syncthreads()` 屏障？",
+        "expectedAnswer": "为了严防读后写 (Read-after-write) 数据竞态。因为必须绝对保证 Block 内的所有线程都已经完全完成了各自的条件评估、私有计数器更新以及数据向局部私有数组的写入操作。如果没有这个同步屏障，某些执行较快的线程可能会提前进入数据转储阶段，导致其读取到尚未被较慢线程更新完毕的脏数据或残留数据，最终输出结果必然缺失或错乱。",
+        "explanation": "在不同存储层级 (Shared -> Global) 进行块级别的数据搬运交接时，强制的显式同步是保证数据完整性和一致性的不可逾越的底线。"
+      },
+      {
+        "type": "short-answer",
+        "question": "简述原位稳定过滤 (In-place stable filter) 为了安全复用输入内存，必须严格遵守的“读后写 (Read-before-Write)”跨 Block 数据依赖规则的具体内容。",
+        "expectedAnswer": "原位操作的核心是为了不额外分配内存而直接用输出覆盖输入。在多 Block 并发环境下，为了防止尚未处理的输入旧数据被其他线程的新输出覆盖摧毁，必须保证一个严格的时序：对于任意两个处理分段的 Block i 和 Block j（假设 j 处理靠后的分段，即 j > i），Block i 对其输入分段数据的读取操作，必然要在时间上严格早于 Block j 将其输出结果写入该重叠物理区域的时刻。",
+        "explanation": "这是理解一切原位计算模式 (In-place data movement) 安全性的底层准则，打破此规则即意味着静默的数据腐败。"
+      },
+      {
+        "type": "short-answer",
+        "question": "为什么基于单趟扫描 (Single-pass scan) 构建的原位稳定过滤机制，能够自然地满足上述“读后写 (Read-before-Write)”的安全依赖要求，而不需要额外增加复杂的锁机制？",
+        "expectedAnswer": "因为单趟排他扫描算法本身为了传递累加总和，天然内建了一条强制的单向同步链：Block i 对输入数据的读取显然发生在其执行扫描之前；而由于扫描的依赖性，Block j 的扫描操作必须阻塞等待 Block i 的扫描结果传递过来；扫描全部完成之后，Block j 才能获得最终偏移量进行写入。这条因果链 (Read i -> Scan i -> Scan j -> Write j) 完美且自然地保证了读取总是早于潜在的跨界覆盖写入。",
+        "explanation": "深刻体会算法固有依赖链 (Intrinsic dependence chain) 与业务时序需求 (Temporal requirements) 的完美契合，这是架构级高级优化的美感所在。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在稳定过滤 (Stable filter) 架构中引入线程粗化 (Thread coarsening) 技术，除了能聚合出更大的连续共享内存块以改善访存外，对底层的排他扫描 (Exclusive scan) 还会产生什么关键的性能收益？",
+        "expectedAnswer": "线程粗化让每个参与的线程在进入块级并行前先串行处理多个元素，这大幅减少了实际参与并行扫描的线程和 Warp 数量。由于单线程内的串行扫描具有最优的 O(N) 复杂度，粗化有效地将大量原本需要付出并行协同代价的低效工作，转化为了极其高效的无同步串行工作。这不仅降低了整体的同步开销，更让整个稳定过滤算法的工作效率 (Work efficiency) 能够大幅向理想的 O(N) 理论下限逼近。",
+        "explanation": "并行计算的吊诡之处在于，有时候通过适度退化为串行（粗化）来摊薄并发管理成本，反而能获得最极致的硬件吞吐率提升。"
+      }
+    ]
+  }
+}

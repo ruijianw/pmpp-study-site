@@ -1,0 +1,159 @@
+{
+  "chapterId": "chapter-05-memory-architecture-and-data-locality",
+  "chapterTitle": "Memory Architecture And Data Locality",
+  "sourceId": "bde6b4cd-9cdf-4782-a570-a72e79387d7d",
+  "sourceTitle": "chapter-05-memory-architecture-and-data-locality.pdf",
+  "artifactType": "quiz",
+  "artifactLabel": "Quiz",
+  "generatedAt": "2026-07-13T13:31:18.565578Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "测试题：内存架构与数据局部性 (Chapter 5: Memory Architecture and Data Locality)",
+    "summary": "本测试题旨在检验读者对现代 GPU 内存架构及性能推理分析的掌握情况。重点考察内容包括：计算访存比 (FLOP/B)、Roofline 模型应用、分块技术 (Tiling) 与共享内存的使用、读写数据依赖与屏障同步，以及处理非整除矩阵时的复杂边界检查与占用率 (Occupancy) 限制。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Advice)",
+        "points": [
+          "1. 性能推理先行：在动手优化前，务必先通过计算访存比 (FLOP/B) 判断程序是内存受限还是计算受限，避免在错误的方向上做无用功。",
+          "2. 洞悉内存层级：牢记共享内存 (Shared Memory) 具有高速、低延迟以及基于 Block 共享的特性；警惕自动数组不小心被分配到高延迟的本地内存 (Local Memory) 中。",
+          "3. 敬畏数据依赖：在进行分块协作加载时，必须在阶段计算前后正确使用两次 __syncthreads()，以分别化解读后写 (Read-after-write) 和写后读 (Write-after-read) 冲突。",
+          "4. 严谨的边界防御：任何全局访存都可能越界，哪怕是有效计算线程。必须在代码层面针对每次读写增加行列限制的条件语句。",
+          "5. 关注占用率悬崖：共享内存并非越大越好，盲目追求大尺寸 Tile 会压榨 SM 中可并发容纳的 Block 数量，导致占用率骤降，削弱延迟掩盖能力。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "type": "multiple-choice",
+        "question": "如何确定一个内核程序是计算受限 (Compute-bound) 还是内存受限 (Memory-bound)？",
+        "options": [
+          "A. 计算硬件的峰值内存带宽与缓存大小的比值",
+          "B. 依据计算硬件的峰值计算吞吐量与峰值内存带宽的比值 (FLOP/B 阈值)，对比内核的实际 FLOP/B",
+          "C. 检查内核占用的共享内存与本地内存的比例",
+          "D. 测量内核执行时的实际发热量与功耗"
+        ],
+        "answer": "B",
+        "explanation": "硬件的峰值计算吞吐量除以峰值内存带宽，可得出一个计算访存比 (FLOP/B) 阈值。如果内核实际的 FLOP/B 低于该阈值，则为内存受限；如果高于该阈值，则为计算受限。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "将操作数放置在寄存器 (Registers) 中相比于全局内存 (Global Memory)，除了极低的访问延迟，还有什么显著的性能优势？",
+        "options": [
+          "A. 寄存器支持不同线程块 (Thread Block) 之间的大规模数据共享",
+          "B. 寄存器操作数内置于算术指令中，无需额外的加载 (load) 指令，且访问能耗 (Energy efficiency) 更低",
+          "C. 寄存器空间是无限的，不会对硬件的占用率 (Occupancy) 产生任何影响",
+          "D. 寄存器的数据在内核执行完毕后依然会永久保留，供下一次内核调用使用"
+        ],
+        "answer": "B",
+        "explanation": "在现代计算架构中，算术指令本身就可以直接以寄存器作为操作数，免去了额外的内存读取指令 (load) 开销。同时，从寄存器读取数据的能耗比全局内存低至少一个数量级。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "如果在 CUDA 内核中声明了一个普通的自动数组变量 (Automatic array variable)，默认情况下它通常会被存放在底层硬件的哪个位置？",
+        "options": [
+          "A. 极速的硬件寄存器 (Registers) 中",
+          "B. 片上的共享内存 (Shared memory) 中",
+          "C. 线程私有的本地内存 (Local memory) 中，物理上位于高延迟的全局显存中",
+          "D. 全局可见的常量内存 (Constant memory) 中"
+        ],
+        "answer": "C",
+        "explanation": "自动数组变量默认会被编译器分配到线程私有的本地内存 (Local memory) 中。虽然名字里有“本地”，但它物理上依然位于高延迟、低带宽的全局 DRAM 中。只有在数组极小且索引全为常量等极端情况下，才可能被优化至寄存器。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在使用 `TILE_WIDTH` × `TILE_WIDTH` 分块 (Tiling) 的矩阵乘法内核中，理论上能将对全局内存的访问流量降低到原来的多少？",
+        "options": [
+          "A. 1 / 2",
+          "B. 1 / (TILE_WIDTH * 2)",
+          "C. 1 / TILE_WIDTH",
+          "D. 1 / (TILE_WIDTH * TILE_WIDTH)"
+        ],
+        "answer": "C",
+        "explanation": "理想的分块协同加载中，每个从全局内存被加载进共享内存的元素，将会被同行或同列的其他 `TILE_WIDTH` 个线程重复利用。因此，全局访存量可以大幅降至原来的 1 / TILE_WIDTH。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在实现分块算法的 Strip-mining 循环中，为什么在当前阶段计算完毕后、进入下一阶段加载新数据前，必须执行第二次 `__syncthreads()`？",
+        "options": [
+          "A. 为了解决读后写 (Read-after-write) 的真依赖问题",
+          "B. 为了解决写后读 (Write-after-read) 假依赖，防止执行快的线程提前加载新数据覆盖了尚未完成计算的线程所需的共享内存数据",
+          "C. 强制让流式多处理器 (SM) 清空当前的寄存器状态",
+          "D. 这是使用多维数组语法时的强制编译要求"
+        ],
+        "answer": "B",
+        "explanation": "第一次同步是确保数据写完再读（读后写依赖）；第二次同步是确保上一阶段数据全部被所有线程读取完毕后，才能允许较快的线程进入下一轮循环去覆写该共享内存（写后读假依赖）。遗漏会直接导致数据错乱。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在处理非整除尺寸矩阵的分块乘法中，当进行边界检查 (Boundary checks) 发现线程准备加载的输入矩阵元素越界时，应该向共享内存中填入什么安全值？",
+        "options": [
+          "A. NaN (非数字)",
+          "B. 1.0f",
+          "C. 原封不动保留共享内存中已有的上一阶段脏数据",
+          "D. 0.0f"
+        ],
+        "answer": "D",
+        "explanation": "越界时应该向该共享内存位置填入 0.0f，因为在矩阵乘法的点积 (Dot-product) 计算中，加上 0 不会对最终有效像素/元素的加和结果产生任何副作用。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "为什么在单个线程块 (Block) 中使用过大的共享内存 (Shared Memory) 会对底层硬件性能产生严重的负面影响？",
+        "options": [
+          "A. 会导致全局内存与二级缓存之间的带宽直接减半",
+          "B. 共享内存是有限硬性资源，单个 Block 占用过多会导致 SM 能够并发驻留的 Block 数量锐减，占用率 (Occupancy) 大幅下降，削弱延迟容忍能力",
+          "C. 编译器会自动禁用所有寄存器并转而使用极其缓慢的本地内存",
+          "D. 共享内存分配过大会自动触发单精度到半精度浮点的强制计算降级"
+        ],
+        "answer": "B",
+        "explanation": "每个 SM 的共享内存总容量是固定的。如果单个 Block 申请过大，SM 就无法装下更多的 Block。并发线程数（即占用率）过低会导致 GPU 无法通过零开销切换隐藏长延迟操作，出现性能悬崖。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "如果希望在主机 (Host) 端动态调整内核的共享内存大小，以下哪种做法是正确的？",
+        "options": [
+          "A. 在内核中使用 `extern __shared__` 声明无大小的一维数组，并在主机调用内核时通过执行配置 `<<<grid, block, size_in_bytes>>>` 的第三个参数传入字节数",
+          "B. 使用 `cudaMalloc` 直接在内核函数内部为共享内存分配物理空间",
+          "C. 将共享内存数组作为普通的浮点数指针参数，直接通过内核函数的参数列表传递给 GPU",
+          "D. 在主机代码编译时通过宏定义修改 `#define TILE_WIDTH` 并依赖即时编译"
+        ],
+        "answer": "A",
+        "explanation": "要实现动态共享内存分配，内核中需声明无固定大小的 `extern __shared__` 数组，同时在主机的内核启动参数 `<<<grid, block, size_in_bytes>>>` 中提供具体的动态分配字节数。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在 Roofline 模型和光速性能分析 (Speed-of-light analysis) 中，如果一个内核的计算访存比 (FLOP/B) 极低，这意味着什么？要提升其性能，核心优化方向应该是什么？",
+        "expectedAnswer": "这意味着该内核是内存受限 (Memory-bound) 的，其大量执行时间被耗费在等待全局内存数据的传输上，计算核心大部分时间处于闲置状态。核心优化方向必须是利用数据局部性 (Locality)，比如通过分块 (Tiling) 将经常复用的数据暂存到高速共享内存中，以大幅减少对全局内存的访问流量。",
+        "explanation": "对于处于 Roofline 内存带宽限制斜线下的内核，继续优化算术指令或单纯增加线程并发数往往无济于事，降低全局内存读取总量才是突破瓶颈的唯一途径。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在 CUDA 中使用 `__shared__` 关键字声明的变量，其作用域 (Scope) 和生命周期 (Lifetime) 分别具有什么特性？",
+        "expectedAnswer": "其作用域被严格限定在单个线程块 (Thread block) 内部，块内的所有并发线程都能且仅能共享同一份数据；其生命周期贯穿于该 Block 执行该内核期间，当该 Block 的计算任务执行完毕，共享内存中的数据即被释放/销毁。",
+        "explanation": "理解其生命周期和作用域对于避免跨 Block 共享数据的错误幻想，以及正确重用每一阶段 (Phase) 的共享内存块至关重要。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在利用共享内存进行分块 (Tiling) 计算时，为什么常常需要使用循环剥离/条带开采 (Strip-mining) 技术将长循环打破成多个短阶段 (Phases)？",
+        "expectedAnswer": "因为片上共享内存的容量非常有限，通常无法一次性装下整个全局数据集。Strip-mining 允许同一个 Block 的线程在每一个短阶段只协同加载并聚焦于一小块数据 (Tile)，使用完毕后再在下一个阶段覆盖加载新数据，从而以“蚂蚁搬家”的方式在极其受限的高速内存中完成全局计算。",
+        "explanation": "分块计算的核心模式就是：共同加载子块 -> 屏障同步 -> 共同计算 -> 屏障同步 -> 进入下一阶段。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在处理任意尺寸的非整除矩阵时，为什么仅仅在代码最开头加入“剔除不计算有效输出元素的冗余线程”的条件语句，无法完全避免越界访存崩溃？",
+        "expectedAnswer": "因为即使是位于有效边界内、负责计算有效输出元素的线程，在执行到处理矩阵边缘区域的数据块 (Tile) 阶段时，也极有可能会根据其所在阶段的偏移量去试图读取超出原始输入矩阵物理宽度的越界内存，从而导致非法访问或污染数据。",
+        "explanation": "安全边界检查必须深入到每一次具体的内存 load/store 操作，确保行列索引完全处于合法数据的界限之内，不能仅靠单一的全局输出有效性来拦截。"
+      },
+      {
+        "type": "short-answer",
+        "question": "假设开发者为了追求极其极致的全局访存减少，在内核中分配了极其巨大的共享内存数据块 (Tile)。这种做法最终可能会带来什么意想不到的性能反噬？",
+        "expectedAnswer": "由于流式多处理器 (SM) 的总共享内存容量是一种硬性受限资源，极大的共享内存块会导致单个 Block 的资源占用过高。这会直接制约硬件，使其能够并发调度与驻留在该 SM 上的 Block 总数量大幅缩减。随之而来的占用率 (Occupancy) 骤降，会导致 GPU 失去足够的活跃线程来执行零开销上下文切换，最终无法掩盖长延迟访存，导致性能反噬式下跌。",
+        "explanation": "这是 CUDA 性能调优中经典的资源利用权衡：单点极致优化带来的局部收益，绝不能以牺牲整体的并发流水线掩盖延迟能力为代价。"
+      }
+    ]
+  }
+}

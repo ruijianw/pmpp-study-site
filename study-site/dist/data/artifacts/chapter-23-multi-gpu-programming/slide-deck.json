@@ -1,0 +1,186 @@
+{
+  "chapterId": "chapter-23-multi-gpu-programming",
+  "chapterTitle": "Multi Gpu Programming",
+  "sourceId": "e8ad84fc-300d-4465-aea8-8bb6469fefe6",
+  "sourceTitle": "chapter-23-multi-gpu-programming.pdf",
+  "artifactType": "slide-deck",
+  "artifactLabel": "Slide Deck",
+  "generatedAt": "2026-07-13T15:23:41.715607Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "幻灯片大纲：多 GPU 编程 (Chapter 23: Multi-GPU programming)",
+    "summary": "本幻灯片组深度解析了在多 GPU 与集群环境下扩展 CUDA 应用的核心架构模型。内容涵盖光环交换 (Halo exchange) 的基础概念，以及 MPI、NCCL 和 NVSHMEM 三大通信框架在流调度、消除主机同步延迟和实现内核融合 (Kernel fusion) 方面的微架构演进。",
+    "sections": [
+      {
+        "heading": "使用建议 (Usage Tips)",
+        "points": [
+          "第 1-4 页：介绍 1D 域分解基础，对比传统 MPI 与 CUDA-aware MPI 的底层传输路径差异，以及死锁防范。",
+          "第 5-9 页：深度剖析“计算与通信重叠”的微架构实现。讲解 CUDA 流优先级 (Stream Priority)、锁页内存 (Pinned memory) 陷阱，以及 MPI 主机同步延迟的痛点。",
+          "第 10-14 页：展示通信架构的演进。NCCL 通过流注入消除主机干预；NVSHMEM 通过对称堆 (Symmetric heap) 实现单边设备主导 (Device-initiated) 的通信与内核融合。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "slideNumber": 1,
+        "title": "多 GPU 编程与分布式内存 (Distributed Memory)",
+        "bullets": [
+          "性能瓶颈突破：当单节点 GPU 无法满足庞大的计算需求时，需扩展至多 GPU 甚至超算集群。",
+          "分布式内存模型：不同于 CUDA 线程共享同一显存，节点间内存相互隔离，必须通过网络显式传递消息。",
+          "三大核心框架：消息传递接口 (MPI)、NVIDIA 集合通信库 (NCCL) 以及 NVIDIA OpenSHMEM (NVSHMEM)。"
+        ],
+        "speakerNotes": "在单 GPU 编程中，所有线程都可以通过全局指针访问同一块内存。但到了多 GPU 或集群环境中，每个 GPU 都有自己独立的显存。我们需要使用分布式内存模型，通过显式的数据发送和接收来共享信息。本章将介绍 MPI、NCCL 和 NVSHMEM 三种逐渐演进的通信模型。",
+        "visualSuggestion": "展示图 23.4 的多进程拓扑结构，强调不同节点 (Node) 之间的网络互连 (Interconnect) 和独立的进程空间。"
+      },
+      {
+        "slideNumber": 2,
+        "title": "案例解析：1D 域分解与光环交换 (Halo Exchange)",
+        "bullets": [
+          "2D 模板计算 (Stencil)：计算每个网格点依赖于其上下左右的邻居元素。",
+          "1D 域分解优势：在行主序 (Row-major) 布局下，沿 Y 轴划分网格能保证需要交换的边界数据在物理内存中绝对连续。",
+          "光环交换 (Halo Exchange)：每轮迭代前，GPU 必须向相邻 GPU 发送自身边界，并获取对方边界作为光环 (Halo) 以完成计算。"
+        ],
+        "speakerNotes": "我们以 2D Jacobi 迭代为例。因为 C/C++ 是行主序的，如果我们按行切分给不同的 GPU，那么切面的那一整行数据在显存里是连续存放的。这种连续性极其重要，它让 GPU 在与其他节点交换边界数据（也就是光环交换）时，可以直接发起大块的连续内存传输，效率极高。",
+        "visualSuggestion": "展示图 23.2 和图 23.3，高亮显示跨 GPU 边界的虚线框 (Halo points)，标注数据的连续性。"
+      },
+      {
+        "slideNumber": 3,
+        "title": "CUDA-aware MPI 的底层传输优化",
+        "bullets": [
+          "传统 MPI 痛点：MPI 本为 CPU 设计，若要传输显存数据，需手动编写 `cudaMemcpy` 倒腾到主机，产生冗余的中转延迟。",
+          "直接路由能力：支持 CUDA 的 MPI (CUDA-aware MPI) 能够直接识别传入的设备指针 (Device pointers)。",
+          "DMA/RDMA 硬件加速：底层直接利用 DMA 或 RDMA 技术在 GPU 显存与网卡间搬运数据，彻底消除了 CPU 内存中转拷贝。"
+        ],
+        "speakerNotes": "以前写多 GPU 程序很痛苦，必须先把数据从 GPU 拷回 CPU 内存，再用 MPI 发给另一台机器的 CPU，最后再拷进那台机器的 GPU。现在的 CUDA-aware MPI 非常聪明，你直接把 GPU 的显存指针传给 MPI_Send，它会在底层通过 DMA 或 RDMA 技术，直接把数据从一块显卡拉到另一块显卡上，速度实现了飞跃。",
+        "visualSuggestion": "绘制对比路线图：传统 MPI (GPU -> CPU -> Net -> CPU -> GPU) vs CUDA-aware MPI (GPU -> Net -> GPU)。"
+      },
+      {
+        "slideNumber": 4,
+        "title": "双向通信的死锁 (Deadlock) 防范",
+        "bullets": [
+          "并发依赖：在光环交换中，相邻节点必须在同一时刻互相发送并接收数据。",
+          "死锁陷阱：若独立调用阻塞式的 `MPI_Send` 和 `MPI_Recv`，双方可能都卡在发送状态等待对方接收，导致集群死锁。",
+          "融合指令：使用 `MPI_Sendrecv` 原语，交由底层网络调度器安全地并发执行双向传输。"
+        ],
+        "speakerNotes": "在进行光环交换时，如果你写了先 Send 再 Recv，你的邻居也写了先 Send 再 Recv，如果底层缓冲区不够，两边都会因为等不到对方接收而永远卡在 Send 上，这就是死锁。在 MPI 中，我们必须使用 MPI_Sendrecv 这个融合函数，让底层去处理双向并发以保证安全。",
+        "visualSuggestion": "展示死锁示意图：两台机器的 Send 箭头相互顶住对方，然后打上红叉；下方展示 `MPI_Sendrecv` 安全的双向绿色箭头。"
+      },
+      {
+        "slideNumber": 5,
+        "title": "核心策略：计算与通信的重叠 (Overlap)",
+        "bullets": [
+          "串行低效：算完整个网格再交换，会导致计算时网络闲置，通信时 GPU 计算单元闲置。",
+          "两阶段策略 (Two-stage strategy)：",
+          "阶段 1：优先计算能脱离依赖的上下边界行 (Boundary rows)。",
+          "阶段 2：在后台网络异步传输边界数据的同时，GPU 满负荷计算海量的内部网格点 (Internal points)。"
+        ],
+        "speakerNotes": "多 GPU 优化的最高心法是“重叠”。不要等算完所有的网格再发送数据。我们可以先把邻居急需的那一圈边界数据算出来。一旦算完，马上丢给网络去发送。在网络辛苦传数据的同时，GPU 算力不闲着，继续猛算中间那大块不需要依赖邻居的数据。这样，通信的时间就被完美隐藏在计算时间里了。",
+        "visualSuggestion": "重绘图 23.13(b) 的甘特图，强调底部的 Compute Internal 蓝色方块与上方的 Halo Exchange 蓝色方块在时间轴上完美并行重叠。"
+      },
+      {
+        "slideNumber": 6,
+        "title": "流优先级 (Stream Priority) 与资源调度",
+        "bullets": [
+          "多流并发困境：将边界和内部计算放入不同的 CUDA 流 (Streams) 并不能保证理想的重叠。",
+          "SM 资源垄断：若庞大的内部计算内核率先启动并占满所有流式多处理器 (SM)，边界内核将被迫阻塞在队列中。",
+          "优先级调度：必须使用 `cudaStreamCreateWithPriority` 赋予边界流最高优先级，强制其率先执行以尽早触发网络传输。"
+        ],
+        "speakerNotes": "理想很丰满，但硬件调度很骨感。如果你只是简单地把边界计算和内部计算塞进两个 Stream 里，因为内部计算的任务量极大，一旦它先启动，GPU 的 SM 资源瞬间就被吃光了。边界计算挤不进去，网络也就拿不到数据，结果就是白白闲置。我们必须通过设置流优先级，让边界计算拥有 VIP 通道抢先执行。",
+        "visualSuggestion": "展示一个漏斗或队列阻塞模型：庞大的 Internal Kernel (低优先级) 阻塞了通道，而添加高优先级标志后，Boundary Kernel 成功超车。"
+      },
+      {
+        "slideNumber": 7,
+        "title": "异步传输的硬门槛：锁页内存 (Pinned Memory)",
+        "bullets": [
+          "分页危机：`cudaMemcpyAsync` 依赖 DMA 硬件操作物理地址。普通 `malloc` 的内存随时可能被操作系统的分页 (Paging) 机制换出至磁盘。",
+          "隐式同步惩罚：若探测到非锁页内存，CUDA 运行时会被迫在后台进行带锁的同步中转拷贝以防数据损坏。",
+          "解决方案：涉及异步传输的主机端缓冲，必须使用 `cudaMallocHost` 分配为物理锁定的锁页内存。"
+        ],
+        "speakerNotes": "很多新手写了 Async 函数，但发现程序还是串行的，卡在了内存拷贝上。原因在于你用了普通的 malloc。操作系统是会把普通内存换页到硬盘上的，DMA 硬件遇到这种内存会直接崩溃。CUDA 为了保护你，会悄悄退回到极其低效的同步拷贝模式。所以，想用 Async，必须用 cudaMallocHost 锁住这块物理内存。",
+        "visualSuggestion": "图解内存架构：普通内存 (带有被 OS Paging 换出至 Disk 的虚线)，与 Pinned Memory (带有一个物理挂锁图标，直通 DMA 传输引擎)。"
+      },
+      {
+        "slideNumber": 8,
+        "title": "跨流同步：CUDA 事件 (Events)",
+        "bullets": [
+          "流间依赖挑战：三个不同的 Kernel (上边界、下边界、内部) 需要等待共同的初始化动作 (如 `cudaMemsetAsync`) 完成。",
+          "避免 CPU 阻塞：不能使用 CPU 进行全局同步，那会破坏流水线。",
+          "纯设备端同步：使用 `cudaEventRecord` 在流中插入标记，使用 `cudaStreamWaitEvent` 让其他流在 GPU 内部挂起等待，实现零 CPU 开销的依赖链。"
+        ],
+        "speakerNotes": "既然我们用了多个流，流和流之间怎么配合呢？比如它们都要等 L2 norm 初始化清零。我们绝不能让 CPU 出面去调用 StreamSynchronize，那会造成巨大的延迟。我们使用 CUDA 事件 (Events)。在一个流里抛出一个事件，让其他流去 wait 这个事件。这完全是在 GPU 硬件内部完成的，CPU 可以继续去干别的活。",
+        "visualSuggestion": "展示图 23.14 中的事件连接线：从 Internal Stream 中的 `resetL2` 节点拉出虚线箭头，指向 Top/Bottom Stream 中的 `wait` 操作。"
+      },
+      {
+        "slideNumber": 9,
+        "title": "MPI 瓶颈：主机同步开销 (Host Sync Overhead)",
+        "bullets": [
+          "CPU 的中间人角色：MPI 的网络传输指令 (`MPI_Sendrecv`) 必须由主机端 CPU 发起执行。",
+          "阻塞延迟：CPU 必须调用 `cudaStreamSynchronize` 苦苦等待 GPU 边界内核算完，才能调起 MPI 发送。",
+          "流水线断层：这种主机同步开销 (Synchronization overhead) 推迟了网络传输的发射时间，削弱了计算与通信的重叠效果。"
+        ],
+        "speakerNotes": "基于 MPI 的多 GPU 编程有一个根本痛点。MPI 是 CPU 端的库。这意味着 CPU 必须一直盯着 GPU：“你的边界算完了没有？”CPU 调用 StreamSynchronize 会产生严重的操作系统级延迟。这个延迟会导致网络在等待 CPU 唤醒的这段时间里处于空闲状态，白白损失了宝贵的重叠时间。",
+        "visualSuggestion": "基于图 23.15 绘制一段 CPU Timeline：高亮标注出从 Kernel 完成到 MPI 传输开始之间的一段红色空白间隙，标为“Host Sync Overhead”。"
+      },
+      {
+        "slideNumber": 10,
+        "title": "NCCL：流注入通信与释放 CPU",
+        "bullets": [
+          "架构革新：NCCL (NVIDIA Collective Communications Library) 将通信原语直接重写为可在 GPU 上执行的操作。",
+          "流注入 (Stream Injection)：`ncclSend` 和 `ncclRecv` 可直接作为指令塞入 CUDA 流 (Streams) 中排队。",
+          "消除主机干预：当 GPU 内核算完边界后，硬件执行队列无缝衔接直接触发通信，彻底排除了 CPU 的调度延迟。"
+        ],
+        "speakerNotes": "为了解决 CPU 调度延迟的问题，NVIDIA 打造了 NCCL。NCCL 最大的突破是，它的通信指令是可以直接塞进 CUDA Stream 里的！就像排队一样，GPU 执行完前面的 Kernel，紧接着硬件立刻触发网络发送。CPU 在排好队之后就可以彻底走开，完美消除了所有的主机同步开销。",
+        "visualSuggestion": "对比漏斗：MPI 模式 (GPU Kernel -> CPU Sync -> CPU Send -> Net) vs NCCL 模式 (GPU Stream 内 Kernel 直接连接 NCCL 操作 -> Net)。"
+      },
+      {
+        "slideNumber": 11,
+        "title": "NCCL：组调用 (Group Calls) 机制",
+        "bullets": [
+          "融合收发缺失：与 MPI 不同，NCCL 缺乏原生的融合双向通信函数 (如 `MPI_Sendrecv`)。",
+          "死锁隐患：在 CUDA 流中顺序排布独立的 Send 和 Recv 依然极易在双向光环交换中引发全集群死锁。",
+          "安全封装：通过将发送和接收指令夹在 `ncclGroupStart` 和 `ncclGroupEnd` 之间，强制底层硬件并发执行全双工传输。"
+        ],
+        "speakerNotes": "NCCL 虽然好用，但它没有像 MPI_Sendrecv 那种自动防死锁的合并函数。如果你在流里先排 Send 再排 Recv，遇到死锁照样挂掉。NCCL 的解决方案是组调用 (Group Calls)。你把 Send 和 Recv 包在 ncclGroupStart 和 ncclGroupEnd 中间，底层网络硬件就会被强制并行发射这两条指令，彻底杜绝死锁。",
+        "visualSuggestion": "代码片段截图展示：高亮 `ncclGroupStart()` 包裹着 `ncclSend` 和 `ncclRecv` 并以 `ncclGroupEnd()` 收尾的安全模式。"
+      },
+      {
+        "slideNumber": 12,
+        "title": "NVSHMEM：单边通信 (One-Sided Communication)",
+        "bullets": [
+          "双边通信的局限：MPI 和 NCCL 均为双边通信，需收发双方在流中匹配指令，带来协商延迟。",
+          "PGAS 内存模型：NVSHMEM 引入单边通信。每个处理元件 (PE) 在虚拟地址的相同偏移处分配显存 (对称堆 Symmetric heap)。",
+          "直接访问：发起方仅需知道自身数据的偏移量和目标 PE 的 ID，即可通过 Put/Get 直接写入目标显存，无需目标端配合。"
+        ],
+        "speakerNotes": "MPI 和 NCCL 都是“双边通信”，就像打电话，必须一个人打一个人接，接线员才能连通。NVSHMEM 带来了“单边通信”和对称堆机制。这就好比所有 GPU 在内存的同一个小区买了同样户型的房子。我知道自己沙发在哪，就立刻知道 3 号 GPU 的沙发在哪。我直接用 Put 把数据丢过去，对方完全不需要主动接收。",
+        "visualSuggestion": "展示对称堆 (Symmetric Heap) 模型：多个 GPU 拥有相同颜色和地址空间的虚拟内存块，一个单向箭头 (Put) 直达目标内存的对应偏移位置。"
+      },
+      {
+        "slideNumber": 13,
+        "title": "终极形态：设备主导与内核融合 (Kernel Fusion)",
+        "bullets": [
+          "设备端发起 (Device-Initiated)：GPU 线程可直接在 Kernel 内部调用 `nvshmem_float_p` 发起通信。",
+          "内核融合：彻底废弃“上边界、下边界、内部”这种为了配合主机通信而强行切分的多内核架构。所有计算与通信融合于单一 Kernel 内异步完成。",
+          "显式内存屏障：需调用 `nvshmemx_barrier_all_on_stream` 确保远程显存写操作在进入下轮迭代前全局可见。"
+        ],
+        "speakerNotes": "NVSHMEM 的单边通信使得 GPU 线程在 Kernel 里面就能直接打电话发送数据 (Device-Initiated)。这带来的颠覆性变化是：我们再也不需要为了分离计算和通信去写三个 Kernel、建三个 Stream 了！我们在一个 Kernel 里，算完边界马上 Put 走，然后接着算内部数据。这就是极致的内核融合。唯一要注意的是，结束前必须调用屏障函数，确保网络包真正落地。",
+        "visualSuggestion": "架构对比图：左侧是复杂的 Three Streams + CPU/NCCL 同步图；右侧是极其干净的 Single Unified Kernel 包含 `nvshmem_put` 操作的图示。"
+      },
+      {
+        "slideNumber": 14,
+        "title": "总结：多 GPU 架构演进路线",
+        "bullets": [
+          "MPI 时代：双边通信，高度依赖 CPU 调度。容易在重叠调度中因主机同步 (Host sync) 产生极高延迟。",
+          "NCCL 时代：双边通信，实现流注入 (Stream injection)。彻底解放 CPU，消灭同步开销，专为深度学习集群定制优化。",
+          "NVSHMEM 时代：单边通信，设备主导 (Device-initiated)。配合对称堆内存，在极其细粒度的通信中实现完美的内核融合 (Kernel fusion)。"
+        ],
+        "speakerNotes": "总结来看，多 GPU 编程的演进史，就是一部不断削减 CPU 干预、赋予 GPU 更高自主权的通信发展史。从 MPI 的 CPU 包办，到 NCCL 的流队列注入，再到 NVSHMEM 让线程自主发起单边通信。掌握了这些微架构特性的差异，你就能为你的分布式应用挑选出最强悍的并行基石。",
+        "visualSuggestion": "绘制一个阶梯上升的演进图表：MPI -> NCCL -> NVSHMEM，分别标注“CPU 调度”、“流内通信”、“单边内核融合”。"
+      }
+    ]
+  }
+}

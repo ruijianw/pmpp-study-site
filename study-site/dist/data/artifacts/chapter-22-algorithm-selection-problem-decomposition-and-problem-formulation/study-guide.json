@@ -1,0 +1,69 @@
+{
+  "chapterId": "chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation",
+  "chapterTitle": "Algorithm Selection Problem Decomposition And Problem Formulation",
+  "sourceId": "63fe8416-b018-40da-bcf6-b694e07d8fea",
+  "sourceTitle": "chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation.pdf",
+  "artifactType": "study-guide",
+  "artifactLabel": "Study Guide",
+  "generatedAt": "2026-07-13T15:10:55.598307Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "学习指南：算法选择、问题分解与问题重构 (Chapter 22: Algorithm Selection, Problem Decomposition, and Problem Formulation)",
+    "summary": "本指南总结了并行程序设计中的高级抽象思维过程，重点探讨算法选择中的多维度权衡（复杂度、并行度、精度），问题分解中输出中心 (Output-centric) 与输入中心 (Input-centric) 策略对 GPU 底层访存模式（Gather vs. Scatter）的决定性影响，以及阿姆达尔定律 (Amdahl's law) 和批处理 (Batching) 对系统级性能的制约与优化。",
+    "sections": [
+      {
+        "heading": "学习目标 (Learning Objectives)",
+        "points": [
+          "1. 掌握算法选择过程中的核心权衡：算法复杂度 (Algorithmic complexity)、并行度 (Parallelism exposed)、通用性与数值精度的折中。",
+          "2. 深刻理解以输出为中心 (Output-centric) 和以输入为中心 (Input-centric) 的问题分解策略。",
+          "3. 识别输出中心分解通常导致的收集 (Gather) 访存模式，以及它如何避免高延迟的原子操作 (Atomic operations)。",
+          "4. 识别输入中心分解通常导致的散布 (Scatter) 访存模式，理解其在 GPU 上的性能劣势与特定适用场景（如直方图、稀疏矩阵）。",
+          "5. 应用阿姆达尔定律 (Amdahl's law) 评估应用级加速瓶颈，理解任务级并行 (Task-level parallelism) 和 CUDA 流的设计动机。",
+          "6. 理解问题重构 (Problem formulation) 如何通过放宽算法约束（如牺牲极小精度）换取计算复杂度的数量级下降（如截断分箱算法）。",
+          "7. 分析批处理 (Batching) 中个体延迟 (Latency) 与整体吞吐量 (Throughput) 之间的微架构权衡。"
+        ]
+      },
+      {
+        "heading": "章节结构映射 (Section-by-Section Chapter Map)",
+        "points": [
+          "22.1 算法选择 (Algorithm selection): 探讨不同算法在复杂度、并行度、通用性和准确性上的权衡（例如：Kogge-Stone 与 Brent-Kung 的复杂度对比，直接库仑求和与截断分箱的精度与复杂度折中）。",
+          "22.2 问题分解 (Problem decomposition): 深入比较以输出为中心 (Output-centric) 和以输入为中心 (Input-centric) 的分解方法，及其在 GPU 内存架构中对应的 Gather 与 Scatter 访存行为，并回顾历史章节的经典分解实例。",
+          "22.3 应用级考量 – 阿姆达尔定律 (Application level considerations – Amdahl’s law): 分析非并行化串行部分对整体加速比的限制，探讨利用多核 CPU 或 GPU 执行并发小内核以实现任务级并行的必要性。",
+          "22.4 问题重构 (Problem formulation): 强调跨学科思维，通过改变底层数值方法或物理近似条件（而非强行映射低效算法），打破原有计算复杂度和并发度的约束。",
+          "22.5 批处理：延迟与吞吐量 (Batching: latency vs. throughput): 讨论降低单一任务延迟与提升批量任务整体吞吐量之间的取舍（例如：大语言模型推理中将多个查询的向量乘法转换为矩阵乘法以提高算术强度）。"
+        ]
+      },
+      {
+        "heading": "关键概念精解 (Key Concepts)",
+        "points": [
+          "输出中心分解与 Gather 访存 (Output-centric & Gather Pattern): 线程被分配给输出元素，从输入元素收集贡献。其微架构优势在于可将累加结果保留在私有寄存器 (Registers) 中，允许多线程共享输入，并通过缓存节约全局内存带宽 (Global memory bandwidth)，天然避免了原子操作。",
+          "输入中心分解与 Scatter 访存 (Input-centric & Scatter Pattern): 线程被分配给输入元素，将贡献散布到输出结果中。由于多个线程可能并发更新同一个输出地址，必须使用高延迟的原子操作 (Atomic operations) 防范数据竞态，通常较慢。",
+          "算法维度的妥协 (Algorithm Trade-offs): 性能并非唯一指标。例如，基数排序 (Radix sort) 复杂度低且高度并行，但不如归并排序 (Merge sort) 具备通用性；DCS 方法绝对精确，但在大体积计算中其 $O(V^2)$ 复杂度远逊于经过重构的 $O(V)$ 截断分箱算法。",
+          "批处理的算术强度提升 (Batching for Arithmetic Intensity): 批处理通过增加个体任务的处理延迟 (Latency)，将大量低强度的向量-矩阵运算转换为高强度的矩阵-矩阵运算 (Matrix multiplications)。消除冗余的内存访问后，系统总体的处理吞吐量 (Throughput) 获得巨大飞跃。"
+        ]
+      },
+      {
+        "heading": "常见误区与实现缺陷 (Common Misunderstandings & Implementation Mistakes)",
+        "points": [
+          "误区：在任何情况下都应避免输入中心 (Input-centric) 分解，因为它会导致 Scatter 访存和原子操作。真相：在处理直方图 (Histogram) 或 SpMV/COO 稀疏矩阵时，若强行采用输出中心分解，会导致各个线程为了寻找对应的输入数据而执行极其低效的全图搜索或产生严重的负载失衡。此时，输入中心结合原子操作反而更优。",
+          "误区：只要核心算子在 GPU 上加速比极高（如 100 倍），整个应用就能获得极佳的用户体验。真相：根据阿姆达尔定律 (Amdahl's law)，即使整个程序中只有 5% 的代码是串行的，应用的理论最高极限加速比也被死死卡在 20 倍。微小的低效环节会成为严重瓶颈。",
+          "实现缺陷：为了优化某一种特定输入，一味追求极致的低延迟 (Latency optimization)，却忽视了在生产环境中批处理带来的高吞吐量 (Throughput)。真相：CPU 设计倾向于优化个体延迟，而 GPU 架构本质是为了最大化吞吐量；在算法设计上，往往需要牺牲个体响应时间来换取整体资源的饱和利用。"
+        ]
+      },
+      {
+        "heading": "三阶段实践计划 (3-Session Practice Plan)",
+        "points": [
+          "Session 1: 算法特征盘点。回顾之前章节中的排序算法 (Odd-even, Merge, Radix) 和前缀求和算法 (Kogge-Stone, Brent-Kung)。建立表格，对比它们在复杂度 (Algorithmic complexity)、并发规模 (Exposed parallelism) 和通用性 (Generality) 上的优劣。",
+          "Session 2: 分解策略与微架构映射。挑选图像卷积 (Convolution) 作为输出中心 (Output-centric) 代表，挑选直方图 (Histogram) 作为输入中心 (Input-centric) 代表。手写两者的核心映射伪代码，清晰标出 Gather 模式如何使用寄存器累加，以及 Scatter 模式为何必须引入 `atomicAdd`。",
+          "Session 3: 阿姆达尔定律与系统建模。利用阿姆达尔定律公式推演：假设某分子动力学应用 95% 的时间用于计算非键合力。如果 GPU 使其提速 100 倍，计算整体加速比。如果利用流 (Streams) 机制将剩余 5% 的串行工作与 GPU 核心重叠执行 (Overlapped execution)，再次计算加速比变化，体会任务级并行的意义。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

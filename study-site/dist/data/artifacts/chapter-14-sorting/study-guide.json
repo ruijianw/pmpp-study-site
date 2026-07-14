@@ -1,0 +1,73 @@
+{
+  "chapterId": "chapter-14-sorting",
+  "chapterTitle": "Sorting",
+  "sourceId": "d8373a55-be5e-48d3-8179-2927abe3f03f",
+  "sourceTitle": "chapter-14-sorting.pdf",
+  "artifactType": "study-guide",
+  "artifactLabel": "Study Guide",
+  "generatedAt": "2026-07-13T14:23:27.206378Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "学习指南：排序 (Chapter 14: Sorting)",
+    "summary": "本章介绍了在 GPU 上并行化排序算法的核心策略，重点探讨了奇偶排序 (Odd-even sort)、归并排序 (Merge sort) 以及基数排序 (Radix sort)。深入剖析了基数排序中利用排他扫描 (Exclusive scan) 计算全局偏移量的方法，并通过共享内存局部排序 (Local sort in shared memory) 和线程粗化 (Thread coarsening) 优化全局内存的合并访存 (Memory coalescing)，最后分析了基数大小 (Radix value) 对并行性能的综合影响。",
+    "sections": [
+      {
+        "heading": "学习目标 (Learning Objectives)",
+        "points": [
+          "1. 区分比较类与非比较类排序、稳定 (Stable) 与不稳定 (Unstable) 排序，并理解这些属性对并行化策略的直接影响。",
+          "2. 理解并行奇偶排序 (Odd-even sort) 消除数据竞争 (Race conditions) 的机制，及其时间与工作复杂度限制。",
+          "3. 掌握并行基数排序 (Parallel radix sort) 的核心数学逻辑，利用全局排他扫描结果推导 0-bucket 和 1-bucket 的绝对输出索引。",
+          "4. 识别基础基数排序内核中，由于线程输出目标分散而引发的非合并访存 (Uncoalesced memory accesses) 缺陷。",
+          "5. 应用共享内存 (Shared memory) 实现块级局部排序，将散乱的全局写入聚合为完美的连续块状写入。",
+          "6. 分析增大基数 (Radix value) 带来的收益（减少内核迭代次数）与惩罚（加剧访存碎片化与全局扫描开销）。",
+          "7. 运用线程粗化 (Thread coarsening) 技术增加局部桶 (Local buckets) 容量，进而修复多基数带来的访存退化问题。"
+        ]
+      },
+      {
+        "heading": "章节结构映射 (Section-by-Section Chapter Map)",
+        "points": [
+          "14.1 背景 (Background): 定义排序输出要求，探讨排序的稳定性 (Stability) 与比较/非比较算法的理论下限。",
+          "14.2 并行奇偶排序 (Parallel odd-even sort): 交替处理奇偶相邻元素避免竞争，探讨幂等性 (Idempotence) 与 C++ 内存模型中的原子操作规范。",
+          "14.3 并行归并排序 (Parallel merge sort): 基于树状合并的并行策略，分析阶段级并行的权衡与 O(N log^2 N) 工作复杂度。",
+          "14.4-14.5 基数排序与并行化 (Radix sort & Parallelization): LSD 基数排序原理，利用位提取、局部掩码与全局扫描结果计算全局输出偏移。",
+          "14.6 优化合并访存 (Optimizing for memory coalescing): 引入共享内存局部排序机制，通过 Block 级桶大小表格的扫描确定局部桶的全局起始位置。",
+          "14.7 基数大小的选择 (Choice of radix value): 多位基数 (Multi-bit radix) 降低迭代轮数的原理，及其对全局内存合并度和扫描表容量的负面影响。",
+          "14.8 线程粗化 (Thread coarsening): 通过让单个线程处理多个键值，减少 Block 数量，重塑大块连续访存并降低网格级排他扫描开销。",
+          "14.9 其他并行排序 (Other methods): 简述双调排序网络 (Bitonic sort)、样本排序 (Sample sort) 及 MSD (最高有效位) 基数排序的应用场景。"
+        ]
+      },
+      {
+        "heading": "关键概念精解 (Key Concepts)",
+        "points": [
+          "奇偶排序 (Odd-even sort): 通过在奇数和偶数索引对之间交替进行比较和交换，物理上隔离了同时被修改的元素，避免了并发覆盖的 Race conditions。",
+          "稳定性 (Stability): 保证键值相等的元素在排序后依然保持其输入时的相对顺序。对于基数排序 (LSD) 而言，稳定性是保证高位排序时低位不乱序的唯一前提。",
+          "幂等性 (Idempotence): 操作执行多次和执行一次效果相同的特性（如不同线程向 `hasChanged` 标志位写 1）。虽然逻辑结果正确，但无序并发写入仍违反 C++ 内存模型，保守实现应依赖原子操作。",
+          "稳定划分模式 (Stable partition pattern): 基数排序单次迭代的底层原语。将满足条件（如当前位为 0）和不满足条件（如当前位为 1）的元素分别移至输出列表前后，且绝对保持各自子集内的原有顺序。",
+          "局部排序与转储 (Local sort and dump): 为修复 Warp 内不同线程写 0 桶和 1 桶导致的非合并访存，先在 Shared memory 中对 Block 数据进行局部保序划分，再由连续线程将整块 0 桶和 1 桶连续写入 Global memory。"
+        ]
+      },
+      {
+        "heading": "常见误区与实现缺陷 (Common Misunderstandings & Implementation Mistakes)",
+        "points": [
+          "误区：基数 (Radix) 越大，迭代次数越少，排序速度就一定越快。真相：更大的基数导致每个 Block 产生 2^r 个局部桶。由于桶数量激增，每个桶内的元素急剧减少，不仅削弱了向全局内存转储时的合并访存 (Coalescing) 效果，还会使得需要进行全局排他扫描的表格成倍膨胀，导致极高的同步开销。",
+          "实现缺陷：在基数排序迭代中，让线程算出全局目标地址后直接写入 Global memory。真相：同一 Warp 内的不同线程会根据其键值的 bit 分别写入距离极远的 0 桶区域和 1 桶区域。这种跳跃式的写入会引发大量碎片化的内存事务，耗尽 DRAM 带宽。",
+          "误区：在实现奇偶排序时，因为向 `hasChanged` 写入 1 具有幂等性，所以可以直接写，不用管数据竞争。真相：在严格的 C++ 内存模型下，数据竞争本身就是未定义行为 (Undefined behavior)，哪怕是幂等写入，编译器也可能进行破坏性的优化，必须使用 `atomicExch` 或类似操作。"
+        ]
+      },
+      {
+        "heading": "三阶段实践计划 (3-Session Practice Plan)",
+        "points": [
+          "Session 1: 算法推导与基础并行化。实现 1-bit 基数排序的基础版本 (Fig 14.7)。重点推演并在代码中实现 0 和 1 的目标地址公式 (例如: destination of a one = input size - # ones in total + # ones before)，在 CPU 上模拟验证这一定位逻辑。",
+          "Session 2: 共享内存与合并访存。重构基础内核，引入 Shared memory 实施块级局部排序 (Local sort)。构建记录各 Block 局部桶大小的网格级表格并调用排他扫描，利用 Nsight Compute 对比该版本与基础版本的内存带宽利用率差异。",
+          "Session 3: 架构极限与线程粗化。将代码扩展以支持 2-bit 及以上的多位基数 (Multi-bit radix)。随即引入线程粗化 (Thread coarsening)，通过实验调节 '每线程元素数' 与 '基数大小'，寻找最小化总体执行时间 (兼顾迭代次数与访存合并度) 的最佳配置。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

@@ -1,0 +1,167 @@
+{
+  "chapterId": "chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation",
+  "chapterTitle": "Algorithm Selection Problem Decomposition And Problem Formulation",
+  "sourceId": "63fe8416-b018-40da-bcf6-b694e07d8fea",
+  "sourceTitle": "chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation.pdf",
+  "artifactType": "slide-deck",
+  "artifactLabel": "Slide Deck",
+  "generatedAt": "2026-07-13T15:15:39.158751Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "幻灯片大纲：算法选择、问题分解与问题重构 (Chapter 22)",
+    "summary": "本幻灯片组从宏观视角提炼了 GPU 并行程序设计的核心架构思维。重点剖析了输出中心 (Output-centric) 与输入中心 (Input-centric) 分解策略如何决定底层的 Gather/Scatter 访存模式，以及阿姆达尔定律、问题重构与批处理 (Batching) 在突破系统级性能瓶颈中的关键作用。",
+    "sections": [
+      {
+        "heading": "使用建议 (Usage Tips)",
+        "points": [
+          "第 1-3 页：介绍算法选择中的核心权衡，明确复杂度、并行度与通用性之间的折中关系。",
+          "第 4-7 页：深入对比以输出为中心 (Output-centric) 和以输入为中心 (Input-centric) 的分解策略，结合底层微架构解释为何 Gather 模式优于 Scatter 模式，以及在直方图、稀疏矩阵中妥协使用 Scatter 的原因。",
+          "第 8-9 页：通过静电势图截断分箱算法展示“问题重构 (Problem formulation)”如何打破原有的复杂度约束，并讲解溢出列表 (Overflow list) 的处理机制。",
+          "第 10-12 页：从系统级探讨阿姆达尔定律 (Amdahl's law) 的物理限制、利用 CUDA 流提取任务级并行 (Task-level parallelism) 的必要性，以及批处理 (Batching) 对吞吐量的极致提升。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "slideNumber": 1,
+        "title": "从底层指令到并行思维 (Parallel Thinking)",
+        "bullets": [
+          "并行编程的升华：超越 CUDA API 与底层硬件细节，进入算法选择与问题分解的宏观设计阶段。",
+          "跨学科协作：程序员不仅是实现者，更应与领域科学家合作，分析并转换领域问题的串行结构。",
+          "核心目标：在算法复杂度 (Algorithmic complexity)、暴露的并行度 (Parallelism exposed) 和硬件资源消耗之间取得最佳妥协。"
+        ],
+        "speakerNotes": "在掌握了内存架构和指令调度之后，我们需要建立高级的并行思维。写出高效的 GPU 程序，往往不只是调优循环，而是从根本上重构问题。我们需要识别哪些部分是天生串行的，哪些可以通过妥协来释放海量的并发度。",
+        "visualSuggestion": "展示一个思维金字塔：底层是 CUDA C/Hardware，中层是 Patterns (Reduction/Scan)，顶层是 Problem Formulation & Algorithm Selection。"
+      },
+      {
+        "slideNumber": 2,
+        "title": "算法选择的核心权衡 (Algorithm Selection Trade-offs)",
+        "bullets": [
+          "复杂度 vs. 并行度：Brent-Kung 前缀和复杂度低 (操作少)，但 Kogge-Stone 暴露的并行度更高 (迭代少)。",
+          "通用性 vs. 并行效率：基数排序 (Radix sort) 极其高效且非基于比较，但不如归并排序 (Merge sort) 通用。",
+          "硬件适配性：最优算法高度依赖于目标 GPU 硬件特征，有时接受更高的算术复杂度能换取更好的内存行为。"
+        ],
+        "speakerNotes": "世界上没有完美的算法。在单核 CPU 上，我们通常追求最低的算法复杂度。但在 GPU 上，如果一个低复杂度算法充满数据依赖，那它毫无价值。我们需要在复杂度、并发规模和通用性之间做出精准的取舍。",
+        "visualSuggestion": "绘制一个雷达图或三角权衡图，三个顶点分别为：Algorithmic Complexity, Amount of Parallelism Exposed, Generality。"
+      },
+      {
+        "slideNumber": 3,
+        "title": "以输出为中心与收集模式 (Output-Centric & Gather)",
+        "bullets": [
+          "策略：将线程分配给输出元素，每个线程主动收集 (Gather) 相关的输入元素来生成结果。",
+          "微架构优势：线程可将中间累加结果保存在极速的私有寄存器 (Registers) 中。",
+          "消除冲突：多个线程共享输入数据 (可通过 Cache 加速)，完全避免了写冲突与高延迟的原子操作 (Atomic operations)。",
+          "典型应用：图像卷积、模板计算、稠密矩阵乘法。"
+        ],
+        "speakerNotes": "问题分解的黄金法则是尽可能以输出为中心。因为每个线程只负责写自己的那块输出地址，大家互不干扰。你可以把累加的临时变量一直放在寄存器里，不用写回显存。这种 Gather 模式天然排除了对原子操作的依赖，是压榨 GPU 吞吐量的利器。",
+        "visualSuggestion": "展示图 22.1(a) 的概念：多个 Input 元素通过绿色箭头汇聚 (Gather) 到单个 Thread，最终输出到一个确定的 Output 槽位。"
+      },
+      {
+        "slideNumber": 4,
+        "title": "以输入为中心与散布模式 (Input-Centric & Scatter)",
+        "bullets": [
+          "策略：将线程分配给输入元素，计算其贡献并散布 (Scatter) 更新到相应的输出元素上。",
+          "架构惩罚：多个线程极易在同一时刻并发更新同一个输出地址。",
+          "强制同步：必须使用缓慢的原子操作 (如 atomicAdd) 来防范数据竞态 (Race conditions)，导致内存事务严重串行化。",
+          "典型应用：图遍历中的 Push 操作、原子级静电势图分配。"
+        ],
+        "speakerNotes": "相反，以输入为中心的分解会导致 Scatter 模式。多个线程拿着自己的计算结果，像散弹枪一样往输出数组里打。这就不可避免地会打中同一个位置，引发竞态条件。为了保证数据正确，你必须加上原子操作，这直接导致硬件管线串行化，性能大幅下降。",
+        "visualSuggestion": "展示图 22.1(b) 的概念：单个 Thread 读取 Input 后，通过箭头散布 (Scatter) 到多个可能重叠的 Output 槽位，并打上 `atomicAdd` 警告标志。"
+      },
+      {
+        "slideNumber": 5,
+        "title": "为何妥协：不可避免的输入中心分解 (Why Input-Centric?)",
+        "bullets": [
+          "直方图案例 (Histogram)：输出箱子 (Bins) 数量远少于输入元素。若用输出中心，将导致极其严重的并行度匮乏。",
+          "逆向映射困难：线程为了找出映射到自己箱子的输入，必须低效地全局遍历所有输入数据。",
+          "负载失衡：每个输出箱子匹配到的输入数量差异巨大，引发极端的控制流发散 (Control divergence)。",
+          "结论：两害相权取其轻，牺牲内存性能引入原子操作，换取庞大的并发度与负载均衡。"
+        ],
+        "speakerNotes": "既然原子操作那么慢，为什么我们还要用输入中心？以直方图为例。如果用输出中心，一个线程负责一个 Bin，它要去几百万个输入里盲找属于自己的数据，这简直是灾难，而且会导致严重的负载不均。这时候，输入中心结合原子操作反而成了最优解。",
+        "visualSuggestion": "天平对比：左侧 Output-Centric (极低并行度 + 灾难性全局搜索) vs 右侧 Input-Centric (高并行度 + Atomic 操作惩罚)，天平向右侧倾斜。"
+      },
+      {
+        "slideNumber": 6,
+        "title": "稀疏矩阵分解的结构约束 (SpMV Decomposition)",
+        "bullets": [
+          "输出中心适用 (CSR/ELL/JDS)：利用良好的行索引结构，线程可轻易找到对应的输入非零元素进行 Gather。",
+          "强制输入中心 (COO/CSC)：缺乏高效的正向或逆向索引。强制使用输出中心会导致线程扫描全图寻找匹配元素。",
+          "实现抉择：COO 格式必须将线程分配给输入非零元素，使用 Scatter 和原子操作更新输出向量。"
+        ],
+        "speakerNotes": "数据结构的排布直接决定了你能用哪种分解策略。在稀疏矩阵中，CSR 格式有完美的行指针，非常适合输出中心分解。而 COO 格式是一堆无序的坐标，让输出线程去里面找对应数据无异于大海捞针，因此 COO 只能被迫采用输入中心和原子操作。",
+        "visualSuggestion": "对比矩阵结构：CSR 格式带指向 Row 的箭头 (绿色 Gather)；COO 格式的散乱坐标系，带有指向 Output 向量的离散箭头 (红色 Scatter/Atomic)。"
+      },
+      {
+        "slideNumber": 7,
+        "title": "负载均衡驱动的分解选择 (Load Balance in Merge)",
+        "bullets": [
+          "并行合并 (Merge operation)：每个输出元素明确只接受一个输入元素的贡献，不存在 Scatter 写入冲突。",
+          "输入中心的弊端：若分割输入数组交由线程处理，不同线程映射到另一数组的元素数量差异极大，导致负载失衡。",
+          "输出中心的胜利：将线程分配给输出数组的固定分块 (Chunks)，确保每个线程执行完全相同的工作量，完美实现线程粗化 (Thread coarsening)。"
+        ],
+        "speakerNotes": "并非只有原子操作这一个考量维度。在并行归并 (Merge) 中，无论是基于输入还是输出，都不会有写冲突。但我们依然坚决选择输出中心。因为基于输入会导致有些线程需要合并大量元素，有些则无事可做。输出中心天然保证了每个线程分到的输出槽位是一样多的，完美解决负载均衡。",
+        "visualSuggestion": "工作量对比图：Input-centric 导致长度不一的任务条 (Load Imbalance)；Output-centric 导致整齐划一的任务块 (Perfect Load Balance)。"
+      },
+      {
+        "slideNumber": 8,
+        "title": "问题重构：打破复杂度约束 (Problem Formulation)",
+        "bullets": [
+          "超越底层指令优化：强行并行化通用的数值方法往往受限于固有计算复杂度和低并行度。",
+          "跨学科近似：需要领域专业知识 (Domain expertise) 改变底层物理或数学约束。",
+          "经典案例：将直接库仑求和 (DCS, 复杂度 $O(V^2)$) 重构为截断分箱算法 (Cutoff binning, 复杂度 $O(V)$)。"
+        ],
+        "speakerNotes": "并行优化的最高境界不是调整几行 CUDA 代码，而是问题重构。如果你拿到一个复杂度为 $O(N^2)$ 的串行算法，你再怎么榨干 GPU 也无济于事。通过引入物理上的截断近似，我们将 $O(V^2)$ 降维到了 $O(V)$，这种数量级的飞跃只有跨学科重构才能做到。",
+        "visualSuggestion": "一个图表展示 $O(V^2)$ 曲线和 $O(V)$ 曲线随数据规模增大的巨大差异，标注“Problem Formulation unlocks scale”。"
+      },
+      {
+        "slideNumber": 9,
+        "title": "重构的工程代价：处理空间不规则性 (Handling Irregularities)",
+        "bullets": [
+          "容量爆炸陷阱：分箱 (Binning) 算法中，若为容纳极端不均的原子分布而按最大容量分配显存，会导致系统内存耗尽。",
+          "溢出列表机制 (Overflow List)：设定合理的较小固定 Bin 容量，将超出部分的少量原子排入溢出列表。",
+          "延迟掩盖 (Latency hiding)：GPU 执行规则的 Bin 计算，主机端 (Host CPU) 异步处理溢出列表。"
+        ],
+        "speakerNotes": "但重构往往会带来不规则性。比如空间分箱，有的箱子空，有的箱子满。为了 GPU 线程好处理，我们绝不能按最大箱子分配内存，那会撑爆显存。正确的工程做法是设个小容量，装不下的丢进溢出列表，让 CPU 在后台默默处理掉，实现软硬件完美协同。",
+        "visualSuggestion": "图解 Bin 溢出：几个方格 (Bins)，其中一个溢出，多余的红色点通过一条管子 (Overflow List) 送给 CPU 处理。"
+      },
+      {
+        "slideNumber": 10,
+        "title": "阿姆达尔定律与应用级瓶颈 (Amdahl's Law)",
+        "bullets": [
+          "冷酷的物理极限：应用程序的整体最大加速比，受限于代码中无法并行化的串行部分的耗时比例。",
+          "计算实例：95% 的核心计算用 GPU 加速 100 倍，剩下 5% 串行。在不重叠执行时，整体加速比仅为 $1/(0.05 + 0.95/100) \\approx 17\\times$。",
+          "重叠执行优化 (Overlap execution)：若串行 5% 能与 GPU 完美重叠执行，整体加速比上限被卡在 $1/0.05 = 20\\times$。"
+        ],
+        "speakerNotes": "当我们把核心算法优化到极致，提速 100 倍后，应用整体变快了 100 倍吗？阿姆达尔定律告诉我们：不。如果应用里哪怕只有 5% 的代码是串行的，整体提速最多只有 20 倍。那些不值得单独上 GPU 的零碎任务，最终会成为拖垮整个软件的致命瓶颈。",
+        "visualSuggestion": "饼图展示：95% Parallelizable (蓝色) 和 5% Serial (红色)。经过加速后，红色块成为执行时间的主体。"
+      },
+      {
+        "slideNumber": 11,
+        "title": "提取任务级并行 (Task-Level Parallelism)",
+        "bullets": [
+          "碎任务的困境：大量辅助模块 (如分子动力学中的振动/旋转力计算) 计算量小，单独启动 GPU Kernel 利用率极低。",
+          "多核与并发流缓解瓶颈：利用多核 CPU 执行这些串行任务，或使用 CUDA 流 (Streams) 在 GPU 上并发发射多个小 Kernel。",
+          "整体资源饱和：通过并发执行无数据依赖的小任务，互相掩盖延迟，大幅提升 GPU 占用率 (Occupancy)。"
+        ],
+        "speakerNotes": "为了打破阿姆达尔定律的魔咒，我们必须挖掘任务级并行。对于那些填不满 GPU 的小任务，我们可以利用 CUDA Streams 将它们同时扔给 GPU。虽然单个任务算得不够快，但一堆小任务同时跑，互相掩盖了延迟，同样能把 GPU 的算力榨干。",
+        "visualSuggestion": "展示时间轴：传统串行执行的细长空白；并发 CUDA 流执行时，多个不同颜色的短小 Kernel 堆叠填满了时间轴。"
+      },
+      {
+        "slideNumber": 12,
+        "title": "批处理：延迟与吞吐量的博弈 (Batching: Latency vs. Throughput)",
+        "bullets": [
+          "个体延迟 (Latency)：处理单一问题实例所需的时间 (通常是 CPU 设计的优化重点)。",
+          "整体吞吐量 (Throughput)：单位时间内系统完成的总任务量 (GPU 设计的终极目标)。",
+          "大模型推理优化：合并用户的多个独立 Query，将极低效的 向量-矩阵乘法 转换为高算术强度 (Arithmetic intensity) 的 矩阵-矩阵乘法。"
+        ],
+        "speakerNotes": "最后一个核心思维是吞吐量至上。在大语言模型推理中，如果我们来一个词算一次，那叫向量-矩阵乘法，算术强度极低，显存带宽会被瞬间抽干。如果我们把多个用户的请求打包 (Batching) 成矩阵相乘，虽然单个用户的响应变慢了一点点，但整个系统的吞吐量发生了几何级数的跃升。",
+        "visualSuggestion": "对比公式：(总查询数 / Batching矩阵乘法延迟)  vs (总查询数 / 无Batching向量乘法总延迟)，强调 Arithmetic Intensity 的提升。"
+      }
+    ]
+  }
+}

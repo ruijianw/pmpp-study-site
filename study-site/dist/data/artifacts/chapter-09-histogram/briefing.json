@@ -1,0 +1,61 @@
+{
+  "chapterId": "chapter-09-histogram",
+  "chapterTitle": "Histogram",
+  "sourceId": "7f3b148b-9490-4fb1-8047-9a97a835fbee",
+  "sourceTitle": "chapter-09-histogram.pdf",
+  "artifactType": "briefing",
+  "artifactLabel": "Briefing",
+  "generatedAt": "2026-07-13T13:51:53.185745Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "简报：直方图与原子操作 (Chapter 9: Histogram)",
+    "summary": "本简报解析了并行直方图计算中的输出干扰与读-改-写竞态条件问题。深入探讨了原子操作的吞吐量瓶颈，并系统总结了通过私有化、交错线程粗化以及线程级私有化等高级策略，来突破性能极限的方法论。",
+    "sections": [
+      {
+        "heading": "执行摘要 (Executive Summary)",
+        "points": [
+          "直方图计算打破了“所有者计算 (Owner-computes)”法则，因为输出位置是依赖于输入数据的，这必然导致输出干扰 (Output interference) [1, 2]。",
+          "使用原子操作 (Atomic operations) 是解决读-改-写竞态条件 (Read-modify-write race conditions) 的基础，但由于其强制串行化特性，性能极度受限于内存延迟 [3-5]。",
+          "私有化 (Privatization) 与线程粗化 (Thread coarsening) 相结合，能将高强度的全局内存原子竞争转化为低延迟的共享内存 (Shared memory) 或单线程操作，从而极大提升吞吐量 [6-8]。"
+        ]
+      },
+      {
+        "heading": "核心主张 (Core Claims)",
+        "points": [
+          "吞吐量受制于延迟 (Throughput bound by latency): 对同一内存地址的原子操作吞吐量近似为内存延迟的倒数，使得高竞争的原子操作在全局内存中极度低效 [5]。现代 GPU 允许在 L2 缓存 (L2 cache) 中进行原子操作，是缓解此问题的关键硬件支撑 [9]。",
+          "分块级私有化 (Block-level Privatization): 在共享内存 (Shared memory) 中为每个 Thread Block 分配直方图私有副本，能将全局冲突降维至局部，并利用共享内存仅几周期的极低访问延迟，大幅提升原子更新速度 [6, 10]。",
+          "交错划分保障合并访存 (Interleaved Partitioning for Coalescing): 在实施线程粗化时，必须采用交错划分而非连续划分，以确保同一 Warp 内的相邻线程访问连续的内存地址，从而触发底层合并访存 (Memory coalescing) [11, 12]。",
+          "数据驱动的线程级私有化 (Data-driven Thread-level Privatization): 当输入数据高度重复（如图像中的大面积纯色块）时，利用单线程的寄存器 (Registers) 累加连续相同的值，可进一步削减共享内存的原子更新次数 [8, 13, 14]。"
+        ]
+      },
+      {
+        "heading": "本章重要性 (Why This Chapter Matters)",
+        "points": [
+          "揭示了当数据并行的输出目的地存在严重重叠和冲突时的标准处理范式与防错思维 [2]。",
+          "提供了“化全局竞争为局部协作”的系统性思考路径，展现了在面对极低吞吐量的操作时，如何通过多层级的私有化 (Privatization) 极限压榨片上存储资源 [15]。"
+        ]
+      },
+      {
+        "heading": "先决条件 (Prerequisites)",
+        "points": [
+          "理解基础的全局内存合并访存 (Memory Coalescing) 机制以及缓存系统（特别是 L2 Cache 与 Shared Memory）的访问延迟差异 [4, 12]。",
+          "掌握由于多线程相对执行速度不确定性引发的读-改-写竞态条件 (Read-modify-write race conditions) 的成因与危害 [16, 17]。"
+        ]
+      },
+      {
+        "heading": "实现启示与常见错误 (Implementation Implications)",
+        "points": [
+          "滥用连续划分 (Abusing Contiguous Partitioning): 开发者常照搬 CPU 编程直觉，在粗化循环中将连续数据块分配给 GPU 单线程。这会导致同一个 Warp 中的线程跨越极大的地址跨度读取数据，彻底破坏合并访存 (Uncoalesced accesses)，使带宽利用率暴跌 [11, 12]。",
+          "忽视私有化开销 (Ignoring Privatization Overhead): 私有副本必须经历初始清零和最终的原子提交合并阶段。如果未充分使用线程粗化 (Thread coarsening) 来摊薄这一成本，过量的 Thread Blocks 反而会导致严重的调度等待和额外的全局原子竞争，拖慢内核性能 [7]。",
+          "盲目应用线程级私有化 (Blind Application of Thread-level Privatization): 线程级局部累加引入了额外的状态变量和控制流 (if-else)。如果输入数据集本身随机且不具备高度相似性 (Similarity)，额外的控制流发散 (Control divergence) 和指令负担将直接抵消优化收益，导致程序变慢 [18]。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

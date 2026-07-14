@@ -1,0 +1,164 @@
+{
+  "chapterId": "chapter-19-convolutional-neural-networks",
+  "chapterTitle": "Convolutional Neural Networks",
+  "sourceId": "765c4df9-5672-44d9-9eee-974ff60884f9",
+  "sourceTitle": "chapter-19-convolutional-neural-networks.pdf",
+  "artifactType": "slide-deck",
+  "artifactLabel": "Slide Deck",
+  "generatedAt": "2026-07-13T14:58:35.517756Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "幻灯片大纲：卷积神经网络 (Chapter 19: Convolutional Neural Networks)",
+    "summary": "本幻灯片组系统讲解了在 GPU 上加速卷积神经网络 (CNN) 卷积层前向传播的核心架构技术。从基础的多维并行性映射、批量执行 (Batched execution)，到将卷积转化为通用矩阵乘法 (GEMM) 时的显存膨胀代价，最后深入解析了隐式展开 (Implicit unfolding) 在共享内存中的完美权衡与 cuDNN 的底层优化思想。",
+    "sections": [
+      {
+        "heading": "使用建议 (Usage Tips)",
+        "points": [
+          "第 1-4 页介绍 CNN 的计算特征与基础内核的并行维度拆解，强调为何必须避免在输入通道 (C) 和滤波器窗口 (K) 维度上进行并行化。",
+          "第 5-6 页讲解批量执行 (Batched execution) 如何提升 GPU 占用率 (Occupancy)，以及 3D 网格下的二维切片线性化解码 (Linearized index decoding)。",
+          "第 7-10 页进入核心架构优化：分析将卷积转化为 GEMM 的动机，深度对比显式展开 (Explicit unfolding) 的 $K^2$ 显存膨胀代价与隐式展开 (Implicit unfolding) 的精妙重组。",
+          "第 11-12 页结合 cuDNN 工业实践，探讨不透明描述符 (Opaque descriptors) 与片上内存隐藏延迟 (Latency hiding) 的设计哲学。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "slideNumber": 1,
+        "title": "GPU 与卷积神经网络 (CNNs on GPU)",
+        "bullets": [
+          "架构契合点：卷积层 (Convolutional layers) 具有极高的计算访存比 (Compute-to-memory-access ratio) 和海量的数据并行度 (Parallelism)。",
+          "前向传播 (Forward propagation)：输出特征图 (Output feature maps) 的每个像素，由输入特征图的感受野 (Patches) 与滤波器组 (Filter banks) 进行点积累加生成。",
+          "性能挑战：如果不能有效利用底层内存层次结构进行数据复用，极易遭遇全局内存带宽 (Global memory bandwidth) 瓶颈。"
+        ],
+        "speakerNotes": "自 2012 年 AlexNet 以来，GPU 彻底引爆了深度学习。卷积层是 CNN 中最耗时的部分。由于每个输出像素都需要大量计算，且计算之间相互独立，它简直是为 GPU 的海量计算核心量身定制的。但如果不仔细设计内存访问，GPU 极强的算力也会被缓慢的内存总线拖垮。",
+        "visualSuggestion": "展示图 19.2 (特征图与滤波器的卷积过程)，突出显示多个输入特征图如何通过对应的滤波器组映射到一个输出特征图像素上。"
+      },
+      {
+        "slideNumber": 2,
+        "title": "挖掘卷积层的“安全”并行度 (Easy Parallelism)",
+        "bullets": [
+          "独立并行维度：批次样本 (N)、输出特征图通道 (M)、输出特征图的垂直空间 (H_out) 和水平空间 (W_out)。",
+          "线程映射：在基础内核中，通常让每个线程 (Thread) 唯一负责计算一个输出特征图上的单个像素。",
+          "高并发红利：这四个维度的乘积 (N * M * H_out * W_out) 提供了足以填满现代 GPU 流式多处理器 (SM) 的巨大并行空间。"
+        ],
+        "speakerNotes": "在写 CUDA 卷积内核时，第一步是找并行度。最安全的并行化维度就是样本 N、输出通道 M 以及输出图片的宽和高。因为这四个维度的任意组合对应的输出像素，都是完全独立的，线程之间绝对不会互相干扰。",
+        "visualSuggestion": "用四维嵌套 for 循环的代码片段展示，将最外层的 n, m, h, w 循环高亮标记为“Parallel (Grid & Block)”。"
+      },
+      {
+        "slideNumber": 3,
+        "title": "实现陷阱：强制并行化的原子代价 (The Atomic Trap)",
+        "bullets": [
+          "串行保留：输入通道循环 (C) 和滤波器窗口循环 (P, Q) 必须在单线程内部保持串行执行 (Serial execution)。",
+          "冲突灾难：如果将其并行化，多个线程将并发读写同一个输出像素，引发严重的读改写 (Read-modify-write) 数据竞态。",
+          "性能崩塌：为保证正确性将被迫大量使用原子操作 (Atomic operations)，导致计算管线极度串行化，彻底摧毁指令吞吐量。"
+        ],
+        "speakerNotes": "新手常犯的错误是“将所有循环全并行化”。如果你把输入通道 C 或是卷积核内部的循环 P, Q 分配给不同线程，它们最终都需要把结果加到同一个输出像素上。这就必须用 atomicAdd。原子操作的高延迟会让 GPU 的并行优势荡然无存。正确的做法是：让一个线程用寄存器把这些内部循环全部累加完，最后只写一次全局内存。",
+        "visualSuggestion": "展示一个大红色的“警告”标志，配图展示多个线程的箭头同时指向同一个内存地址，并打上 `atomicAdd` 带来的堵塞 (Serialization) 动画。"
+      },
+      {
+        "slideNumber": 4,
+        "title": "批量执行的架构收益 (Batched Execution)",
+        "bullets": [
+          "机制：将多个独立的输入样本打包为一个 mini-batch 共同送入网络。",
+          "扩展 Grid 规模：批量执行直接将 Grid 的 Z 维度按批次大小 N 扩展，向 GPU 发射数量庞大的 Thread Blocks。",
+          "提升占用率 (Occupancy)：在处理分辨率较小的图像时，单样本并行度严重不足。Batching 是避免 SM 闲置、充分榨干 GPU 算力的关键法则。"
+        ],
+        "speakerNotes": "为什么要搞 Batch size？不只是为了算法收敛，更是为了硬件。当你处理一张 32x32 的小图片时，生成的 Block 数量根本填不满 GPU 几百上千个调度槽位。通过把 N 张图片打包，Grid 的 Z 维度直接乘以 N，GPU 的占用率立刻打满，算力才不会被浪费。",
+        "visualSuggestion": "对比柱状图：左侧单样本 (Single Sample) GPU 占用率极低 (大量灰色闲置 SM)；右侧批量样本 (Batched) GPU 占用率全满 (绿色常驻 Block)。"
+      },
+      {
+        "slideNumber": 5,
+        "title": "3D 网格的二维切片解码 (Linearized Index Decoding)",
+        "bullets": [
+          "网格限制：CUDA Grid 最高仅支持 3D 拓扑。X 维分配给输出特征图 (M)，Z 维分配给批次 (N)。",
+          "Y 维复用：仅剩的 Y 维必须同时承载输出图像的二维空间切片 (Tiles, H_grid x W_grid)。",
+          "线性解码 (Linearized decoding)：在内核起始处，利用除法 (`blockIdx.y / W_grid`) 提取垂直索引，利用取模 (`blockIdx.y % W_grid`) 提取水平索引。"
+        ],
+        "speakerNotes": "在映射的时候我们会遇到一个硬件限制：我们需要 4 个维度 (样本、特征图、高、宽) 来分块，但 CUDA Grid 只有 3 维。X 和 Z 被占了，二维的图像切片只能被压平成一维排在 Y 轴上。因此，在 Kernel 的头几行代码，必须用数学方法手动把它反向解码回 2D 坐标。",
+        "visualSuggestion": "展示图 19.6 (一维 Block 序列映射到二维网格上的示意图)，并配以代码片段 `by = blockIdx.y / W_grid; bx = blockIdx.y % W_grid;`。"
+      },
+      {
+        "slideNumber": 6,
+        "title": "基础内核的致命瓶颈 (Bottleneck of Basic Kernel)",
+        "bullets": [
+          "带宽受限 (Memory-bound)：尽管基础内核暴露出极高并行度，但执行速度极慢。",
+          "冗余访存：每个输出像素都需从全局内存中重复拉取大量输入特征图与滤波器数据。",
+          "缺乏跨块复用：不同的 Thread Blocks 计算不同的输出特征图，难以直接在各自的共享内存中复用相同的输入数据。"
+        ],
+        "speakerNotes": "基础的卷积内核看起来很完美，但在 GPU 上跑起来慢得像蜗牛。为什么？因为内存带宽。每个线程都在疯狂地从全局内存读取同一张输入特征图的不同部分。没有跨 Block 的数据复用，算力再高也会被内存读取卡死。我们需要一种系统性的数据复用策略。",
+        "visualSuggestion": "一个带有速度表的仪表盘，指针卡在较低的位置，下方标注“Global Memory Bandwidth Limit”，旁边用无数散乱的箭头表示未优化的冗余读取。"
+      },
+      {
+        "slideNumber": 7,
+        "title": "算法重构：卷积转 GEMM (Formulating Convolution as GEMM)",
+        "bullets": [
+          "重构动机：引入极高计算访存比的通用矩阵乘法 (General Matrix Multiply)，从而利用共享内存 (Shared memory) 大幅降低带宽消耗。",
+          "天然就绪的滤波器：基于 C 语言的行主序 (Row-major order)，滤波器组在内存中已经天然排列成了 GEMM 所需的左侧矩阵 (无需转置)。",
+          "展平感受野：需要将输入特征图的局部感受野展开为一维向量，并拼装为 GEMM 的右侧输入矩阵 B。"
+        ],
+        "speakerNotes": "为了解决带宽问题，业界大神们想到了一个绝招：把卷积变成矩阵乘法 (GEMM)。矩阵乘法有极其成熟的分块复用技术 (Tiled GEMM)。幸运的是，滤波器在内存里的排列天然就是矩阵的形式；我们唯一需要解决的，就是如何把输入特征图的感受野展平成一个输入矩阵 B。",
+        "visualSuggestion": "展示图 19.8 下半部分的等式：左侧是扁平的滤波器矩阵 F，中间是高瘦的输入矩阵 B，右侧是生成的输出特征图矩阵 Y。突出矩阵点积的对应关系。"
+      },
+      {
+        "slideNumber": 8,
+        "title": "显式展开的灾难 (The Trap of Explicit Unfolding)",
+        "bullets": [
+          "物理构造矩阵 B：若在显存中写一个 Kernel 专门生成并存储巨大的展开矩阵 B，将面临严重的惩罚。",
+          "空间高度重叠：由于卷积滑窗的特性，单个输入像素会被物理复制多次 (如中心像素被复制 K^2 次)。",
+          "带宽与容量膨胀：显存消耗与数据搬运量激增，膨胀率趋近于 $K^2$ (K 为滤波器尺寸)。这将瞬间耗尽显存并抵消 GEMM 的所有计算红利。"
+        ],
+        "speakerNotes": "但如果你真的傻乎乎地在显存里分配一块巨大的空间，把感受野拷贝拼装成矩阵 B，那你就中计了。这叫“显式展开”。因为感受野是重叠的，一个像素会被复制几十次。如果卷积核是 5x5，显存占用直接暴涨 25 倍！这种荒谬的数据搬运会让你直接 Out of Memory，速度比基础内核还慢。",
+        "visualSuggestion": "一个 3x3 的图像块放大后，展示中心像素被周围 4 个不同的滑窗重复包含的过程。配合公式 $Expansion Ratio \\approx K^2$，并打上红色警示符号。"
+      },
+      {
+        "slideNumber": 9,
+        "title": "终极方案：隐式展开 (Implicit Unfolding)",
+        "bullets": [
+          "概念矩阵 (Conceptual Matrix)：展开后的矩阵 B 从不在全局内存中真正物理实例化。",
+          "按需加载 (On-demand loading)：利用分块 GEMM (Tiled GEMM) 的特性，在将数据从全局内存拉入极速的共享内存 (Shared memory) 时进行转换。",
+          "实时映射：利用精妙的数学公式，动态计算虚拟 B 矩阵元素到原始输入张量 X 的物理坐标，并直接拉取数据。"
+        ],
+        "speakerNotes": "真正的顶级优化是“隐式展开”。矩阵 B 只存在于概念和数学公式中，绝不碰显存。我们利用 Tiled GEMM 加载数据的那个瞬间，让每个线程通过数学公式反算出它需要的元素在原始 4D 张量里的真实位置，直接抓过来放进共享内存。这完美实现了“零显存膨胀”加“极速计算”。",
+        "visualSuggestion": "对比流程图：显式展开 (Global Memory X -> Global Memory B -> Shared Memory B) 打红叉；隐式展开 (Global Memory X -> [Math Indexing] -> Shared Memory B) 标绿勾。"
+      },
+      {
+        "slideNumber": 10,
+        "title": "隐式映射的数学魔法 (Index Mapping Logic)",
+        "bullets": [
+          "列索引 (v)：解码为输出像素的二维空间坐标 ($v / W\\_out, v \\% W\\_out$)，这也是感受野的左上角起始坐标。",
+          "行索引 (u)：解码为输入通道 $c = u / K^2$，以及感受野内部的相对坐标。",
+          "极速寻址：通过简单的除法、取模与加法组合 (如 $B[u,v] \\leftarrow X[..., ...]$)，GPU 强大的算数吞吐量轻易覆盖了映射计算开销。"
+        ],
+        "speakerNotes": "这个黑魔法的核心是一组索引映射公式。对于虚拟矩阵 B 里的元素 [u,v]，列 v 可以解码出我们要生成的输出图像的 x,y 坐标；行 u 告诉我们当前在处理哪个通道，以及在感受野里的局部偏移。两者相加，就能精准指向全局内存里原始数组的位置。GPU 算除法取模极快，这点计算开销比去显存读冗余数据划算一万倍。",
+        "visualSuggestion": "展示等式 19.5 的核心映射公式片段：`X[n, u/(K^2), (u%K^2)/K + v/W_out, (u%K^2)%K + v%W_out]`，用不同颜色高亮 u 和 v 衍生出的不同索引部分。"
+      },
+      {
+        "slideNumber": 11,
+        "title": "工业级实践：cuDNN 库 (CUDNN Library)",
+        "bullets": [
+          "不透明描述符 (Opaque descriptors)：允许上层深度学习框架 (如 PyTorch) 用任意跨度 (Strides) 灵活定义张量布局，实现算法与底层数据格式的完美解耦。",
+          "动态片上映射：不仅支持 GEMM，还支持 Winograd 等高级算法。在片上内存 (On-chip caches) 懒加载重组数据。",
+          "隐藏延迟 (Latency hiding)：依靠高密度的计算指令，完美掩盖从全局内存动态抓取、映射数据的高昂延迟。"
+        ],
+        "speakerNotes": "在工业界，大家都是直接调 NVIDIA 的 cuDNN。cuDNN 就是把我们刚才讲的隐式展开做到了极致。它通过“不透明描述符”兼容各种奇葩的张量排布。更绝的是，它所有的复杂映射全部在极速的片上缓存里完成，用密集的张量核心计算指令把内存读取延迟藏得死死的。",
+        "visualSuggestion": "架构层级图：Top (PyTorch/TensorFlow) -> Middleware (cuDNN Opaque Descriptors) -> Bottom (Optimized GPU Tiled GEMM / Winograd)。"
+      },
+      {
+        "slideNumber": 12,
+        "title": "总结：架构级权衡的艺术 (Summary & Trade-offs)",
+        "bullets": [
+          "并行安全：严格甄别可并行与需串行的计算维度，避开原子操作的性能陷阱。",
+          "资源利用：利用批量执行 (Batched execution) 填满 GPU 的并发调度管线。",
+          "极致权衡 (Trade-off)：隐式展开用廉价的计算指令 (算术映射) 交换了昂贵的内存带宽，是深度学习底层算子优化的巅峰之作。"
+        ],
+        "speakerNotes": "总结一下，写出极致性能的卷积算子，本质上就是一场权衡的游戏。我们用批量处理换取了高并行度；用串行累加避开了原子操作；最重要的是，用隐式展开中廉价的算术指令，换取了无比珍贵的显存带宽。理解了这一点，你就懂得了 GPU 并行优化的核心哲学。",
+        "visualSuggestion": "展示一个天平图标，左边是“廉价的算术指令开销 (ALU)”，右边是大幅减轻的“全局显存带宽压力 (Global Memory)”，天平达到完美的平衡点。"
+      }
+    ]
+  }
+}

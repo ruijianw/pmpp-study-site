@@ -1,0 +1,79 @@
+{
+  "chapterId": "chapter-05-memory-architecture-and-data-locality",
+  "chapterTitle": "Memory Architecture And Data Locality",
+  "sourceId": "bde6b4cd-9cdf-4782-a570-a72e79387d7d",
+  "sourceTitle": "chapter-05-memory-architecture-and-data-locality.pdf",
+  "artifactType": "data-table",
+  "artifactLabel": "Data Table",
+  "generatedAt": "2026-07-13T13:28:42.272271Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "数据表格：内存架构与数据局部性 (Chapter 5: Memory Architecture and Data Locality)",
+    "summary": "本数据表格整理了《大规模并行处理器编程》第五章的核心概念，系统解析了计算访存比 (FLOP/B)、Roofline 模型、共享内存 (Shared Memory) 与分块 (Tiling) 优化技术，并揭示了多线程协作中的同步依赖与越界访问陷阱。",
+    "sections": [
+      {
+        "heading": "表格说明 (Table Description)",
+        "points": [
+          "结构化呈现从全局内存性能瓶颈到片上内存优化的核心演进。",
+          "梳理共享内存生命周期、动态分配机制以及对占用率 (Occupancy) 的直接影响，提供性能推理与防错指南。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "concept": "计算访存比 (Compute-to-global-memory-access ratio)",
+        "definition": "内核每访问一字节全局内存所执行的浮点运算次数 (FLOP/B)，也称计算强度。用于区分计算受限 (Compute-bound) 与内存受限 (Memory-bound) 内核。",
+        "cudaRelevance": "评估 CUDA 内核性能瓶颈的核心指标。例如在 H100 架构上，若该比值低于 20.0 FLOP/B，则内核通常受限于内存带宽。",
+        "performanceConcern": "低访存比会导致内存通道持续拥堵，而流式多处理器 (SM) 中的计算核心却在闲置等待数据，使程序远低于 GPU 的峰值计算算力。",
+        "commonMistake": "对于处于内存受限状态的内核，盲目优化计算指令或单纯增加线程数，而忽略了减少全局内存流量这一根本解决途径。"
+      },
+      {
+        "concept": "Roofline 模型 (Roofline Model)",
+        "definition": "一种可视化的光速性能分析 (Speed-of-light analysis) 模型，展示应用的计算强度与硬件峰值计算吞吐量、峰值内存带宽之间的限制关系。",
+        "cudaRelevance": "帮助开发者直观判断 CUDA 内核的运行状态处于内存带宽限制斜线下方，还是处于峰值计算限制水平线下方。",
+        "performanceConcern": "当内核处于内存受限区域时，提高性能的唯一途径是通过提升计算强度（如利用共享内存大量减少全局访存）将其推向计算受限区域。",
+        "commonMistake": "试图对处于 Roofline 内存受限斜线上的应用进行算术指令级别的深度优化，由于未能提高 FLOP/B 指标，这种优化往往是无效的。"
+      },
+      {
+        "concept": "共享内存 (Shared Memory)",
+        "definition": "位于 GPU 处理器片上 (On-chip) 的高速暂存器内存 (Scratchpad memory)，由同一 Block 内的所有线程共享访问，使用 `__shared__` 修饰符声明。",
+        "cudaRelevance": "支持块内线程高效、高带宽的数据共享与协作。可通过 `extern __shared__` 并在内核执行配置 (Execution Configuration) 中传入第三个参数进行动态大小分配。",
+        "performanceConcern": "这是极其有限的硬件资源。若单个 Block 使用了过多的共享内存，会直接限制单个 SM 能够并发驻留的 Block 数量，导致占用率 (Occupancy) 下跌。",
+        "commonMistake": "误以为共享内存内容会在不同的 Block 之间或不同的内核调用之间保留；或者盲目追求大尺寸数据块导致占用率发生严重的“性能悬崖”。"
+      },
+      {
+        "concept": "分块技术 (Tiling)",
+        "definition": "利用数据局部性 (Locality)，将全局内存中的数据划分为可以放入共享内存的小块 (Tiles)，通过线程协作集中加载并重复利用的内存优化技术。",
+        "cudaRelevance": "通过 Strip-mining 技术将长循环划分为多个阶段 (Phases)。在每个阶段中，所有线程协同加载数据块，使全局访存量成倍大幅减少（如减少至 1/TILE_WIDTH）。",
+        "performanceConcern": "将高延迟、低带宽的全局内存访问成功转化为极低延迟、高带宽的片上共享内存访问，是突破内存带宽瓶颈、提升内核吞吐量的最关键优化手段。",
+        "commonMistake": "在实施分块时仅关注共享内存，而忽略对单个线程重复访问的标量（如矩阵乘法中用于累加的 Pvalue）使用寄存器分块 (Register Tiling)，导致不必要的内存访问开销。"
+      },
+      {
+        "concept": "数据依赖与同步 (Data Dependences & Synchronization)",
+        "definition": "多线程协作访存时的先后制约。包括读后写 (Read-after-write/真依赖，即读取必须等待写入完成) 与写后读 (Write-after-read/假依赖，即覆盖写入必须等待前一次读取完成)。",
+        "cudaRelevance": "在分块算法的每个协作阶段中，必须使用 `__syncthreads()` 屏障来显式解决这两种依赖关系，确保同一 Block 内数据的安全一致性。",
+        "performanceConcern": "虽然屏障同步会带来微小的调度开销，但对于保证协同加载数据 (即从全局内存写入共享内存，再从共享内存读取并计算) 的逻辑正确性是不可妥协的。",
+        "commonMistake": "在阶段循环的末尾遗漏第二次 `__syncthreads()`，导致执行快的线程在下一阶段加载新数据时，覆盖了执行慢的线程尚未读取完的当前阶段共享内存数据 (严重违反假依赖)。"
+      },
+      {
+        "concept": "边界检查 (Boundary Checks)",
+        "definition": "在内核内部添加条件保护分支，确保线程在加载数据或写入结果时，其坐标索引没有超出原始数据矩阵的有效物理边界。",
+        "cudaRelevance": "当输入矩阵的宽度或高度不是 Block 尺寸 (TILE_WIDTH) 的整数倍时，必然会产生冗余线程或越界访问，必须在每一处内存操作前加入防御性检查。",
+        "performanceConcern": "虽然加入边界检查判断语句可能带来极微小的控制流发散 (Control divergence)，但这对于程序的正确执行和防止越界导致的系统崩溃是绝对必要的。",
+        "commonMistake": "错误地认为仅针对那些不计算有效输出的冗余线程进行检查即可；实际上，计算有效输出的线程在加载边缘块时，同样可能试图读取越界的输入矩阵元素。发生越界时必须向共享内存填入安全的占位值 (如 0.0f)。"
+      },
+      {
+        "concept": "本地内存与自动数组 (Local Memory & Automatic Arrays)",
+        "definition": "在内核中声明的自动数组变量 (不带内存修饰符)，如果编译器无法将其优化到寄存器中，则会被统一分配到私有的本地内存中。",
+        "cudaRelevance": "虽然称为“本地 (Local)”，但它在物理上是位于片外的全局 DRAM 显存中。对于每个线程而言该空间是完全私有的，生命周期随线程结束而终止。",
+        "performanceConcern": "访问本地内存会产生与访问全局内存完全一样高昂的延迟，并且严重消耗全局总线带宽。只有当自动数组非常小且索引全部为常量时，编译器才可能将其放置在极速寄存器中。",
+        "commonMistake": "初学者常误以为只要是在内核内部声明的自动变量 (哪怕是大数组) 都会自动存放在极速的寄存器里，从而肆意声明自动数组，导致程序深陷极其严重的内存带宽瓶颈。"
+      }
+    ]
+  }
+}

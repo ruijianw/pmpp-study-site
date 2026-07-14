@@ -1,0 +1,177 @@
+{
+  "chapterId": "chapter-13-merge",
+  "chapterTitle": "Merge",
+  "sourceId": "fe2cbf02-e8a0-4d31-8236-d29aa0d0b96c",
+  "sourceTitle": "chapter-13-merge.pdf",
+  "artifactType": "slide-deck",
+  "artifactLabel": "Slide Deck",
+  "generatedAt": "2026-07-13T14:22:37.469525Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "幻灯片大纲：归并 (Chapter 13: Merge)",
+    "summary": "本幻灯片组系统解析了 GPU 上并行有序归并 (Parallel Ordered Merge) 的实现与优化。内容涵盖从应对动态数据依赖的协同秩 (Co-rank) 算法，到利用共享内存解决非合并访存，再到通过循环缓冲区 (Circular-buffer) 和线程粗化 (Thread coarsening) 榨干内存带宽与计算资源的完整演进路径。",
+    "sections": [
+      {
+        "heading": "使用建议 (Usage Tips)",
+        "points": [
+          "第 1-4 页重点介绍算法基础：稳定性 (Stability) 概念与协同秩 (Co-rank) 解决动态数据映射的核心思想。",
+          "第 5-8 页深入剖析内存瓶颈：从基础内核的非合并访存 (Uncoalesced accesses) 到分块 (Tiling) 内核带来的带宽浪费 (Bandwidth waste)。",
+          "第 9-11 页讲解终极带宽优化：循环缓冲区 (Circular-buffer) 的指针回绕逻辑及其简化模型 (Simplified model) 抽象。",
+          "第 12-13 页探讨计算效率：分析线程粗化 (Thread coarsening) 对摊薄 O(log N) 二分查找开销的决定性作用。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "slideNumber": 1,
+        "title": "有序归并与稳定性 (Ordered Merge & Stability)",
+        "bullets": [
+          "核心定义：将两个已排序的输入数组 A 和 B 归并为一个单一的排序输出数组 C。",
+          "顺序复杂度：传统 CPU 双指针算法的时间复杂度为 O(m+n)。",
+          "稳定性 (Stability) 要求：当 A 和 B 中存在键值相等的元素时，必须严格保留它们在原始输入中的相对顺序（通常优先选择 A）。",
+          "重要场景：归并排序 (Merge Sort) 和 Map-Reduce 框架中的 Reduce 组装阶段。"
+        ],
+        "speakerNotes": "归并操作看似简单，但在分布式计算中极为重要。稳定性是归并的灵魂，如果在归并时把相同键值的数据打乱了，前面做的一系列多级排序就白费了。在我们的算法中，稳定性直接决定了边界判定条件的严格程度。",
+        "visualSuggestion": "展示图 13.1，用箭头标出数组 A 和 B 的元素如何交替进入 C，并高亮数值为 10 的元素，强调 A 中的 10 排在 B 中的 10 前面，体现稳定性。"
+      },
+      {
+        "slideNumber": 2,
+        "title": "并行化挑战：动态输入识别 (Dynamic Input Data Identification)",
+        "bullets": [
+          "静态映射 (Static Mapping)：如矩阵乘法，线程 (i, j) 负责计算的输出，其对应的输入数据地址在编译期即可推断。",
+          "动态依赖 (Data-dependent)：在归并中，要生成 C[k]，该元素可能来自 A 也可能来自 B，完全取决于数据的实际数值。",
+          "并行冲突：如果无法预知每个线程需要访问哪段输入数据，就无法安全地切分任务，极易产生数据竞争或重复计算。"
+        ],
+        "speakerNotes": "GPU 最喜欢静态的、可预测的内存访问。但归并是一个异类：在你看清具体的数据值之前，你根本不知道线程 0 该去读 A 数组的前几个元素，还是 B 数组的前几个元素。这就是数据依赖型访存带来的棘手难题。",
+        "visualSuggestion": "对比图：左侧是矩阵乘法可预测的网格映射（直线连接）；右侧是归并操作中交错且不可预测的交叉映射箭头，打上问号。"
+      },
+      {
+        "slideNumber": 3,
+        "title": "破局策略：协同秩 (Co-rank) 算法",
+        "bullets": [
+          "逆向推导：既然正向不知道输入去哪，就从输出目标排名 (Rank) k 反向推导输入边界 i 和 j。",
+          "核心不变量：必须满足 i + j = k，其中 0 <= i <= m 且 0 <= j <= n。",
+          "分治解耦：一旦算出各线程输出子段两端的 Co-rank 值，每个线程就获得了完全独立、互不交叉的输入子段，从而实现完美并行。"
+        ],
+        "speakerNotes": "Siebert 等人提出了 Co-rank 算法。它的思想很精妙：我们把输出数组切成均匀的块分给各个线程。对于每个块的起点 k，我们去寻找在 A 中对应切一刀 (i)，B 中切一刀 (j)，只要保证 i+j=k。这样所有的线程就能互不干扰地独立干活了。",
+        "visualSuggestion": "展示图 13.3，图解说明对于 C[1]，如何找到 A[2] (i=3) 和 B[3] (j=1)，证明前缀元素数量匹配 (3+1=4)。"
+      },
+      {
+        "slideNumber": 4,
+        "title": "Co-rank 的二分查找实现 (Binary Search for Co-rank)",
+        "bullets": [
+          "搜索代价：在两个有序数组中寻找 i 和 j，采用二分查找，时间复杂度 O(log N)。",
+          "保序边界条件：划分正确的充要条件是 A[i-1] <= B[j] 且 B[j-1] < A[i]。",
+          "收敛优化：当 k > n 时，A 的下界 i_low 必须初始化为 k - n，大幅缩减无效的搜索空间。"
+        ],
+        "speakerNotes": "寻找 Co-rank 本质上是个搜索问题。因为数组是有序的，我们自然用二分查找。判断切分对不对的条件是交叉对比：A 切分点左边的最大值，不能大于 B 切分点右边的最小值；为了保持稳定性，B 切分点左边的最大值必须严格小于 A 的右边。这是一个非常严密的数学约束。",
+        "visualSuggestion": "展示图 13.5 的部分代码，高亮 `A[i-1] <= B[j]` 和 `B[j-1] < A[i]` 这两行条件判定代码。"
+      },
+      {
+        "slideNumber": 5,
+        "title": "基础并行归并内核 (Basic Parallel Merge Kernel)",
+        "bullets": [
+          "任务分配：每个线程计算自己负责的输出索引起始 `k_curr` 与结束 `k_next`。",
+          "独立搜索：每个线程独立调用两次 Co-rank 函数，获得 `i_curr`, `j_curr` 和 `i_next`, `j_next`。",
+          "顺序合并：调用基础的 `merge_sequential` 串行处理函数，将确定的输入段写入全局内存的输出段。"
+        ],
+        "speakerNotes": "有了 Co-rank，我们就可以写出第一版并行内核了。每个线程先用两次 Co-rank 划出自己的势力范围（起点和终点），然后直接在全局内存里做串行归并。逻辑上无懈可击，非常直观。",
+        "visualSuggestion": "展示一个线程的生命周期框图：计算 k_curr -> Co-rank -> 计算 k_next -> Co-rank -> Sequential Merge。"
+      },
+      {
+        "slideNumber": 6,
+        "title": "性能陷阱：非合并访存 (Uncoalesced Accesses)",
+        "bullets": [
+          "底层灾难：由于 Co-rank 的结果高度依赖实际数值，Warp 内相邻的线程算出的起始地址 (A[i_curr] 或 B[j_curr]) 极大概率是不连续的。",
+          "破坏规则：并发执行的相邻线程发起的内存请求物理跨度巨大，彻底破坏了硬件的合并访存 (Memory coalescing) 规则。",
+          "带宽骤降：引发大量琐碎的 DRAM 内存事务，使得计算能力远超内存吞吐，导致严重的性能瓶颈。"
+        ],
+        "speakerNotes": "但如果你真的跑一下基础内核，性能会非常差。为什么？因为 GPU 喜欢连续的访存。但是在归并里，线程 0 可能需要 A 的 0-5 元素，线程 1 可能跳到了 A 的 20-25 元素。同一个 Warp 里的线程去全局内存里东抓一把西抓一把，内存带宽直接就崩溃了。",
+        "visualSuggestion": "内存图解：画一个 Warp 的几个线程，用乱七八糟交叉且跨度极大的红色箭头指向 Global Memory，打上“Uncoalesced Accesses”的叉号。"
+      },
+      {
+        "slideNumber": 7,
+        "title": "分块优化：共享内存 (Shared Memory Tiling)",
+        "bullets": [
+          "协作加载：以 Thread Block 为单位调用 Co-rank，圈出整个 Block 需要的大块连续输入子段。",
+          "合并搬运：利用 Block 内所有线程协作，将这大块连续数据以完美的合并访存模式预加载到 `__shared__` 内存中。",
+          "局部高速访问：线程随后的所有离散、不可预测的数据读取都发生在低延迟的片上共享内存中。"
+        ],
+        "speakerNotes": "解决非合并访存的经典套路就是用共享内存做跳板。我们把粒度放大，让整个 Block 算出它总体需要多大一块 A 和 B。然后大家排好队，整齐划一地把这块连续的数据搬进共享内存。之后不管你怎么乱序访问，反正都在极速的共享内存里了，问题迎刃而解。",
+        "visualSuggestion": "展示图 13.10，突出 Global Memory 到 Shared Memory 的大块连续平移箭头 (Coalesced)，以及 Shared Memory 到 Registers 的交错箭头。"
+      },
+      {
+        "slideNumber": 8,
+        "title": "新瓶颈：约 50% 的带宽浪费 (Bandwidth Waste)",
+        "bullets": [
+          "消耗的不可预测性：虽然预加载了满 Tile 的 A 和 B（如各 1024 个），但每次迭代总共只能消耗 1024 个元素。",
+          "极端情况：可能耗尽了 A 的 1024 个，但 B 连 1 个都没用。",
+          "暴力重载的代价：简单的分块内核在下一次迭代中，会将留在共享内存中未被使用的 B 元素直接覆盖，并从全局内存重新加载，导致近一半的带宽被白白浪费。"
+        ],
+        "speakerNotes": "分块内核看起来很美，但藏着一个巨大的浪费。我们每次往共享内存里塞满了 A 和 B。但到底能消耗多少？没人知道。最极端的情况下，A 全用完了，B 一口没动。如果下一轮直接简单粗暴地重新加载，那么 B 原来加载的数据就浪费了。这直接导致全局内存带宽被腰斩。",
+        "visualSuggestion": "块状图示：展示一个 Tile 中被消耗的区域（白色）和未消耗的区域（灰色）。用红色箭头指示灰色区域在下一轮被重新从全局内存抓取 (Redundant Load)。"
+      },
+      {
+        "slideNumber": 9,
+        "title": "终极优化：循环缓冲区 (Circular-Buffer)",
+        "bullets": [
+          "指针回绕复用 (Wrap-around)：引入 `A_S_start` 和 `B_S_start` 变量，未消耗的数据原封不动留在共享内存中。",
+          "按需加载：每次迭代仅统计上一轮真正消耗的元素数量 (`A_S_consumed`)，并精确从全局内存拉取等量的新元素进行填补。",
+          "榨干带宽：实现了 100% 的有效数据加载，使得这个严重的内存受限 (Memory-bound) 内核逼近硬件物理带宽极限。"
+        ],
+        "speakerNotes": "为了保住这 50% 的带宽，我们引入循环缓冲区。没用完的数据别丢，留在共享内存里。上一轮消耗了几个 A，这一轮就只去全局内存里精准拉取几个新的 A 来填补空缺。指针到了数组尾部就对长度取模，绕回头部。这样每一滴内存带宽都用在了刀刃上。",
+        "visualSuggestion": "展示图 13.15 (c) 和 (d)，用环形箭头生动演示数据在 Shared Memory 中如何像贪吃蛇一样复用和补充。"
+      },
+      {
+        "slideNumber": 10,
+        "title": "接口抽象：简化模型 (Simplified Model)",
+        "bullets": [
+          "硬编码灾难：如果将 `% tile_size` 模运算直接揉进 Co-rank 二分查找内部，将导致极高的代码复杂度与寄存器压力。",
+          "虚拟连续视图：在 Co-rank 与 Sequential Merge 函数内部，假设数据是一段无限延伸的连续内存。",
+          "延迟映射：仅在最终通过指针实际读取数据的瞬间，才应用 `(start + offset) % tile_size` 进行物理地址映射。"
+        ],
+        "speakerNotes": "写循环缓冲区的代码很容易写成一坨乱麻，尤其是二分查找的逻辑本身就很烧脑。最好的工程实践是“骗”过底层函数。我们提供一个简化模型，让 Co-rank 函数以为自己还在处理连续的数组。只有在最后真正要拿数据的瞬间，才加上模运算，这样大大提升了代码的可维护性。",
+        "visualSuggestion": "展示图 13.17 (a) 和 (b) 的对比，说明逻辑上的虚假连续视图 (Simplified model) 如何映射到物理上的回绕缓冲区。"
+      },
+      {
+        "slideNumber": 11,
+        "title": "核心权衡：寄存器溢出与占用率 (Occupancy vs. Bandwidth)",
+        "bullets": [
+          "状态激增：维护循环缓冲区需要每个线程使用更多的寄存器来追踪 `start`、`consumed` 及偏移量。",
+          "占用率下降：高寄存器使用量可能导致 SM 上能够并发驻留的 Warp 数量（Occupancy）下降。",
+          "内存受限特征：对于归并这类极度依赖带宽的内核，计算单元本来就是闲置的。用寄存器资源换取宝贵的 DRAM 带宽是绝对划算的买卖。"
+        ],
+        "speakerNotes": "天下没有免费的午餐。循环缓冲区让我们多写了好多行代码，每个线程也用掉了更多的寄存器，这可能会降低并发度（Occupancy）。但别忘了，归并是内存受限的！它的计算瓶颈根本没摸到。用富余的计算资源和寄存器，去换取昂贵的内存带宽，这才是顶级的 GPU 性能权衡之道。",
+        "visualSuggestion": "天平图示：左边是“Registers / Code Complexity” (沉重)，右边是“Memory Bandwidth Savings” (高价值)，天平向右侧倾斜。"
+      },
+      {
+        "slideNumber": 12,
+        "title": "计算效率调优：线程粗化 (Thread Coarsening)",
+        "bullets": [
+          "并行代价悖论：纯并行的极端情况下，若每个线程只输出 1 个元素，它仍需执行 1 次 O(log N) 的高昂 Co-rank 搜索。",
+          "吞吐倒退：纯计算工作将被二分查找的开销彻底淹没，GPU 可能慢于 CPU。",
+          "串行摊薄：让单个线程分配多项任务（如连续输出 8-16 个元素），用极低代价的顺序比较，大幅摊薄并行的搜索开销，提升整体工作效率 (Work efficiency)。"
+        ],
+        "speakerNotes": "最后，我们必须加入线程粗化。如果我们让 GPU 的每个线程只负责 1 个元素，它为了搞清楚自己要去哪读数据，就要做一次漫长的二分查找。这是纯纯的亏本买卖。我们必须让每个线程多干点活，查完一次坐标后，一口气顺序归并好几个元素，把昂贵的搜索成本摊薄，这才是性能起飞的关键。",
+        "visualSuggestion": "图表对比：(无粗化) 高耸的 Search Overhead 柱子对比矮小的 Compute 柱子；(线程粗化后) 矮小的 Search Overhead 对比适中的 Compute 柱子，整体时间大幅缩短。"
+      },
+      {
+        "slideNumber": 13,
+        "title": "总结：归并优化的演进路径 (Evolution Path Summary)",
+        "bullets": [
+          "阶段 1：Co-rank 算法打破了动态数据依赖的壁垒，实现正确并行。",
+          "阶段 2：共享内存分块 (Shared Memory Tiling) 挽救了崩塌的全局合并访存。",
+          "阶段 3：循环缓冲区 (Circular-buffer) 终结了块间重叠造成的 50% 冗余带宽浪费。",
+          "阶段 4：线程粗化 (Thread Coarsening) 以适度的局部串行化，将整体计算效率拉回巅峰。"
+        ],
+        "speakerNotes": "这就是完整的并行归并优化之路。从破除数据依赖，到修理非合并访存，再到榨干内存带宽，最后用线程粗化兜底计算效率。每一步都精准打击在 GPU 架构的痛点上。深刻理解这一套组合拳，你就掌握了处理内存受限、数据依赖型算法的核心内功。",
+        "visualSuggestion": "画一个上升的阶梯图，四个台阶分别对应上述四个优化阶段，顶部标注“Peak Memory Bandwidth & Performance”。"
+      }
+    ]
+  }
+}

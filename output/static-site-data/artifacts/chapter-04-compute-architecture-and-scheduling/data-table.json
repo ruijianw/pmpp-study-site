@@ -1,0 +1,65 @@
+{
+  "chapterId": "chapter-04-compute-architecture-and-scheduling",
+  "chapterTitle": "Compute Architecture And Scheduling",
+  "sourceId": "c4dee50c-ba72-41d3-819f-b65012626952",
+  "sourceTitle": "chapter-04-compute-architecture-and-scheduling.pdf",
+  "artifactType": "data-table",
+  "artifactLabel": "Data Table",
+  "generatedAt": "2026-07-13T13:23:14.227668Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "数据表格：计算架构与调度 (Chapter 4: Compute Architecture and Scheduling)",
+    "summary": "本数据表格提炼了《大规模并行处理器编程》第四章的核心架构概念，重点解析流式多处理器 (SM) 的线程调度、SIMT 执行模型、控制发散、延迟容忍以及占用率限制，帮助开发者建立基于硬件底层的 CUDA 性能推理能力。",
+    "sections": [
+      {
+        "heading": "表格说明 (Table Description)",
+        "points": [
+          "本表从定义、CUDA相关性、性能考量以及常见实现缺陷四个维度，结构化解析了现代 GPU 的底层计算架构特性。",
+          "旨在帮助开发者识别隐蔽的性能瓶颈（如性能悬崖、死锁）并优化内核执行配置。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "concept": "线程块调度与透明可扩展性 (Thread Block Scheduling & Transparent Scalability)",
+        "definition": "线程块 (Block) 作为整体被分配给流式多处理器 (SM)。由于不同 Block 间无需隐式同步，硬件可按任意顺序并发执行这些 Block。",
+        "cudaRelevance": "确保了同一套 CUDA 代码无需修改，即可在具备不同数量 SM 的各类 GPU 上自动扩展并高效运行。",
+        "performanceConcern": "当 Block 数量不是 SM 并发容量的整数倍时，会产生尾部效应 (Tail effect)，导致最后一波 (Wave) 调度时无法充分利用硬件资源。",
+        "commonMistake": "在代码中依赖不同线程块之间的隐式执行先后顺序，这不仅破坏了透明可扩展性，还会导致竞争条件或严重的死锁问题。"
+      },
+      {
+        "concept": "Warp 与 SIMT 执行模型 (Warp & SIMT)",
+        "definition": "SM 将线程块在底层划分为 32 个线程一组的 Warp。采用单指令多线程 (SIMT) 模型，硬件自动广播同一条指令给 Warp 内所有线程同时执行。",
+        "cudaRelevance": "允许开发者编写面向标量线程的简单代码，而底层硬件通过 Warp 的 SIMD 方式执行，大幅摊薄了指令获取和分发的硬件成本。",
+        "performanceConcern": "多维线程块在划分为 Warp 时会采用行主序 (Row-major) 线性化。不合理的维度映射会破坏相邻线程访问相邻内存的数据局部性。",
+        "commonMistake": "误以为将 Block 大小设为 32 就可以安全省略必要的屏障同步指令。自 Volta 架构引入独立线程调度后，即使在同一 Warp 内，发散的线程也不保证隐式重新收敛。"
+      },
+      {
+        "concept": "控制发散 (Control Divergence)",
+        "definition": "同一个 Warp 内的线程在遇到条件分支 (如 if-else) 或循环时走向不同的控制流路径，导致硬件必须分多遍 (Multi-pass) 串行执行各个分支。",
+        "cudaRelevance": "在处理非整除数据的边界检查 (Boundary check) 或复杂业务逻辑分支时不可避免地会出现。",
+        "performanceConcern": "由于在执行某一分支时，走向其他分支的线程会被置为非活跃状态，多遍执行会显著浪费执行资源。但对于极大数量的数据，边界检查造成的极少数 Warp 发散对整体性能影响往往不到 1%。",
+        "commonMistake": "在发生控制发散的 if-else 代码块内部调用 `__syncthreads()`。由于并非所有线程都能到达同一屏障，这将直接导致不可预知的行为或死锁 (Deadlock)。"
+      },
+      {
+        "concept": "延迟容忍与零开销调度 (Latency Tolerance & Zero-overhead Scheduling)",
+        "definition": "GPU 通过向 SM 过载分配 (Oversubscription) 远超其物理执行单元数量的线程，当某个 Warp 遇到长延迟操作 (如内存访问) 时，能瞬间切换到其他就绪的 Warp 执行。",
+        "cudaRelevance": "这是 GPU 放弃大容量缓存，转而利用细粒度多线程 (Fine-grained multithreading) 维持极高计算吞吐量的核心机制。",
+        "performanceConcern": "为了成功掩盖内存访问等长延迟，必须确保 SM 内驻留有足够多的活跃 Warp。若分配的 Warp 数量过少，延迟将完全暴露，导致计算单元大量闲置。",
+        "commonMistake": "使用 CPU 的“线程上下文切换代价高昂”的旧思维来编写 GPU 代码，不敢启动大量线程，从而无法触发 GPU 硬件级的零开销状态切换来隐藏延迟。"
+      },
+      {
+        "concept": "占用率与性能悬崖 (Occupancy & Performance Cliff)",
+        "definition": "实际分配给 SM 的 Warp 数量与该 SM 硬件支持的最大 Warp 数量之比。受到线程槽、Block槽、共享内存和寄存器等资源的动态划分限制。",
+        "cudaRelevance": "是衡量内核资源利用率的核心指标，开发者需通过 `cudaGetDeviceProperties` 等 API 动态查询硬件限制并调整执行配置 (Execution Configuration)。",
+        "performanceConcern": "存在极度非线性的“性能悬崖”：例如，内核局部变量微小的增加导致单线程寄存器超限，可能会使 SM 能够驻留的 Block 总数锐减，占用率瞬间暴跌 (如从 100% 降至 75%)。",
+        "commonMistake": "为了减少内存访问，在内核中盲目声明过多局部变量，忽视了寄存器总量的刚性限制，最终因寄存器溢出或占用率降低反而拖慢了程序的整体执行速度。"
+      }
+    ]
+  }
+}

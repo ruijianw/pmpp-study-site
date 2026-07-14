@@ -1,0 +1,139 @@
+{
+  "chapterId": "chapter-03-multidimensional-grids-and-data",
+  "chapterTitle": "Multidimensional Grids And Data",
+  "sourceId": "398d28d9-3e81-4b0c-a2c0-69eefc525f0f",
+  "sourceTitle": "chapter-03-multidimensional-grids-and-data.pdf",
+  "artifactType": "flashcards",
+  "artifactLabel": "Flashcards",
+  "generatedAt": "2026-07-13T13:18:42.203590Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "闪卡：多维网格与数据 (Chapter 3: Multidimensional Grids and Data)",
+    "summary": "包含 18 张精选闪卡，用于快速复习 CUDA 中多维网格 (Grid) 与线程块 (Block) 的配置原理。涵盖了动态数组的行主序线性化 (Row-major linearization)、多维线程坐标映射、图像模糊与矩阵乘法中的边界检查及内存寻址差异。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Tips)",
+        "points": [
+          "利用简单 (Easy) 难度卡片巩固 dim3 配置的基础限制与行主序概念。",
+          "通过中等 (Medium) 难度卡片牢记并熟练推导一维/二维的内存偏移量计算公式 (Linearization)。",
+          "挑战困难 (Hard) 难度卡片，深入分析补丁处理 (Patch processing) 和跨步内存访问中的边界遗漏与性能瓶颈问题。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "front": "CUDA 中 `dim3` 结构体配置执行参数时，未显式赋值的高维度默认值是多少？",
+        "back": "默认值为 1。例如声明 `dim3 dimBlock(256)` 时，等价于 `dim3(256, 1, 1)`，表示一个一维的线程块配置。",
+        "difficulty": "easy",
+        "sourceHint": "3.1 Multidimensional grid organization"
+      },
+      {
+        "front": "在当前的 CUDA 系统中，单个线程块 (Thread Block) 包含的总线程数上限是多少？",
+        "back": "1024 个线程。例如，`dim3(32, 32, 2)` 这种配置是不合法的，因为 $32 \\times 32 \\times 2 = 2048$ 超过了 1024 的上限。",
+        "difficulty": "easy",
+        "sourceHint": "3.1 Multidimensional grid organization"
+      },
+      {
+        "front": "CUDA 中网格的各个维度大小是否有上限限制？",
+        "back": "是的。`gridDim.y` 和 `gridDim.z` 的最大允许值为 65535 ($2^{16}-1$)，而 `gridDim.x` 的允许范围则高达 $2^{31}-1$。",
+        "difficulty": "hard",
+        "sourceHint": "3.1 Multidimensional grid organization"
+      },
+      {
+        "front": "在为多维数据(如二维图像)配置网格尺寸 `dim3(x, y, z)` 时，为什么容易与 C++ 传统多维数组的索引习惯发生维度倒置错乱？",
+        "back": "因为在定义 `dim3(x, y, z)` 时，维度参数是从低维到高维（列、行、深度）排列的；而 C/C++ 多维数组的声明 `[z][y][x]` 通常是从高维到低维排列的。混淆二者会导致严重的线程坐标翻转。",
+        "difficulty": "medium",
+        "sourceHint": "3.1/3.2 Mapping threads to MultiDimensional data"
+      },
+      {
+        "front": "什么是行主序布局 (Row-major layout)？",
+        "back": "C/C++ 默认的多维数组物理存储方式。在这种布局下，矩阵中同一行 (Row) 的所有元素会被连续地放置在平坦的一维底层内存空间 (Flat memory space) 中。",
+        "difficulty": "easy",
+        "sourceHint": "3.2 Mapping threads to MultiDimensional data"
+      },
+      {
+        "front": "在行主序中，如何将一个包含 `Width` 列的二维数组坐标 `(row, col)` 精确映射到线性一维内存偏移量 (1D Offset)？",
+        "back": "使用公式 `row * Width + col`。其中 `row * Width` 用于跳过当前行之前的所有元素，`col` 用于在当前行内定位目标元素。",
+        "difficulty": "medium",
+        "sourceHint": "3.2 Mapping threads to MultiDimensional data"
+      },
+      {
+        "front": "针对由 `cudaMalloc` 动态分配的多维数组设备指针，为什么在内核中禁止使用形如 `M[row][col]` 的语法进行访问？",
+        "back": "因为在编译期间，编译器无法获取该动态数组具体的列宽 (Width) 信息，因而无法自动将其转换为正确的线性地址偏移量。开发者必须手动进行数组线性化 (Linearization)。",
+        "difficulty": "medium",
+        "sourceHint": "3.2 Mapping threads to MultiDimensional data"
+      },
+      {
+        "front": "使用大小为 16x16 的线程块处理 62 行 76 列的二维图像时，为什么必须在内核逻辑的最外层包裹 `if(col < width && row < height)` 语句？",
+        "back": "因为通过向上取整划分的网格将生成 4x5=20 个块 (共 64x80 线程)，这些线程总数不能完美匹配数据尺寸。缺乏该边界检查 (Boundary Checking) 会导致冗余线程越界读取或覆写相邻行的非法数据。",
+        "difficulty": "medium",
+        "sourceHint": "3.2 Mapping threads to MultiDimensional data"
+      },
+      {
+        "front": "在图像模糊 (Image Blur) 等利用补丁处理 (Patch processing) 的算法中，给定模糊半径 `BLUR_SIZE`，单个补丁的总覆盖面积是多少？",
+        "back": "补丁覆盖的总面积为 `(2 * BLUR_SIZE + 1) * (2 * BLUR_SIZE + 1)` 个像素。例如，当 `BLUR_SIZE = 1` 时，补丁为 3x3，即 9 个像素。",
+        "difficulty": "easy",
+        "sourceHint": "3.3 Image blur – a more complex kernel"
+      },
+      {
+        "front": "在处理诸如卷积模糊的补丁 (Patch) 运算时，如果仅仅使用 `if (col < width && row < height)` 保护目标输出像素不越界，会导致什么更隐蔽的边界缺陷？",
+        "back": "当处理处于图像四角或边缘位置的像素时，周围参与归约计算的相邻采样坐标 (`curRow`, `curCol`) 会超出原图像边界 (小于 0 或超限)。如果不专门针对这些游动坐标实施额外的边界检查，会混入垃圾内存或直接触发段错误。",
+        "difficulty": "hard",
+        "sourceHint": "3.3 Image blur – a more complex kernel"
+      },
+      {
+        "front": "计算图像边缘区域的模糊操作时，为什么不能使用固定的全局补丁像素数 (如恒定的 9) 作为求平均值的除数？",
+        "back": "位于图像边缘或角落的像素，其有效的输入补丁会被图像边界截断（例如左上角有效像素仅为 4 个）。如果仍使用固定的面积作除数，会导致边缘的输出结果亮度严重偏暗。必须使用变量动态统计有效累加像素数。",
+        "difficulty": "hard",
+        "sourceHint": "3.3 Image blur – a more complex kernel"
+      },
+      {
+        "front": "在 BLAS (Basic Linear Algebra Subprograms) 标准中，基础矩阵乘法属于哪一个级别的运算？该级别运算的数学特征是什么？",
+        "back": "属于 Level-3 函数。其数学特征是执行矩阵与矩阵之间的运算操作 (Matrix-matrix operations)，形式为 $C = \\alpha AB + \\beta C$。",
+        "difficulty": "easy",
+        "sourceHint": "3.4 Matrix multiplication"
+      },
+      {
+        "front": "在将矩阵乘法映射到 CUDA 网格时，若采用每个线程计算一个目标矩阵 $P$ 元素的策略，输入矩阵 $M$ 和 $N$ 是如何被该线程遍历的？",
+        "back": "该线程会计算两条向量的点积 (Dot product)。其中矩阵 $M$ 被按行 (Row) 遍历，矩阵 $N$ 被按列 (Column) 遍历。",
+        "difficulty": "medium",
+        "sourceHint": "3.4 Matrix multiplication"
+      },
+      {
+        "front": "在一维线性展平的内存空间中，遍历执行矩阵乘法时，读取矩阵 $M$ 第 `row` 行的第 `k` 个元素的代码索引公式是什么？",
+        "back": "代码为 `M[row * Width + k]`。因为在行主序布局下，矩阵 $M$ 同一行的元素在内存地址中是连续紧挨着存放的。",
+        "difficulty": "medium",
+        "sourceHint": "3.4 Matrix multiplication"
+      },
+      {
+        "front": "在一维线性展平的内存空间中，遍历执行矩阵乘法时，读取矩阵 $N$ 第 `col` 列的第 `k` 个元素的代码索引公式是什么？",
+        "back": "代码为 `N[k * Width + col]`。由于按列读取，相邻的元素在物理内存中不连续，每一次步进 ($k$ 递增) 在物理内存上都需要跨越整个矩阵的宽度 `Width`。",
+        "difficulty": "hard",
+        "sourceHint": "3.4 Matrix multiplication"
+      },
+      {
+        "front": "从底层硬件访存的角度 (Performance Reasoning) 来看，基础矩阵乘法中沿列方向遍历矩阵 $N$ (`N[k*Width+col]`) 会带来什么严重的性能考量？",
+        "back": "会极大地破坏数据局部性 (Data Locality)。因为同一线程读取的连续 $N$ 矩阵元素在物理内存上是跳跃分布的（步长为 Width），这极难利用缓存并导致内存总线带宽的严重浪费。",
+        "difficulty": "hard",
+        "sourceHint": "3.4 Matrix multiplication"
+      },
+      {
+        "front": "已知二维数据的宽为 `m`、高为 `n`，在主机代码中，如何利用浮点除法与 `ceil` 函数优雅地向 CUDA 传递具有足够容量的二维 `dimGrid` 执行配置？",
+        "back": "配置方式为：`dim3 dimGrid(ceil(m / 16.0), ceil(n / 16.0), 1);`（假设 blockDim 宽和高皆为 16）。这能确保 Grid 在横纵向上启动的线程数量都向上取整完美包裹住数据尺寸。",
+        "difficulty": "medium",
+        "sourceHint": "3.2 Mapping threads to MultiDimensional data"
+      },
+      {
+        "front": "在处理三维张量 (3D Tensor) 数据时，如果要获取第 `plane` 层、第 `row` 行、第 `col` 列元素的行主序一维偏移量，通用的计算公式是什么？（假设每层图像矩阵宽为 `m`，高为 `n`）",
+        "back": "公式为 `plane * m * n + row * m + col`。其中 `plane * m * n` 用于越过在目标层之前的所有张量层的像素总数。",
+        "difficulty": "hard",
+        "sourceHint": "3.2 Mapping threads to MultiDimensional data"
+      }
+    ]
+  }
+}

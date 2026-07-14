@@ -1,0 +1,11 @@
+.DS_Store
+.omx/
+tmp/
+
+study-site/node_modules/
+study-site/.env*
+
+output/.DS_Store
+output/pdf/
+output/site-data/chapters/*.txt
+output/site-data/generated/

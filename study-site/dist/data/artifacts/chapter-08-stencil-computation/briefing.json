@@ -1,0 +1,60 @@
+{
+  "chapterId": "chapter-08-stencil-computation",
+  "chapterTitle": "Stencil Computation",
+  "sourceId": "216acd9e-1b90-4169-9dd3-45891e57857c",
+  "sourceTitle": "chapter-08-stencil-computation.pdf",
+  "artifactType": "briefing",
+  "artifactLabel": "Briefing",
+  "generatedAt": "2026-07-13T13:46:20.287238Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "简报：模板计算 (Chapter 8: Stencil Computation)",
+    "summary": "本简报分析了 GPU 上 3D 模板计算 (Stencil Computation) 的内存带宽瓶颈及优化策略。深入探讨了为何传统的 3D 共享内存分块会失效，并重点介绍了如何通过 z 轴线程粗化 (Thread Coarsening) 与寄存器分块 (Register Tiling) 显著提升算术强度 (Arithmetic Intensity) 并优化底层存储资源。",
+    "sections": [
+      {
+        "heading": "执行摘要 (Executive Summary)",
+        "points": [
+          "模板计算常用于求解偏微分方程 (PDEs)，往往需要高精度浮点数数据，这极大地加剧了全局内存带宽 (Memory bandwidth) 的压力。",
+          "与卷积不同，3D 模板模式（如 7-point stencil）缺乏对角线数据的复用，基础内核的算术强度极低（仅约 0.41 FLOP/B），属于典型的内存受限 (Memory-bound) 问题。",
+          "通过将传统的 3D 线程块降维至 2D，并让单线程在 z 轴上进行粗化循环计算，可以完美突破硬件 Block 尺寸上限，实现内存合并访问 (Coalescing) 与资源利用率的飞跃。"
+        ]
+      },
+      {
+        "heading": "核心主张 (Core Claims)",
+        "points": [
+          "3D 共享内存分块的硬件限制：受限于单 Block 1024 个线程的上限，3D 块（如 8x8x8）会导致光环单元 (Halo cells) 占比过高（高达 58%），且严重破坏全局内存的合并访问 (Memory Coalescing)。",
+          "z 轴线程粗化 (Z-axis Thread Coarsening)：通过采用 2D 线程块（如 32x32）并在内核中沿 z 轴循环，单线程负责计算一列输出。这使算术强度飙升至 1.52 FLOP/B，且共享内存只需保留滑动的三层窗口数据 (Prev, Curr, Next)。",
+          "寄存器分块 (Register Tiling)：对于仅依赖正交方向邻居的模板，z 轴的前后邻居 (Prev, Next) 仅被单个线程私有使用。将它们从共享内存转移至寄存器 (Registers)，可将共享内存消耗大幅降低至原来的三分之一。"
+        ]
+      },
+      {
+        "heading": "本章重要性 (Why This Chapter Matters)",
+        "points": [
+          "揭示了算法访存模式如何决定优化策略：展示了当经典的卷积分块优化（由于缺乏对角线数据复用和 3D 维度爆炸）失效时，如何通过改变并行粒度来破局。",
+          "展现了片上内存的极致权衡：深度展示了如何在共享内存 (Shared memory) 和寄存器 (Registers) 之间动态分配数据，以在降低内存延迟和维持硬件占用率 (Occupancy) 之间寻找最佳平衡点。"
+        ]
+      },
+      {
+        "heading": "先决条件 (Prerequisites)",
+        "points": [
+          "熟练掌握基础的共享内存分块 (Shared-memory tiling) 技术，及应对光环单元 (Halo cells) 的协作加载原理。",
+          "理解全局内存的合并访问 (Memory Coalescing) 机制，以及线程粗化 (Thread coarsening) 在摊薄并行开销上的基本思想。"
+        ]
+      },
+      {
+        "heading": "实现启示与常见错误 (Implementation Implications)",
+        "points": [
+          "合并访存退化陷阱：初学者常试图使用 8x8x8 的 3D 线程块，导致一个 32 线程的 Warp 需要跨越 4 行读取少量数据（每行仅 8 个），造成极度低效的非连续全局内存访问。",
+          "层级滑动同步错误：在实施 z 轴线程粗化时，每完成一层计算，必须在 `__syncthreads()` 屏障之后，安全地将当前层 (`inCurr`) 的数据指针转移为前一层 (`inPrev`)。遗漏同步屏障会导致严重的数据读写竞争。",
+          "寄存器超载风险 (Register Pressure)：引入寄存器分块虽好，但会显著增加每个线程对寄存器的消耗量。若不加以监控，极易导致流式多处理器 (SM) 能够并发驻留的 Warp 数量骤降，跌下占用率悬崖反噬性能。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "chapterId": "chapter-21-electrostatic-potential-map",
+  "chapterTitle": "Electrostatic Potential Map",
+  "sourceId": "92e442b0-fc5b-4782-bad6-f51b574a393d",
+  "sourceTitle": "chapter-21-electrostatic-potential-map.pdf",
+  "artifactType": "study-guide",
+  "artifactLabel": "Study Guide",
+  "generatedAt": "2026-07-13T15:05:24.682156Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "学习指南：静电势图 (Chapter 21: Electrostatic Potential Map)",
+    "summary": "本章通过分子动力学 (Molecular Dynamics) 中的静电势图计算案例，深入探讨了网格数据的 GPU 加速策略。核心内容包括 Scatter 与 Gather 模式在内核设计中的权衡、利用线程粗化 (Thread Coarsening) 减少冗余计算、修复粗化带来的非合并访存 (Uncoalesced Memory Access) 缺陷，以及为提升超大数据规模可扩展性而采用的截断分箱 (Cutoff Binning) 算法与 CPU-GPU 异步协作技巧。",
+    "sections": [
+      {
+        "heading": "学习目标 (Learning Objectives)",
+        "points": [
+          "1. 理解在 GPU 内核设计中 Scatter (发散) 与 Gather (收集) 模式的本质区别，以及为何 Gather 模式通常能避免高延迟的原子操作 (Atomic operations)。",
+          "2. 掌握“优化悖论”：为何在 CPU 上经过高度优化的串行代码 (减少了冗余算术，但呈 Scatter 模式) 往往极难高效并行化，反而未优化的代码更适合 GPU。",
+          "3. 应用线程粗化 (Thread Coarsening) 技术，消除相邻网格点计算中的冗余指令，大幅提高寄存器复用率并减少常量内存 (Constant memory) 访问。",
+          "4. 识别并解决线程粗化带来的非合并访存 (Uncoalesced memory access) 陷阱，掌握通过跨步交错分配 (Interleaved assignment) 恢复全局内存带宽的方法。",
+          "5. 理解直接库仑求和 (DCS) 在大体积系统中的 $O(V^2)$ 复杂度瓶颈，并掌握利用截断分箱 (Cutoff binning) 算法将其优化为线性扩展的过程。",
+          "6. 评估在分箱策略中填充虚拟原子 (Dummy atoms) 对显存带宽和控制流发散 (Control divergence) 的负面影响，学习使用 CPU 溢出列表 (Overflow list) 隐藏延迟的架构级协同方案。"
+        ]
+      },
+      {
+        "heading": "章节结构映射 (Section-by-Section Chapter Map)",
+        "points": [
+          "21.1 背景 (Background): 介绍 VMD 应用及直接库仑求和 (DCS) 方法，指出其计算量随原子数和网格点数乘积增长的庞大计算特征。",
+          "21.2 散布与收集 (Scatter vs. gather in kernel design): 深度对比按网格点计算 (Gather) 和按原子计算 (Scatter) 的内核代码。强调 Scatter 在 GPU 上因依赖 `atomicAdd` 而导致性能暴跌，而 Gather 虽然带来了部分算术冗余，但配合常量缓存 (Constant cache) 可实现无冲突的极高吞吐。",
+          "21.3 线程粗化 (Thread coarsening): 实施算法级优化，让单个线程处理同行的多个网格点。将公共距离计算 (如 y、z 轴偏差平方) 提取到寄存器复用，使处理 4 个网格点的浮点运算从 48 次降至 24 次。",
+          "21.4 合并访存 (Memory coalescing): 分析朴素线程粗化导致 Warp 内相邻线程写入地址不连续的问题。通过引入 `blockDim.x` 作为地址跨度重构输出逻辑，完美恢复合并写入。",
+          "21.5 截断分箱以实现数据规模可扩展性 (Cutoff binning for data size scalability): 针对超大规模网格引入截断半径。讲解空间分箱策略、邻域列表 (Neighborhood list) 偏移设计，利用共享内存 (Shared memory) 协作加载机制替代常量内存，并利用 CPU 处理溢出数据以避免填充浪费。"
+        ]
+      },
+      {
+        "heading": "关键概念精解 (Key Concepts)",
+        "points": [
+          "Scatter 与 Gather 模式 (Scatter vs. Gather): Scatter 是单输入辐射多输出 (极易引发写冲突，强制需求原子操作)；Gather 是多输入聚合成单输出 (完全无写冲突，天然适合 SIMT)。在 DCS 内核中，Gather 模式让每个线程独占一个网格点的写入，是性能飙升的前提。",
+          "优化悖论 (Optimization Paradox): 串行计算中为了减少指令数而进行的循环交换优化 (Loop Interchange)，往往会破坏代码的 Gather 拓扑结构。在并行化时，退回到“未优化”的串行代码反而能释放更强大的硬件并行能力。",
+          "常量缓存广播 (Constant Cache Broadcast): 当多个线程需要同时访问极少量的只读数据 (如原子的坐标与电荷) 时，将其放入 Constant Memory。硬件缓存能将一次内存读取广播给整个 Warp，彻底消除全局显存带宽瓶颈。",
+          "交错数据分配 (Interleaved Data Assignment): 实施线程粗化时，绝对不能让单个线程处理连续的内存元素 (如索引 0, 1, 2, 3)。必须以线程块大小为跨度进行交错分配 (如索引 0, blockDim.x, 2*blockDim.x)，以确保 Warp 中的 32 个线程在同一条指令中始终访问连续的 32 个地址。",
+          "截断分箱与溢出处理 (Cutoff Binning & Overflow Handling): 将 $O(V^2)$ 复杂度降维为 $O(V)$ 的核心算法。鉴于自然界中原子的空间分布不均，设定一个较小且固定的 Bin 大小以保证 GPU 内存对齐和负载均衡，将装不下的溢出原子放入列表，交由主机端 CPU 异步处理，这是极具实战价值的异构协同策略。"
+        ]
+      },
+      {
+        "heading": "常见误区与实现缺陷 (Common Misunderstandings & Implementation Mistakes)",
+        "points": [
+          "移植误区：认为“把最快的 CPU C代码直接加上 CUDA 线程索引就能得到最快的 GPU 代码”。真相：最优的 CPU DCS 代码采用了 Scatter 模式，在 GPU 上会引发海量原子操作冲突，导致执行效率甚至可能不如单核 CPU。",
+          "粗化陷阱：在进行线程粗化 (Thread coarsening) 优化时，直接让线程在内部使用紧凑的 for 循环写入数组 (例如 `energygrid[base + i]`)。真相：这彻底打破了 Warp 的合并访存 (Coalesced memory access)，使得内存总线请求被撕裂为数十个细碎的传输事务。必须通过重新计算写入索引的偏移量来修复。",
+          "分箱对齐误区：在实现空间分箱算法 (Binning) 时，为了保证数据结构的规则性，直接找出原子最多的 Bin，并用虚拟原子 (Dummy atoms，电荷为0) 把其他所有 Bin 填补到同样大小。真相：这种做法极其浪费全局内存容量与带宽，更会导致处理稀疏 Bin 的线程块执行大量乘零的无意义运算，严重拖累整体运行时间。"
+        ]
+      },
+      {
+        "heading": "三阶段实践计划 (3-Session Practice Plan)",
+        "points": [
+          "Session 1: 模式抉择与基础内核。基于 21.2 节的 C 代码，分别实现基于 `atomicAdd` 的 Scatter 内核与无原子操作的 Gather 内核。利用 Profiler 观察两者的指令吞吐量 (Instruction Throughput) 和内存事务数，深刻体会 Gather 模式对 GPU 的友好性。",
+          "Session 2: 寄存器复用与合并访存。在 Gather 内核基础上，设置粗化因子 (Coarsening factor) 为 4。首先实现朴素的连续网格点粗化，使用 Profiler 捕捉其导致的 Uncoalesced Writes 警告。然后，通过修改数组寻址逻辑实现交错分配 (Interleaved assignment)，对比修复前后的全局内存写入效率。",
+          "Session 3: 高级架构算法探索。设计截断分箱 (Cutoff Binning) 算法的原型。在主机端 (Host) 实现将原子分配至 Bin 和 Overflow 列表的预处理代码；在设备端 (Device) 编写内核，利用常量内存加载相对偏移列表 (Neighborhood list)，利用共享内存 (Shared memory) 协作加载 Bin 数据，并使用 CPU 异步处理溢出列表。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

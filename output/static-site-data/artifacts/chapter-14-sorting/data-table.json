@@ -1,0 +1,65 @@
+{
+  "chapterId": "chapter-14-sorting",
+  "chapterTitle": "Sorting",
+  "sourceId": "d8373a55-be5e-48d3-8179-2927abe3f03f",
+  "sourceTitle": "chapter-14-sorting.pdf",
+  "artifactType": "data-table",
+  "artifactLabel": "Data Table",
+  "generatedAt": "2026-07-13T14:25:01.047219Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "数据表格：排序 (Chapter 14: Sorting)",
+    "summary": "本数据表格整理了并行排序算法（重点是基数排序）在 GPU 上的核心实现原理与性能优化权衡。涵盖了从基础的并行地址推导，到利用共享内存解决非合并访存，以及多位基数与线程粗化带来的复杂系统级博弈。",
+    "sections": [
+      {
+        "heading": "表格说明 (Table Description)",
+        "points": [
+          "剖析了奇偶排序 (Odd-even sort) 与基数排序 (Radix sort) 的并行化难点，特别是输出目标地址分散导致的严重访存碎片化现象。",
+          "深入探讨了局部排序转储 (Local sort and dump)、多位基数 (Multi-bit radix) 扩展及线程粗化 (Thread coarsening) 三大优化技术在突破内存带宽瓶颈中的相互作用。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "concept": "奇偶排序与数据竞争 (Odd-even Sort & Race Conditions)",
+        "definition": "一种简单的比较类并行排序算法。通过交替比较与交换奇数索引对和偶数索引对，在物理上隔离了并发修改，避免直接的数据竞态。",
+        "cudaRelevance": "在记录排序是否发生交换时，多个线程同时向 `hasChanged` 全局标志位写入 1。虽然该操作具备幂等性 (Idempotence)，但在严格的 C++ 内存模型下，无同步的并发写入属于未定义行为 (Undefined behavior)。",
+        "performanceConcern": "其工作复杂度 (Work complexity) 高达 O(N^2)。在处理大规模数据时，天量的比较和交换开销会严重拖垮 GPU 的计算资源，通常仅用于极小规模序列或教学演示。",
+        "commonMistake": "误认为对全局标志位的幂等写入 (Idempotent writes) 是绝对安全的，没有使用原子操作 (Atomic operations) 来规范并发修改，导致在不同编译器或架构下可能发生不可预测的崩溃。"
+      },
+      {
+        "concept": "基数排序的全局地址推导 (Global Address Calculation in Radix Sort)",
+        "definition": "在 1-bit 基数排序中，通过“0的个数”和“1的个数”推导元素在输出列表中的绝对位置。0 的地址 = 当前索引 - 前面的 1 的数量；1 的地址 = 数组总长 - 总的 1 的数量 + 前面的 1 的数量。",
+        "cudaRelevance": "强依赖于高效的网格级排他扫描 (Grid-wide exclusive scan)。每个线程提取出位特征后，通过全局扫描快速获得当前位置前的 1 的数量 (`# ones before`) 以及总数。",
+        "performanceConcern": "如果每个线程在算得地址后直接向全局内存并发写入，会引发极其严重的非合并访存 (Uncoalesced memory accesses)，因为同一 Warp 内相邻线程往往会跳跃式地写入距离极远的 0 桶和 1 桶。",
+        "commonMistake": "在实现基数排序原语时，未严格保障操作的稳定性 (Stability)。如果 1-bit 排序过程打乱了具有相同掩码的元素的原始相对顺序，后续更高位迭代的排序结果将彻底失效。"
+      },
+      {
+        "concept": "共享内存局部排序 (Local Sort in Shared Memory)",
+        "definition": "为了解决直接全局写入造成的访存碎片问题，先在 Thread Block 内部利用共享内存对当前块的数据进行一次局部的保序划分（分离 0 和 1 桶）。",
+        "cudaRelevance": "利用极低延迟的共享内存 (Shared memory) 作为暂存跳板，将原本散乱在 Warp 内的跳跃式写入需求，在片上聚合成连续的整块数据。",
+        "performanceConcern": "彻底修复了向全局内存转储 (Dump) 时的非合并访存问题。由于 0 桶和 1 桶在共享内存中已分别连续，相邻线程将写入连续的物理地址，极大提升了 DRAM 带宽利用率。",
+        "commonMistake": "遗漏了局部排序后的全局偏移计算环节。各 Block 必须汇总其局部的 0 桶和 1 桶的大小，并将这些数据重组为连续的线性扫描表执行网格级排他扫描，否则各 Block 将覆盖彼此的输出空间。"
+      },
+      {
+        "concept": "多位基数权衡 (Multi-bit Radix Trade-off)",
+        "definition": "在单次迭代中使用大于 1-bit 的基数（例如 2-bit 基数分配 4 个桶）来分发键值，以此来等比例减少完全排序所需的总迭代轮数。",
+        "cudaRelevance": "较大的基数意味着更少的 Kernel 启动次数和更少的全局内存数据往返搬运，在理论上能够显著削减执行延迟。",
+        "performanceConcern": "这是一把极度危险的双刃剑。基数增加导致每个 Block 生成成倍的局部桶 (Local buckets)，使每个桶内的元素数量急剧变少，进而再次恶化全局转储时的合并访存；同时，用于全局扫描的块级桶大小表格会按 2^r 的比例膨胀，极大推高了同步开销。",
+        "commonMistake": "误认为基数 (Radix value) 越大排序越快，盲目增加单次处理的位数。却没有意识到局部桶碎片化和扫描表膨胀所带来的内存总线效率暴跌会轻易吞噬掉减少迭代轮数带来的收益。"
+      },
+      {
+        "concept": "排序中的线程粗化 (Thread Coarsening in Sorting)",
+        "definition": "改变极细粒度的并行映射，让单个 GPU 线程负责串行处理输入列表中的多个键值，而不是只负责一个键值。",
+        "cudaRelevance": "在并行基数排序中，粗化直接扩大了每个 Thread Block 负责处理的数据总量，从而在内存中积累更多的数据。",
+        "performanceConcern": "这是一石二鸟的终极架构级优化。它既通过扩大局部桶 (Local buckets) 的数据量完美抵消了多位基数带来的合并访存退化，又通过大幅减少网格内的 Block 总数，按比例缩减了全局排他扫描表的体积，降低了同步开销。",
+        "commonMistake": "在内存高度受限的排序算法中，盲目追求 100% 的线程绝对并行度（单线程单元素），导致片上计算资源闲置且沉重的全局同步与非合并访存开销无法被充分摊薄。"
+      }
+    ]
+  }
+}

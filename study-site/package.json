@@ -1,0 +1,15 @@
+{
+  "name": "pmpp-codex-study-site",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "build": "node server/check-build.js && node server/build-static.js",
+    "dev": "node server/server.js"
+  },
+  "dependencies": {
+    "@openai/codex-sdk": "0.144.2"
+  },
+  "devDependencies": {}
+}

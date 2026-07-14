@@ -1,0 +1,139 @@
+{
+  "chapterId": "chapter-10-reduction",
+  "chapterTitle": "Reduction",
+  "sourceId": "32ca4118-c499-4bbc-bd3d-3f5200036719",
+  "sourceTitle": "chapter-10-reduction.pdf",
+  "artifactType": "flashcards",
+  "artifactLabel": "Flashcards",
+  "generatedAt": "2026-07-13T13:58:48.470602Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "闪卡：归约 (Chapter 10: Reduction)",
+    "summary": "包含 18 张精选闪卡，用于快速复习《大规模并行处理器编程》第十章关于并行归约的核心概念。内容涵盖归约树的跨度分析、步长递减映射解决发散与非合并访存的原理、Warp 级原语 (Warp-level primitives) 的应用，以及使用线程粗化 (Thread coarsening) 解决硬件利用率不足的高级技巧。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Tips)",
+        "points": [
+          "利用简单 (Easy) 难度卡片熟悉归约的工作量、跨度以及算子结合律等基础概念。",
+          "通过中等 (Medium) 难度卡片掌握步长倍增 (Stride doubled) 与步长递减 (Stride halved) 映射对底层控制流与访存的截然不同的影响。",
+          "挑战困难 (Hard) 难度卡片，深入理解 Warp 洗牌原语 (Warp shuffle) 带来的过度同步陷阱，以及线程粗化 (Thread coarsening) 摊薄开销的底层逻辑。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "front": "并行归约树 (Parallel reduction tree) 的工作量 (Work) 和跨度 (Span) 分别是多少？",
+        "back": "工作量是 O(N)（与顺序归约相同），因为仍需执行 N-1 次操作；跨度是 O(log N)，即在理想资源下所需的最少串行执行步数。",
+        "difficulty": "easy",
+        "sourceHint": "10.2 Reduction trees"
+      },
+      {
+        "front": "并行归约树的基础实现要求运算符必须满足什么数学性质？",
+        "back": "结合律 (Associativity)。因为归约树本质上通过改变操作执行的顺序（加括号的位置）来实现并行化，结合律保证了重排后结果的一致性。",
+        "difficulty": "easy",
+        "sourceHint": "10.2 Reduction trees"
+      },
+      {
+        "front": "如果要在归约中应用“步长递减 (Stride halved)”映射优化，或在多 Block 间使用原子操作累加，算子除了结合律还必须满足什么性质？",
+        "back": "交换律 (Commutativity)。因为这些优化不仅仅是改变了加括号的位置，还实际上重排了操作数的组合顺序 (Operands order)。",
+        "difficulty": "medium",
+        "sourceHint": "10.4 Reducing control divergence"
+      },
+      {
+        "front": "浮点数加法在严格意义上是否满足结合律？这对并行归约有什么影响？",
+        "back": "严格意义上不满足，由于舍入误差累积的不同，改变并行归约的执行顺序可能会产生与 CPU 顺序计算略微不同的结果。开发者需容忍这种微小的精度差异。",
+        "difficulty": "hard",
+        "sourceHint": "10.2 Reduction trees"
+      },
+      {
+        "front": "在基础归约内核中，使用“步长倍增 (Stride doubled, stride *= 2)”会导致底层 SIMD 执行模型出现哪种严重的效率问题？",
+        "back": "严重的控制流发散 (Control divergence)。由于活跃线程与非活跃线程交替出现，同一 Warp 中的线程会产生分支，导致大量执行资源被浪费，执行资源利用率低至约 30%。",
+        "difficulty": "medium",
+        "sourceHint": "10.4 Reducing control divergence"
+      },
+      {
+        "front": "“步长倍增 (Stride doubled)”映射除了控制流发散，在全局内存访问上有什么致命缺陷？",
+        "back": "破坏了合并访存 (Coalesced memory accesses)。相邻的活跃线程在内存中跨越了越来越大的距离，触发大量冗余的内存事务，浪费了极高比例的 DRAM 带宽。",
+        "difficulty": "medium",
+        "sourceHint": "10.5 Reducing memory access divergence"
+      },
+      {
+        "front": "“步长递减 (Stride halved, stride /= 2)”映射是如何同时解决非合并访存和控制流发散的？",
+        "back": "它将步长初始化为块维度的一半，每次减半。这保证了每一轮迭代中活跃的线程总是连续的前半部分线程。这使得活跃 Warp 内部不发生发散，并且始终对内存进行连续的合并访问。",
+        "difficulty": "medium",
+        "sourceHint": "10.4 Reducing control divergence / 10.5 Reducing memory access divergence"
+      },
+      {
+        "front": "在优化归约内核时，引入共享内存 (Shared memory) 的主要目的是什么？",
+        "back": "将各迭代步骤之间的中间局部计算结果保存在极低延迟的片上共享内存中，使得对高延迟的全局内存的访问次数从数倍缩减至仅有初始加载和最终写回两次。",
+        "difficulty": "medium",
+        "sourceHint": "10.6 Reducing global memory accesses"
+      },
+      {
+        "front": "在共享内存归约内核的每一轮迭代中，为什么必须调用 `__syncthreads()`？",
+        "back": "充当块级同步屏障，解决读后写 (Read-after-write) 数据依赖。必须确保所有线程都已将本轮产生的局部和写入共享内存，才能允许进入下一轮去读取这些数据。",
+        "difficulty": "easy",
+        "sourceHint": "10.3 A simple reduction kernel / 10.6 Reducing global memory accesses"
+      },
+      {
+        "front": "当归约树的活跃线程降至 32 个 (即单个 Warp) 或以下时，可以使用什么技术彻底消除块级同步屏障和共享内存开销？",
+        "back": "Warp 级洗牌原语 (Warp shuffle primitives)，例如 `__shfl_down_sync`。它允许 Warp 内线程直接在寄存器级别进行极速数据交换。",
+        "difficulty": "medium",
+        "sourceHint": "10.7 Reducing synchronization overhead with warp-level primitives"
+      },
+      {
+        "front": "Warp 洗牌指令 `__shfl_down_sync` 的具体作用是什么？",
+        "back": "允许同一个 Warp 内的线程直接通过硬件寄存器通信。调用它的线程能够获取到索引比自己高 `stride` 的另一个线程寄存器中的指定变量值。",
+        "difficulty": "medium",
+        "sourceHint": "10.7 Reducing synchronization overhead with warp-level primitives"
+      },
+      {
+        "front": "在使用了 `__shfl_down_sync` 完成 Warp 内数据交换的循环中，如果继续调用 `__syncthreads()` 会产生什么陷阱？",
+        "back": "会引发过度同步缺陷 (Over-synchronization)。Warp 级原语本身已经内置了属于单 Warp 内部的硬件级同步语义，混用块级屏障会引入完全不必要的延迟开销。",
+        "difficulty": "hard",
+        "sourceHint": "10.7 Reducing synchronization overhead with warp-level primitives"
+      },
+      {
+        "front": "什么是“两阶段 Warp 级归约 (Two-stage warp-wide reduction)”优化？",
+        "back": "第一阶段，所有 Warp 并行执行内部的 `__shfl_down_sync` 归约，并将各 Warp 的结果写入共享内存；第二阶段，由第一个 Warp 再次用该原语将这些部分和归约。这消除了前期迭代中的共享内存与同步开销。",
+        "difficulty": "hard",
+        "sourceHint": "10.8 Further reducing synchronization overhead with two-stage warp-wide reduction"
+      },
+      {
+        "front": "处理任意长度（大于单 Block 容量）的输入数组时，为什么不能简单使用 `__syncthreads()` 完成跨 Block 的最终合并？",
+        "back": "因为 `__syncthreads()` 的作用域仅限于单个 Thread Block 内部。对于多个 Block 分别产生的局部和，必须通过原子操作 (如 `atomicAdd`) 来安全地将它们汇总到全局内存中。",
+        "difficulty": "easy",
+        "sourceHint": "10.9 Reduction for arbitrary length inputs"
+      },
+      {
+        "front": "为什么使用 `atomicAdd` 汇总多 Block 的归约结果时，强制要求算子必须满足交换律 (Commutativity)？",
+        "back": "因为多 Block 在 GPU 上的并发执行和完成顺序是完全不可预测的。原子操作只保证互斥，不保证顺序，所以加法顺序会被打乱，只有满足交换律才能保证最终结果正确。",
+        "difficulty": "hard",
+        "sourceHint": "10.9 Reduction for arbitrary length inputs"
+      },
+      {
+        "front": "在并行归约中，什么是“线程粗化 (Thread Coarsening)”技术？",
+        "back": "让单个线程在进入并行的归约树阶段之前，先串行地循环独立累加多个连续的输入元素（例如每个线程先自己加上 4 个元素），从而以更高的粒度处理数据。",
+        "difficulty": "medium",
+        "sourceHint": "10.10 Thread coarsening to reduce overhead"
+      },
+      {
+        "front": "线程粗化 (Thread Coarsening) 是如何解决归约树中“硬件利用率不足 (Hardware underutilization)”问题的？",
+        "back": "在归约树的后期，大部分线程处于空转状态。粗化通过增加单线程的串行工作量，大幅减少了所需启动的 Block 数量。由于串行累加阶段硬件是 100% 满载且无同步的，这就极大地摊薄了尾部阶段的空转浪费与同步开销。",
+        "difficulty": "hard",
+        "sourceHint": "10.10 Thread coarsening to reduce overhead"
+      },
+      {
+        "front": "在实施线程粗化时，如果将粗化系数 (COARSE_FACTOR) 设置得过高，会带来什么负面后果？",
+        "back": "如果系数过高，会导致启动的 Thread Block 数量过少，甚至无法填满 GPU 上所有的流式多处理器 (SM)，从而导致并行资源未被充分利用，丧失了大规模数据并行的吞吐潜力。",
+        "difficulty": "medium",
+        "sourceHint": "10.10 Thread coarsening to reduce overhead"
+      }
+    ]
+  }
+}

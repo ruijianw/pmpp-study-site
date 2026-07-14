@@ -1,0 +1,158 @@
+{
+  "chapterId": "chapter-21-electrostatic-potential-map",
+  "chapterTitle": "Electrostatic Potential Map",
+  "sourceId": "92e442b0-fc5b-4782-bad6-f51b574a393d",
+  "sourceTitle": "chapter-21-electrostatic-potential-map.pdf",
+  "artifactType": "quiz",
+  "artifactLabel": "Quiz",
+  "generatedAt": "2026-07-13T15:08:54.878294Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "测试题：静电势图 (Chapter 21: Electrostatic Potential Map)",
+    "summary": "本测试题专为检验读者对 GPU 静电势图计算架构优化的理解而设计。涵盖了 Scatter 与 Gather 模式的本质区别、线程粗化 (Thread Coarsening) 的寄存器复用、交错分配 (Interleaved Assignment) 解决非合并访存问题，以及应对超大规模计算的截断分箱 (Cutoff Binning) 算法与 CPU-GPU 异构协同技术。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Advice)",
+        "points": [
+          "1. 深刻理解并行化“优化悖论”：在 CPU 上为减少指令而优化的 Scatter 模式，在 GPU 上会因原子操作成为灾难；非优化的 Gather 模式反而能利用常量内存广播实现极高吞吐。",
+          "2. 掌握线程粗化 (Thread Coarsening) 的收益与陷阱：粗化能减少指令和访存，但朴素的粗化会破坏 Warp 访存的连续性，必须辅以交错分配 (Interleaved Assignment) 恢复合并访存 (Memory Coalescing)。",
+          "3. 理解算法规模扩展性：DCS 方法的 $O(V^2)$ 复杂度无法满足大体积系统需求。截断分箱 (Cutoff Binning) 结合共享内存 (Shared memory) 是突破该瓶颈的核心算法。",
+          "4. 重视系统级延迟隐藏 (Latency Hiding)：对于空间分布不均引发的极端边界情况 (如原子溢出)，不要用浪费显存的虚拟原子填充，而应交由 CPU 异步处理。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "type": "multiple-choice",
+        "question": "在将直接库仑求和 (DCS) 算法移植到 GPU 时，为什么基于高度优化的串行 C 代码 (外层循环遍历原子，内层循环遍历网格点) 会导致极差的并行性能？",
+        "options": [
+          "A. 因为它需要使用大量的共享内存，超出了 SM 的硬件限制。",
+          "B. 因为这是 Scatter (发散) 模式，所有线程并发更新同一网格点，必须依赖高延迟的原子操作 (如 atomicAdd)，严重摧毁了并行吞吐量。",
+          "C. 因为它引发了严重的控制流发散 (Control flow divergence)，导致 Warp 串行化。",
+          "D. 因为寄存器溢出 (Register spilling) 导致了过多的本地内存 (Local memory) 访问。"
+        ],
+        "answer": "B",
+        "explanation": "优化过的串行代码是按原子遍历，把该原子的影响发散 (Scatter) 给各个网格点。在 GPU 并行环境下，多线程同时向同一个网格点累加能量，如果不使用原子操作就会产生写冲突，而大量使用原子操作则会导致严重的硬件排队与性能暴跌。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在本章“未优化”的 Gather 模式 DCS 内核中，原子的坐标和电荷数据存储在 GPU 的哪种内存区域以获得最佳性能？",
+        "options": [
+          "A. 全局内存 (Global memory)",
+          "B. 共享内存 (Shared memory)",
+          "C. 常量内存 (Constant memory)",
+          "D. 纹理内存 (Texture memory)"
+        ],
+        "answer": "C",
+        "explanation": "在 Gather 模式中，同一时刻整个 Warp 内的所有线程都需要读取同一个原子的数据。常量缓存 (Constant cache) 具有广播 (Broadcast) 特性，能将一次内存读取提供给所有线程，极大地节约了内存带宽。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "本书在静电势图章节提到的“优化悖论 (Optimization Paradox)”是指什么？",
+        "options": [
+          "A. 为了减少指令数量的串行优化 (如循环交换)，在并行化时破坏了无冲突的数据访问拓扑，导致并行效率下降；退回“未优化”的串行代码反而更适合 GPU。",
+          "B. 过度使用共享内存反而会导致缓存命中率下降。",
+          "C. 提高单线程的指令级并行度会降低整个 SM 的线程占用率 (Occupancy)。",
+          "D. 浮点精度的提升会自动导致内存带宽减半。"
+        ],
+        "answer": "A",
+        "explanation": "CPU 上优化的 Scatter 代码消除了部分算术运算，但在 GPU 上由于依赖原子操作表现极差。原始的 Gather 代码虽然重复计算了 y 坐标差值，但避免了写冲突，通过 GPU 海量并发反而实现了更快的整体速度。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在对 DCS 内核应用线程粗化 (Thread Coarsening) 时，如果让单个线程处理同一行 (y 和 z 坐标相同) 的 4 个网格点，主要能消除哪些冗余操作？",
+        "options": [
+          "A. 减少了网格点写入全局内存时的地址计算开销。",
+          "B. 省去了对常量内存中原子 y, z 坐标与电荷的重复读取，并将公共距离差值计算 (dy, dz) 提取到寄存器复用，大幅减少了指令总数。",
+          "C. 完全消除了原子的 x 坐标读取指令。",
+          "D. 消除了内层循环的所有浮点数除法运算。"
+        ],
+        "answer": "B",
+        "explanation": "同行网格点相对于同一个原子的 y 坐标差 (dy) 和 z 坐标差 (dz) 是完全相同的。单线程处理 4 个同行网格点时，只需计算一次 dy 和 dz，并在寄存器中复用电荷数据，显著降低了 FLOPs 和常量内存访问次数。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在使用朴素的线程粗化 (单线程内部 for 循环处理索引 0, 1, 2, 3 的连续网格点) 时，会引发什么严重的内存访问缺陷？",
+        "options": [
+          "A. 共享内存的 Bank 冲突 (Bank conflicts)。",
+          "B. 寄存器组溢出。",
+          "C. 相邻的线程 (如线程0和线程1) 在同时写出数据时，其内存地址相隔 4 个元素，导致严重的非合并访存 (Uncoalesced memory access)。",
+          "D. 导致常量内存缓存失效 (Cache miss)。"
+        ],
+        "answer": "C",
+        "explanation": "CUDA 的合并访存要求同一 Warp 内的相邻线程访问连续的内存地址。如果单线程处理连续的 4 个元素，那么线程 0 写位置 0，线程 1 就会写位置 4，地址被打散，硬件必须发起多次内存事务，浪费大量带宽。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "为了修复因线程粗化引起的非合并访存，开发者应当如何重构网格点到线程的分配逻辑？",
+        "options": [
+          "A. 采用交错分配 (Interleaved Assignment)，以线程块维度 (`blockDim.x`) 为跨度来分配网格点，使得 Warp 内的 32 个线程每次写指令都对应连续的 32 个内存地址。",
+          "B. 使用 `__syncthreads()` 强制同步所有写操作。",
+          "C. 将写入数据先缓存在常量内存中。",
+          "D. 将网格点的数据类型从 float 改为 float4。"
+        ],
+        "answer": "A",
+        "explanation": "交错分配通过加上 `blockDim.x` 来计算下一个网格点的位置。这样，在任何一次并行写指令中，线程 0 写位置 0，线程 1 写位置 1，线程 2 写位置 2... 完美恢复了全局内存的合并访存。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "直接库仑求和 (DCS) 方法难以在超大体积生物分子模拟中扩展，引入截断分箱 (Cutoff Binning) 算法的核心数学动机是什么？",
+        "options": [
+          "A. 将浮点精度从双精度降为单精度以节约带宽。",
+          "B. 利用快速傅里叶变换 (FFT) 代替空间距离计算。",
+          "C. 将 DCS 随系统体积呈二次方增长的计算复杂度 $O(V^2)$ 降低为与体积呈线性增长的 $O(V)$。",
+          "D. 为了能够使用 Tensor Cores 进行矩阵乘加计算。"
+        ],
+        "answer": "C",
+        "explanation": "DCS 需要计算每个网格点与每个原子之间的相互作用，复杂度和“原子数×网格数”成正比，即 $O(V^2)$。截断分箱忽略了截断半径外的微小相互作用，使每个网格点的计算量成为常数，整体复杂度降维至 $O(V)$。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在截断分箱 (Cutoff Binning) 算法中，为什么常量内存 (Constant memory) 不再适合用于存储原子数据？",
+        "options": [
+          "A. 因为常量内存不支持 float 类型数据。",
+          "B. 因为常量内存的延迟比全局内存更高。",
+          "C. 因为不同 Thread Blocks 处理不同的邻域箱 (Neighborhood bins)，常量内存容量太小无法容纳所有活跃 Blocks 所需的全体不同原子，适合改用共享内存协作加载。",
+          "D. 因为截断分箱算法需要频繁修改原子的坐标位置。"
+        ],
+        "answer": "C",
+        "explanation": "DCS 中所有线程计算都用全图的同一批原子，非常适合常量内存。但在分箱算法中，网格被切分，不同区域的线程块需要读取不同的原子子集。常量内存只有几十 KB，无法缓冲所有活跃块所需的不同原子集。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在截断分箱 (Cutoff Binning) 算法中，为什么直接用虚拟原子 (Dummy atoms，电荷为0) 填充所有 Bin 以保证数据结构绝对规则是一种糟糕的做法？",
+        "expectedAnswer": "因为自然界原子在空间中分布极度不均，强制对齐最大的 Bin 会导致绝大多数内存被虚拟原子占据。这不仅严重浪费显存带宽和容量，还迫使 GPU 执行海量无意义的乘零运算，极大拖慢整体速度。",
+        "explanation": "填充 (Padding) 虽然能避免分支，但当无效数据远多于有效数据时，填充带来的带宽浪费和算术冗余将远远超出它带来的并行好处。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在 DCS 算法的 Gather 模式内核中，为何完全不需要使用 `atomicAdd` 等原子操作？",
+        "expectedAnswer": "因为在 Gather (收集) 模式下，每个线程被独立分配计算唯一的一个网格点。线程通过遍历读取所有原子的电荷进行累加，最后只需一次性将结果写入自己专属的全局内存地址，线程间不存在写冲突。",
+        "explanation": "Gather 模式是“多对一”的聚合，输出端是正交隔离的，这天然契合 GPU 无锁并行计算的需求。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在截断分箱算法中，当同一 Warp 内的线程在处理它们共用的邻域箱 (Neighborhood bin) 内的原子时，为什么仍可能发生控制流发散 (Control divergence)？",
+        "expectedAnswer": "因为邻域箱是一个方形区域，虽然箱内的原子离线程块较近，但它们不一定全都落在 Warp 内每个线程专属的截断半径内。线程必须计算实际距离并使用 `if` 分支判断是否累加该原子，从而产生不同的执行路径。",
+        "explanation": "由于使用的是圆形 (球体) 的物理截断范围，而分箱结构是网格状的，不可避免地会包含一些超出实际截断距离的“角”区域原子。这导致了计算上的分支。"
+      },
+      {
+        "type": "short-answer",
+        "question": "为了优雅处理分箱时各个 Bin 原子数量不一致的问题，本章推荐如何利用主机端 (CPU) 进行架构级的异构协同？",
+        "expectedAnswer": "设定一个固定且合理的 Bin 容量上限，将装不下的少量原子装入一个溢出列表 (Overflow list)。当 GPU 全速执行下一个网格批次的内核计算时，CPU 同步异步处理该溢出列表的剩余计算。这种方式用极小的代价完美掩盖了 CPU 处理延迟 (Latency hiding)。",
+        "explanation": "这展现了异构计算的精髓：让 GPU 高速处理极其规则的 95% 主体数据，让 CPU 灵活处理不规则的 5% 边缘情况，两者并行掩盖延迟。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在对 DCS 算法进行线程粗化 (Thread Coarsening) 时，如果让单个线程在内部处理属于同一行 (x 轴变化，y/z 轴坐标相同) 的多个网格点，能节省哪些具体的底层操作？",
+        "expectedAnswer": "线程可以将该原子的 y, z 坐标和电荷只读取一次并长期保留在寄存器中复用，大幅减少了对常量内存 (Constant memory) 的读取次数；同时，因为 y 和 z 的距离差不变，省去了多个网格点重复计算 `dy*dy + dz*dz` 的浮点运算指令。",
+        "explanation": "数据局部性不仅存在于缓存中，更可以直接利用寄存器。通过巧妙的任务划分，公共子表达式的计算被提出到了高频循环外部，在不增加全局带宽的情况下实现了内核加速。"
+      }
+    ]
+  }
+}

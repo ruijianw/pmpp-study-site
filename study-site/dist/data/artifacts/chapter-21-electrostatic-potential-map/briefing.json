@@ -1,0 +1,62 @@
+{
+  "chapterId": "chapter-21-electrostatic-potential-map",
+  "chapterTitle": "Electrostatic Potential Map",
+  "sourceId": "92e442b0-fc5b-4782-bad6-f51b574a393d",
+  "sourceTitle": "chapter-21-electrostatic-potential-map.pdf",
+  "artifactType": "briefing",
+  "artifactLabel": "Briefing",
+  "generatedAt": "2026-07-13T15:06:04.457503Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "简报：静电势图 (Chapter 21: Electrostatic Potential Map)",
+    "summary": "本简报总结了在 GPU 上计算分子静电势图的架构优化演进。深入剖析了 Scatter (发散) 与 Gather (收集) 模式的底层执行差异，探讨了如何通过线程粗化 (Thread Coarsening) 与交错分配 (Interleaved Assignment) 平衡计算冗余与合并访存 (Memory Coalescing)，并介绍了利用截断分箱 (Cutoff Binning) 和 CPU-GPU 异步协作突破计算复杂度瓶颈的策略。",
+    "sections": [
+      {
+        "heading": "执行摘要 (Executive Summary)",
+        "points": [
+          "直接库仑求和 (DCS) 方法精度高，但其计算量与“系统原子数乘以网格点数”成正比，在大体积系统中面临 $O(V^2)$ 的复杂度瓶颈 [1, 2]。",
+          "将高度优化的串行代码 (Scatter 模式) 移植到 GPU 会因全局原子操作 (Atomic operations) 导致性能暴跌；退回到非优化的串行结构 (Gather 模式) 反而能通过常量内存 (Constant memory) 广播释放极致并发性能 [3-5]。",
+          "通过截断分箱 (Cutoff Binning) 算法牺牲微小精度，可将计算复杂度降至 $O(V)$，结合主机端 (Host) 处理溢出数据的异构协作，可实现系统的完美线性扩展 [6-9]。"
+        ]
+      },
+      {
+        "heading": "核心主张 (Core Claims)",
+        "points": [
+          "优化悖论 (Optimization Paradox)：在 CPU 上减少了冗余算术指令的优化代码，在 GPU 上往往不适用，因为它破坏了无冲突的 Gather 拓扑结构。在并行化时，妥协部分算术冗余以换取无锁并发是值得的 [4]。",
+          "线程粗化 (Thread Coarsening) 的寄存器复用：让单个线程计算同行的多个网格点，将公共的距离 (如 dy, dz) 和电荷数据提取至寄存器中。这不仅使访存次数锐减，还将处理 4 个网格点所需的浮点运算从 48 次降至 24 次 [10-12]。",
+          "交错分配 (Interleaved Assignment) 修复访存：朴素的线程粗化会导致 Warp 内线程的内存写入不再连续 (Uncoalesced)。通过以线程块维度 (`blockDim.x`) 为步长交错分配网格点，可完美恢复全局内存的合并访存 (Memory Coalescing) [13, 14]。",
+          "截断分箱 (Cutoff Binning) 与异构协同：通过将空间划分为网格箱 (Bins) 并维护相对偏移量 (Neighborhood list)，避免全图扫描 [7, 15]。由于原子分布不均，设定固定且较小的 Bin 容量，将溢出原子 (Overflow list) 交由 CPU 与 GPU 下一轮计算异步处理，这是极其高效的架构级掩盖延迟 (Latency hiding) 手段 [8, 9]。"
+        ]
+      },
+      {
+        "heading": "本章重要性 (Why This Chapter Matters)",
+        "points": [
+          "本章揭示了将经典科学计算移植到 GPU 时必须经历的“范式转换”：算法级别的微优化 (CPU视角) 必须为微架构级别的数据访问模式 (GPU视角) 让路 [4]。",
+          "提供了处理极端空间不规则性数据的行业最佳实践：通过软硬件异构协同 (CPU 兜底处理稀疏溢出) 代替粗暴的内存填充 (Padding)，对提高 GPU 有效显存带宽具有普遍指导意义 [8, 9, 16]。"
+        ]
+      },
+      {
+        "heading": "先决条件 (Prerequisites)",
+        "points": [
+          "理解全局内存的合并访存 (Memory Coalescing) 机制及 Warp 执行模型。",
+          "熟悉常量内存 (Constant Memory) 的广播 (Broadcast) 特性与容量限制。",
+          "掌握基本的线程粗化 (Thread Coarsening) 概念及寄存器溢出 (Register Spilling) 风险。"
+        ]
+      },
+      {
+        "heading": "实现启示与常见错误 (Implementation Implications)",
+        "points": [
+          "Scatter 原子的灾难：如果以外层循环遍历原子、内层循环遍历网格点 (Scatter)，会导致所有线程并发更新相同的网格点，必须依赖 `atomicAdd`，严重摧毁并行吞吐量 [3]。",
+          "粗化的非合并陷阱：在执行线程粗化时，若直接让线程在局部 for 循环中处理相邻的数组索引，将使得相邻线程的访问地址被错开，导致极其恶劣的非合并写入。必须使用基于 `blockDim.x` 跨度的交错分配逻辑 [13, 14]。",
+          "填充虚拟原子 (Dummy Atoms) 陷阱：在分箱算法中，为了内存对齐而强行将所有 Bin 填充至最大原子数 (补零电荷原子)，会极大浪费全局/共享内存容量，并迫使硬件执行海量无意义的乘零运算 [16]。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

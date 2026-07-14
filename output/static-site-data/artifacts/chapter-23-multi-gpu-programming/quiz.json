@@ -1,0 +1,158 @@
+{
+  "chapterId": "chapter-23-multi-gpu-programming",
+  "chapterTitle": "Multi Gpu Programming",
+  "sourceId": "e8ad84fc-300d-4465-aea8-8bb6469fefe6",
+  "sourceTitle": "chapter-23-multi-gpu-programming.pdf",
+  "artifactType": "quiz",
+  "artifactLabel": "Quiz",
+  "generatedAt": "2026-07-13T15:22:00.644024Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "测试题：多 GPU 编程 (Chapter 23: Multi-GPU programming)",
+    "summary": "本测试题专为检验读者对多 GPU 架构及 CUDA 分布式编程模型的理解而设计。考查内容涵盖光环交换 (Halo exchange)、CUDA-aware MPI 的底层传输优化、基于流优先级 (Stream Priority) 和锁页内存 (Pinned memory) 的计算与通信重叠，以及 NCCL 组调用和 NVSHMEM 单边通信 (One-sided communication) 实现内核融合 (Kernel fusion) 的核心架构差异。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Advice)",
+        "points": [
+          "1. 深刻理解计算与通信重叠 (Overlap)：单纯使用多个 Stream 是不够的，必须通过高优先级的 Stream 确保边界内核率先执行，并配以锁页内存 (Pinned memory) 才能实现真正的异步。这是避免网络闲置的核心微架构机制。",
+          "2. 掌握通信库的架构演进与主机同步 (Host Synchronization)：MPI 依赖主机调度导致延迟；NCCL 通过将通信注入 CUDA 流彻底解放 CPU；NVSHMEM 更是利用单边通信让设备线程 (Device thread) 主导传输，实现零主机干预。",
+          "3. 熟悉组调用 (Group calls) 与防死锁 (Deadlock)：在多节点光环交换时，若无原生融合收发函数 (如 MPI_Sendrecv)，必须使用 NCCL 的 ncclGroupStart/End 强制硬件兵分两路并发通信，避免死锁。",
+          "4. 洞察 NVSHMEM 对称堆 (Symmetric heap) 的优势：掌握它是如何让本地线程直接推导远程物理地址，从而在不增加内核启动开销 (Kernel launch overhead) 的前提下实现极致的内核融合 (Kernel fusion)。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "type": "multiple-choice",
+        "question": "在基于行主序 (Row-major layout) 的 2D 模板计算中，多 GPU 划分通常选择沿 Y 轴进行 1D 域分解 (1D domain decomposition)，其主要优势是什么？",
+        "options": [
+          "A. 能将计算复杂度从 O(N^2) 降维到 O(N)。",
+          "B. 使得相邻 GPU 需要交换的边界光环 (Halo) 数据在显存中保持物理连续，极大简化了网络拷贝和传输操作。",
+          "C. 允许 GPU 直接跳过边界检查以提升指令吞吐量。",
+          "D. 强制将常量内存分配给行主序的首行以优化缓存命中率。"
+        ],
+        "answer": "B",
+        "explanation": "采用行主序的内存中，同一行的元素在物理内存上是连续分布的。沿 Y 轴进行 1D 分解意味着每个 GPU 获得连续的若干行，进行光环交换 (Halo exchange) 时的整个边界行数据也是连续的，这避免了分散收集数据的开销。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在多 GPU 通信中，使用支持 CUDA 的 MPI (CUDA-aware MPI) 相较于传统 MPI 的核心微架构优势是什么？",
+        "options": [
+          "A. 将单精度浮点通信自动压缩为半精度 (FP16) 以节约网络带宽。",
+          "B. CUDA-aware MPI 能直接识别 GPU 显存指针，利用 DMA 或 RDMA 在设备之间直接路由传输数据，彻底消除了“设备到主机再到设备”的显式拷贝和延迟。",
+          "C. 它能在 GPU 的 Tensor Cores 上执行消息加密。",
+          "D. 允许 CPU 并发执行原本属于 GPU 的 L2 范数 (L2 norm) 计算。"
+        ],
+        "answer": "B",
+        "explanation": "如果不支持 CUDA-aware，开发者必须手动编写 cudaMemcpy 将显存数据倒腾到 CPU 内存才能传给 MPI。CUDA-aware MPI 能够识别设备指针并在底层硬件(如 RDMA)上直接进行设备到设备的传输。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "为什么使用 cudaMemcpyAsync 实现异步传输时，主机端内存必须使用 cudaMallocHost 分配为锁页内存 (Pinned memory)？",
+        "options": [
+          "A. 锁页内存能够提供更大的物理存储容量，避免内存溢出 (OOM)。",
+          "B. 确保主机 CPU 能够缓存 GPU 写入的数据，提高后续访问速度。",
+          "C. DMA 硬件直接操作物理地址，普通内存可能会被操作系统分页机制 (Paging) 换出至磁盘导致数据损坏。如果没有锁页保护，CUDA 会被迫使用隐藏缓冲区进行低效的同步拷贝，破坏异步重叠。",
+          "D. cudaMemcpyAsync 函数在非锁页内存上会自动引发编译错误。"
+        ],
+        "answer": "C",
+        "explanation": "DMA 传输要求物理内存地址绝对固定且不被换出。非锁页内存随时可能被 OS 调度走，因此 CUDA 遇到非锁页内存会退化为两次拷贝（先同步拷入隐式锁页区再发起 DMA），使得原本期望的异步过程阻塞主机线程。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "为了在 GPU 上同时利用计算核心与互连网络以实现真正的计算与通信重叠 (Overlap)，除了使用多流 (CUDA Streams) 外，为何还要使用 cudaStreamCreateWithPriority 赋予边界计算流更高的优先级？",
+        "options": [
+          "A. 因为边界计算通常需要更高的浮点精度，必须优先使用专用的双精度计算单元。",
+          "B. 避免庞大的内部计算内核率先占满所有流式多处理器 (SM)，导致边界内核被推迟执行，从而使得通信网络因等待边界数据而陷入长期空闲。",
+          "C. 因为只有高优先级的流才能访问共享内存 (Shared memory)。",
+          "D. 为了确保主机 CPU 不会在这段时间内进入睡眠模式。"
+        ],
+        "answer": "B",
+        "explanation": "即使放入了不同的流，由于内部计算非常庞大，如果不加以控制，一旦内部计算先启动并占据了全部 SM，边界内核就会阻塞在队列中。网络因为没有边界数据可传而被迫闲置，导致重叠失败。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "因为 NCCL 并没有像 MPI_Sendrecv 这样原生的融合双向收发函数，开发者在编写双向光环交换时必须采用什么特殊机制以避免死锁 (Deadlock)？",
+        "options": [
+          "A. 必须强制关闭全双工互连模式。",
+          "B. 必须在 ncclSend 和 ncclRecv 之间插入 CPU 端的系统睡眠延时 (Sleep)。",
+          "C. 将 ncclSend 和 ncclRecv 调用夹在 ncclGroupStart 和 ncclGroupEnd 之间 (组调用)，以强制底层硬件并发执行双向传输。",
+          "D. 将每个收发原语拆分到 16 个不同的 CUDA Streams 中随机执行。"
+        ],
+        "answer": "C",
+        "explanation": "NCCL 的组调用 (Group Calls) 功能能够将多个通信指令打包。如果直接顺序调用独立的 Send 和 Recv，所有 GPU 都可能卡在等待对方接收的 Send 状态，引发死锁。组调用强制底层并发执行这些操作。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "NCCL 在实现计算与通信重叠方面，相较于基于 MPI 的实现方法，最重要的系统级架构优势是什么？",
+        "options": [
+          "A. NCCL 能够自动增加显存的时钟频率以匹配 PCIe 的传输速率。",
+          "B. NCCL 可以将通信原语直接注入到 CUDA 流 (Streams) 中执行。这彻底解放了主机 CPU，消除了 CPU 充当计算和通信调度中间人时产生的主机同步延迟 (Synchronization overhead)。",
+          "C. NCCL 完全不需要依赖事件 (Events) 来进行任何同步。",
+          "D. NCCL 使用多线程并发编译来缩短程序的启动时间。"
+        ],
+        "answer": "B",
+        "explanation": "MPI 的网络传输命令必须由 CPU 发起，CPU 必须阻塞等待 (cudaStreamSynchronize) GPU 完成边界计算才能调起 MPI 发送。NCCL 的通信指令作为流的一部分排队，当计算完成时，GPU/硬件队列会直接触发通信，完全跳过了 CPU 的延迟。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "NVSHMEM 利用单边通信 (One-sided communication) 和对称堆 (Symmetric heap) 使得发起方只需知道目标 ID 就能直接 Put 数据，这带来了哪种极致的代码结构优化？",
+        "options": [
+          "A. 允许所有的局部残差计算完全转移至 CPU 进行处理。",
+          "B. 实现了终极的内核融合 (Kernel fusion)，无需将计算切分为多个独立的边界和内部内核，在单个 Kernel 的执行中由 GPU 线程自主驱动异步通信，消除了额外的内核启动开销。",
+          "C. 可以彻底绕过 L1/L2 缓存，将数据直接存入硬盘。",
+          "D. 允许程序在不需要任何内存屏障的情况下确保全局一致性。"
+        ],
+        "answer": "B",
+        "explanation": "NVSHMEM 允许设备端驱动通信 (Device-initiated)。GPU 线程计算出边界数据后，直接在内核里调用 `nvshmem_float_p` 把数据 Put 过去。无需像 MPI/NCCL 那样把内核拆分、在不同流里跑完再发起通信，极大简化了多内核协调负担。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在较慢的互连网络下，如果在 NVSHMEM 内核中让每个 GPU 线程独立使用细粒度原语 nvshmem_float_p (单元素 put) 进行通信，会导致什么严重的性能缺陷？",
+        "options": [
+          "A. 会引发 GPU Tensor Cores 的硬件异常断电。",
+          "B. 单个元素的 Put 操作会导致共享内存 (Shared memory) 发热降频。",
+          "C. 会产生海量的微小网络通信事务，导致灾难性的网络包头开销 (Network packet header overhead)，浪费大量网络带宽。实际工程应使用 Block 级原语进行粗粒度聚合传输。",
+          "D. 会强制导致所有节点发生死锁。"
+        ],
+        "answer": "C",
+        "explanation": "细粒度的 put 每次发送一个 float 都会附带网络协议头部，当网络延迟较高或带宽受限时，这种高频小包传输效率极低。使用粗粒度原语（如 `nvshmemx_float_put_block`）合并发送是缓解此问题的工业标准做法。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在多 GPU 编程中，如果不希望主机端 CPU 阻塞等待，应如何安全地建立起两个独立 CUDA 流 (例如计算流与通信流) 之间的先后执行依赖关系？",
+        "expectedAnswer": "使用 CUDA 事件 (Events)。在一个流中使用 `cudaEventRecord` 记录事件，在另一个需要等待的流中使用 `cudaStreamWaitEvent`，从而实现纯设备端 (Device-side) 的依赖同步，完全不阻塞 CPU。",
+        "explanation": "这打破了必须依靠 CPU 调用 `cudaStreamSynchronize` 的低效模式，是构建深层异步并行流水线的基础机制。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在进行 Jacobi 迭代多 GPU 版本的残差检查时，各个 GPU 计算出本地残差平方和后，通过调用哪种 MPI 集体通信原语 (Collective communication) 才能获得全局总和？",
+        "expectedAnswer": "通过调用 `MPI_Allreduce` 集体通信原语。它能够归约 (Reduce，如求和) 所有 MPI Ranks 提供的局部值，并将最终的全局结果分发 (Broadcast) 给每一个 Rank 以供收敛判定。",
+        "explanation": "点对点通信只能解决光环交换，而判断整个物理系统是否收敛必须使用集体通信收集所有节点的信息，Allreduce 是执行此类全局标量操作的核心 API。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在 1D 域分解的多 GPU 模板计算中，什么是光环交换 (Halo exchange)？",
+        "expectedAnswer": "为了计算本地分区的边界点新值，GPU 需要依赖相邻 GPU 分区边缘的前一步旧值数据。在每次迭代结束前，相邻 GPU 之间互相发送自己的边界行数据，并接收对方的边界行数据作为光环补充，这一跨节点网络传输过程称为光环交换。",
+        "explanation": "光环交换是分布式网格计算最典型的通信特征，它的效率直接决定了多节点集群程序的横向扩展 (Scaling) 能力。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在 NVSHMEM 单边通信的对称堆 (Symmetric heap) 机制中，发起通信的线程是如何知道远程目标 GPU 中数组的具体内存地址的？",
+        "expectedAnswer": "所有处理元件 (PE) 会在本地虚拟地址的相同偏移处分配对称堆内存。发起方只需提供数据在自己本地对称堆中的地址以及目标 PE 的 ID，底层系统就能自动根据偏移量推导出目标 GPU 的正确显存物理/虚拟地址。",
+        "explanation": "这种 PGAS 内存模型的对称性设计，让远程寻址变得如同计算本地数组偏移一样简单，彻底移除了接收方需要显式挂起接收缓冲区的要求。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在 NVSHMEM 实现的单内核 (Single kernel) 代码中，仅仅在 CPU 端调用 `cudaStreamSynchronize` 是否能保证光环交换的数据已经被目标 GPU 成功接收？如果不能，必须调用什么？",
+        "expectedAnswer": "不能。流同步仅仅能保证本地内核的计算和发起 Put 指令执行完毕，并不保证网络数据到达。必须在流上调用 NVSHMEM 专用的屏障函数 `nvshmemx_barrier_all_on_stream`，强制等待所有远端内存访问在目标端全局可见后，才能安全进入下一次迭代。",
+        "explanation": "这是单边异步通信中最容易犯的错误。发送指令的执行结束，距离网络包实际落盘到目标显存，存在巨大的物理延迟窗口。缺乏内存屏障将导致下一轮计算读取到陈旧的脏数据。"
+      }
+    ]
+  }
+}

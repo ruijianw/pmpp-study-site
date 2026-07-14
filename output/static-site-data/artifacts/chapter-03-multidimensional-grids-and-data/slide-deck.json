@@ -1,0 +1,165 @@
+{
+  "chapterId": "chapter-03-multidimensional-grids-and-data",
+  "chapterTitle": "Multidimensional Grids And Data",
+  "sourceId": "398d28d9-3e81-4b0c-a2c0-69eefc525f0f",
+  "sourceTitle": "chapter-03-multidimensional-grids-and-data.pdf",
+  "artifactType": "slide-deck",
+  "artifactLabel": "Slide Deck",
+  "generatedAt": "2026-07-13T13:21:06.591260Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "幻灯片大纲：多维网格与数据 (Chapter 3: Multidimensional Grids and Data)",
+    "summary": "本幻灯片组提炼了《大规模并行处理器编程》第三章的核心内容，系统讲解多维网格(Grid)和线程块(Block)的组织逻辑、动态数组的行主序线性化(Row-major linearization)、以及在图像处理与矩阵乘法中极为关键的边界检查(Boundary Checking)与内存跨距访存分析。",
+    "sections": [
+      {
+        "heading": "使用建议 (Usage Tips)",
+        "points": [
+          "前4页侧重多维执行配置与硬件限制，适合理清三维线程模型的物理边界与维度声明陷阱。",
+          "中段（5-7页）专注多维数组到底层一维物理内存的映射，是理解所有复杂CUDA内核寻址的基础。",
+          "尾段（8-12页）通过图像模糊补丁(Patch)与矩阵乘法(Matrix Multiplication)两个实例，剖析隐蔽的越界访存缺陷与跨距访存带来的性能挑战。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "slideNumber": 1,
+        "title": "多维网格与数据组织 (Multidimensional Grids and Data)",
+        "bullets": [
+          "真实世界的数据多呈现多维拓扑结构（如2D图像像素、3D模拟空间）。",
+          "CUDA 允许将并发线程组织为最多三维的网格 (Grid) 和线程块 (Block)。",
+          "目的：使线程坐标 (Thread Coordinates) 能够以最直观的方式映射到多维数据的坐标上。"
+        ],
+        "speakerNotes": "在处理一维向量时，一维的线程网格已经足够。但当我们面对图像或矩阵时，继续使用一维索引会增加计算的复杂性。CUDA在硬件和API层面都支持最多三维的线程组织形式，目的是让并行算法的设计更契合数据的物理形态。",
+        "visualSuggestion": "展示一幅2D彩色图像，右侧展示与之对应的2D线程网格(Grid)，用箭头表示空间结构的映射。"
+      },
+      {
+        "slideNumber": 2,
+        "title": "dim3 结构体与坐标系陷阱 (dim3 & Coordinate Trap)",
+        "bullets": [
+          "执行配置参数类型：dim3，包含 x, y, z 三个整型元素。",
+          "未使用的维度默认赋值为 1（如 dim3(256) 等价于 dim3(256, 1, 1)）。",
+          "常见实现缺陷：dim3(x, y, z) 采用由低维到高维（列, 行, 深度）的声明顺序；而 C/C++ 传统数组 [z][y][x] 采用高维到低维顺序，极易引发坐标翻转。"
+        ],
+        "speakerNotes": "配置多维网格时必须极其小心。CUDA的dim3是从宽度(x)开始的，这和三维几何坐标系一致；但C++数组声明是从最外层的高度或深度开始的。混淆这两者会导致严重的线程调度错误，让你对错误的数据进行操作。",
+        "visualSuggestion": "对比图：左侧是 `dim3(x, y, z)` 指向图表的 宽、高、深；右侧是 `Array[z][y][x]` 指向 深、高、宽。中间打一个红色的警示叹号。"
+      },
+      {
+        "slideNumber": 3,
+        "title": "硬件限制与执行配置 (Hardware Limits & Configurations)",
+        "bullets": [
+          "单 Block 限制：总线程数最多为 1024 个。例如 dim3(32, 32, 2) 是非法的 (总计 2048 > 1024)。",
+          "Grid 维度限制：gridDim.x 最大为 2^31-1，而 gridDim.y 和 gridDim.z 最大仅为 65535。",
+          "异构配置：Grid 和 Block 不需要具有相同的维度（如 2D Grid 可以搭配 3D Block）。"
+        ],
+        "speakerNotes": "无论你如何分配x、y、z的比例，每个Block内的物理线程总数绝对不能突破1024的硬性上限。另外，如果处理极端长宽比的数据，必须注意y和z方向的Grid上限只有65535，超出将导致内核启动失败。",
+        "visualSuggestion": "展示一个包含红色交叉叉号的非法配置框 `dim3(32,32,2)` 和一个绿色的合法配置框 `dim3(16,16,4)`。"
+      },
+      {
+        "slideNumber": 4,
+        "title": "二维线程映射公式 (2D Thread Mapping Formula)",
+        "bullets": [
+          "通用计算公式（目标：获取线程的全局二维坐标）：",
+          "Horizontal (col) = blockIdx.x * blockDim.x + threadIdx.x",
+          "Vertical (row) = blockIdx.y * blockDim.y + threadIdx.y",
+          "执行逻辑：通过 Block 级别的偏移量加上 Thread 级别的局部偏移，精准锁定目标数据 (如像素位置)。"
+        ],
+        "speakerNotes": "多维映射的核心依然是算出全局唯一的坐标。通过将当前Block前方的所有线程数（blockIdx * blockDim）与当前线程的局部索引（threadIdx）相加，我们就可以在横向和纵向上精确定位到负责的像素或矩阵元素。",
+        "visualSuggestion": "展示一个大矩阵的局部，高亮目标块，用数学算式标注如何通过 `blockIdx.x * blockDim.x` 跳到正确的列块，再用 `threadIdx.x` 步进到目标列。"
+      },
+      {
+        "slideNumber": 5,
+        "title": "平坦内存与数组线性化 (Flat Memory & Array Linearization)",
+        "bullets": [
+          "背景：现代计算机的内存空间是“平坦的 (Flat)”，只有一维的线性地址。",
+          "编译期限制：由 cudaMalloc 动态分配的设备内存，在编译期不包含诸如列宽等多维长度信息。",
+          "结论：内核中禁止使用 `P[row][col]` 语法解引用动态设备指针，必须手动进行数组线性化 (Linearization)。"
+        ],
+        "speakerNotes": "新手常犯的错误是直接在内核里写 P[row][col]。由于cudaMalloc只是分配了一块线性内存，编译器在编译时并不知道你的二维矩阵到底有多宽，所以无法自动将其转换。你必须手动把它“展平”。",
+        "visualSuggestion": "展示一个带有斜杠符号的红框包围着 `P[row][col]`，绿框包围着一维线性计算表达式 `P[linear_index]`。"
+      },
+      {
+        "slideNumber": 6,
+        "title": "行主序布局 (Row-major Layout)",
+        "bullets": [
+          "定义：C/C++ 默认的多维数组存储方式，同一行的元素在内存中物理连续。",
+          "一维偏移量公式 (1D Offset)：对于宽度为 Width 的矩阵，元素 (row, col) 的一维地址为 `row * Width + col`。",
+          "避坑提示：FORTRAN 等科学计算库常使用列主序 (Column-major layout)。混合编程时需注意底层布局的转置差异。"
+        ],
+        "speakerNotes": "在C++中，矩阵是一行一行紧挨着存放在内存里的。我们要找第row行的第col个元素，就需要先跳过前面的row个完整行（即 row * Width），再加上当前行内的列偏移（col）。这就是所有二维数组线性化的底层公式。",
+        "visualSuggestion": "展示一个 4x4 二维方块图，逐步折叠展平成一条 16 个格子的长条形一维数组，并标示 `row*Width+col` 的跨度。"
+      },
+      {
+        "slideNumber": 7,
+        "title": "冗余线程与基础边界检查 (Redundant Threads & Boundary Check)",
+        "bullets": [
+          "现象：为确保完全覆盖数据，常使用 `ceil(n/blockDim)` 启动 Grid。若数据大小无法被整除，右侧和下侧会产生冗余线程。",
+          "致命错误：未做保护的冗余线程会越界读取或覆写非法内存，导致图像错乱或段错误。",
+          "防御性编程：必须在内核计算逻辑最外层包裹 `if (col < width && row < height)`。"
+        ],
+        "speakerNotes": "GPU调度以Block为单位。假如图像宽度是76，Block宽是16，为了覆盖完，我们必须启动5个Block，即80个线程。这意味着末尾有4个多余的线程。你必须用 if 语句把这些线程拦在外面，否则它们就会把旁边的内存写坏。",
+        "visualSuggestion": "图像网格（如 76x62）覆盖上 16x16 的 Block 网格。高亮图像右侧和下侧突出数据边界的阴影区域（冗余线程区）。"
+      },
+      {
+        "slideNumber": 8,
+        "title": "复杂内核示例：图像模糊 (Complex Kernel: Image Blur)",
+        "bullets": [
+          "计算模式：每个输出像素的值，由其周围给定半径 (BLUR_SIZE) 范围内的像素补丁 (Patch) 取平均值获得。",
+          "补丁面积：针对目标 (row, col)，覆盖面积为 `(2 * BLUR_SIZE + 1) ^ 2`。",
+          "嵌套循环：目标线程需要使用 for 循环遍历周边的 `curRow` 和 `curCol` 游动坐标进行归约求和。"
+        ],
+        "speakerNotes": "到了图像模糊这种高级内核，线程就不再是简单的“一对一”计算了，而是“多对一”计算。一个线程需要把周围一个圈（Patch）里的像素全读出来。这要求在内核中实现嵌套循环，让计算逻辑变得复杂许多。",
+        "visualSuggestion": "展示一个目标像素周围圈出一个 3x3 (BLUR_SIZE=1) 补丁的网格图，标出 `row-1` 到 `row+1` 的范围。"
+      },
+      {
+        "slideNumber": 9,
+        "title": "补丁计算的越界陷阱 (Out-of-bounds Trap in Patch Processing)",
+        "bullets": [
+          "隐蔽边界缺陷：仅用 `if (col < w && row < h)` 保护中心目标是不够的。",
+          "边缘效应：处理图像四角或边缘的像素时，其补丁的游动采样坐标 `curRow/curCol` 会变为负数或越界。",
+          "强制拦截：内部读取循环必须新增 `if(curRow>=0 && curRow<h && curCol>=0 && curCol<w)` 阻断垃圾数据的读入。"
+        ],
+        "speakerNotes": "这是最容易踩坑的地方！即便目标像素合法，当它处在图像边缘时，它外围的补丁像素就越出图像了（坐标变成负数或超出宽高）。如果你不在内部循环加上第二层严格的边界检查，程序就会读取垃圾内存，直接破坏最终结果甚至崩溃。",
+        "visualSuggestion": "展示图像左上角 (0,0) 的像素。画出它的 3x3 补丁，突出显示有 5 个格子悬空在图像外部（坐标 < 0），并在其上打上红色大叉。"
+      },
+      {
+        "slideNumber": 10,
+        "title": "基础矩阵乘法 (Matrix Multiplication)",
+        "bullets": [
+          "运算特征：BLAS Level-3，输出矩阵 P 的每个元素是 M 矩阵行与 N 矩阵列的点积 (Dot Product)。",
+          "并行映射：将 2D 线程网格映射到输出矩阵 P。每个线程负责计算一个 `P[row][col]` 元素。",
+          "计算展开：在内核中使用 k 变量循环（0 到 Width-1）执行乘加操作。"
+        ],
+        "speakerNotes": "矩阵乘法是深度学习和科学计算的基石。我们将2D网格直接映射给输出矩阵P，每个线程算出一个元素。这个元素是怎么来的？是把M的第row行和N的第col列逐个相乘再相加得来的。",
+        "visualSuggestion": "矩阵乘法图解：左侧矩阵 M 的高亮行与右侧矩阵 N 的高亮列，交汇处箭头指向结果矩阵 P 的一个高亮像素格。"
+      },
+      {
+        "slideNumber": 11,
+        "title": "矩阵乘法访存推演 (Memory Traversal in MatMul)",
+        "bullets": [
+          "对于行矩阵 M 的读取：`M[row * Width + k]`",
+          "对于列矩阵 N 的读取：`N[k * Width + col]`",
+          "性能考量 (Performance Reasoning)：M 矩阵是按行遍历，数据在物理内存上连续；N 矩阵按列遍历，每次步进物理地址跳跃一整个 Width。",
+          "瓶颈：跳跃式读取 N 矩阵会严重破坏数据局部性 (Data Locality)，是优化的核心难点。"
+        ],
+        "speakerNotes": "注意看数组线性化后的索引公式。读取M矩阵时，k每次加1，我们在内存里只往前走1格，极其连续。但是读取N矩阵时，k每次加1，我们在物理内存中直接跳越了一整行的宽度！这种不连续的跨步访存会浪费大量内存带宽，是后续优化的重点目标。",
+        "visualSuggestion": "对比图：M矩阵在1D数组上的连续读取路径（短实线箭头），对比 N矩阵在1D数组上的大跨度跳跃路径（长虚线大箭头）。"
+      },
+      {
+        "slideNumber": 12,
+        "title": "总结与防御性编程 (Summary & Defensive Programming)",
+        "bullets": [
+          "多维抽象：通过多维 Grid/Block，利用行主序公式完成从“物理内存”到“逻辑结构”的降维打击。",
+          "始终提防冗余线程：永远不要信任硬件配置天然匹配数据尺寸，`if (i < n)` 是异构内核的标准起手式。",
+          "空间感知：处理邻域问题（如Patch）时，既要查中心也要查四周，构筑严密的边界保护墙。"
+        ],
+        "speakerNotes": "总结这一章，我们在学习利用多维网格管理多维数据的同时，最重要的一点是培养‘防御性编程’思维。由于Block大小固定以及边界条件复杂，你必须时刻清楚冗余线程的存在，用严密的 if 边界检查来保护程序的正确性和显存安全。",
+        "visualSuggestion": "一张总结图表：最顶层是多维问题空间，中层是网格执行配置，最底层通过漏斗（代表安全检查逻辑）准确投射到一维扁平内存中。"
+      }
+    ]
+  }
+}

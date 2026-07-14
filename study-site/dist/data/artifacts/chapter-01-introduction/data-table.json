@@ -1,0 +1,71 @@
+{
+  "chapterId": "chapter-01-introduction",
+  "chapterTitle": "Introduction",
+  "sourceId": "36d65c10-46f4-41a0-8d73-eea6b485aea1",
+  "sourceTitle": "chapter-01-introduction.pdf",
+  "artifactType": "data-table",
+  "artifactLabel": "Data Table",
+  "generatedAt": "2026-07-13T12:07:44.143818Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "数据表格：引言 (Chapter 1: Introduction)",
+    "summary": "本数据表格梳理了《大规模并行处理器编程》第一章的核心概念，涵盖异构架构设计差异、Amdahl定律及并行编程面临的四大挑战（内存带宽、同步开销、工作效率、数据敏感性），为理解CUDA底层逻辑与系统化性能推理奠定基础。",
+    "sections": [
+      {
+        "heading": "表格说明 (Table Description)",
+        "points": [
+          "本数据表格提取了第一章介绍的关键架构与编程概念，并按照定义、CUDA相关性、性能考量以及常见实现缺陷四个维度进行结构化总结，旨在支持并行计算思维的快速复习与底层性能推理自测。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "concept": "延迟导向设计 (Latency-oriented design)",
+        "definition": "CPU的核心架构设计理念，通过投入大容量片上缓存(Caches)和复杂的分支预测与控制逻辑，来最小化单线程内算术运算和内存访问的延迟。",
+        "cudaRelevance": "在异构并行计算(Heterogeneous parallel computing)模型中，CPU负责高效执行难以并行化的复杂串行代码片段（桃核部分）。",
+        "performanceConcern": "此类设计占用大量芯片面积和功耗，极大限制了能够同时容纳的计算单元(ALUs)数量，无法满足现代大规模数据密集型任务的吞吐需求。",
+        "commonMistake": "将高度数据并行(Data parallel)且计算密集的任务完全交由CPU处理，导致算力与内存带宽严重受限。"
+      },
+      {
+        "concept": "吞吐量导向设计 (Throughput-oriented design)",
+        "definition": "GPU的核心架构设计理念，摒弃大容量缓存和复杂控制逻辑，将大量芯片面积用于简单的计算单元(ALUs)和内存通道。",
+        "cudaRelevance": "CUDA编程的核心硬件基础，它依靠数十万并发线程(Concurrent threads)的快速切换来隐藏长内存访问和计算延迟。",
+        "performanceConcern": "高度依赖极大数量的线程。如果应用程序无法被划分为足够多的独立线程，GPU将无法有效掩盖长延迟(Latency hiding)。",
+        "commonMistake": "在GPU上运行分支逻辑极其复杂或并发度极低的单线程任务，导致海量计算资源陷入闲置状态。"
+      },
+      {
+        "concept": "Amdahl定律 (Amdahl's Law)",
+        "definition": "性能评估原则，指出应用程序的最大理论加速比(Speedup)受限于其代码中无法被并行化的串行部分的时间占比。",
+        "cudaRelevance": "指导异构系统的协同设计：揭示了为何必须将串行代码保留在CPU执行，而将极高并发度的代码卸载至CUDA设备执行。",
+        "performanceConcern": "如果应用中串行部分占比较大（例如30%），即使并行部分的GPU算力无限大，整体应用的最高理论加速比也仅为1.43倍。",
+        "commonMistake": "盲目追求GPU硬件算力升级，却忽视了重构算法以提升并行代码覆盖率(Parallel coverage)，导致实际加速效果远不及理论预期。"
+      },
+      {
+        "concept": "内存受限 (Memory-bound)",
+        "definition": "描述一种应用程序的性能瓶颈状态，即执行速度受制于数据从主存(DRAM)传输到处理器的速率(Memory bandwidth)，而非处理器的计算速度。",
+        "cudaRelevance": "CUDA开发者必须深入理解内存层级架构，通过CUDA特有的片上存储(On-chip memories)机制来大幅减少对全局DRAM的重复访问。",
+        "performanceConcern": "单纯地将代码并行化往往会迅速耗尽系统的内存带宽，如果不进行数据局部性(Data locality)优化，通常最高只能获得约10倍的性能加速。",
+        "commonMistake": "误以为算力决定一切，未对访存模式进行深度优化（如合并访存或利用共享内存），导致大量计算单元在等待数据传输中空耗。"
+      },
+      {
+        "concept": "同步开销 (Synchronization Overhead)",
+        "definition": "在需要线程协作(Collaboration)的应用程序中，线程等待其他线程完成特定操作或到达特定执行点所产生的时间与性能损耗。",
+        "cudaRelevance": "针对非“尴尬并行(Embarrassingly parallel)”的任务，CUDA提供了屏障(Barriers)和原子操作(Atomic operations)等机制来保障数据一致性。",
+        "performanceConcern": "过度的同步操作会破坏大规模并发执行的流水线，使得大量线程被迫阻塞等待，导致并行吞吐量断崖式下跌。",
+        "commonMistake": "在细粒度并行循环中频繁调用全局同步屏障或高冲突的原子操作，导致本应并行的程序退化为近似串行执行。"
+      },
+      {
+        "concept": "工作效率 (Work Efficiency)",
+        "definition": "衡量并行算法相对于最优串行算法在总执行工作量（如计算步骤和指令数）上的效率指标。",
+        "cudaRelevance": "在设计高级CUDA并行模式（如前缀和 Scan / Prefix-sum）以转化串行递归问题时，必须严格考量的核心准则。",
+        "performanceConcern": "某些并行算法为了适应并发执行机制，会执行过多的冗余工作(Redundant work)。在处理大规模数据集时，这些冗余工作会抵消并行带来的速度优势。",
+        "commonMistake": "仅关注代码是否能够被完全展开为并行格式，而忽略了并行转换带来的额外时间复杂度增加，导致最终运行速度反而慢于串行版本。"
+      }
+    ]
+  }
+}

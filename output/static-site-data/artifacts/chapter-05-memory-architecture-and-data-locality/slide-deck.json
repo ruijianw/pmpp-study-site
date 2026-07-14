@@ -1,0 +1,171 @@
+{
+  "chapterId": "chapter-05-memory-architecture-and-data-locality",
+  "chapterTitle": "Memory Architecture And Data Locality",
+  "sourceId": "bde6b4cd-9cdf-4782-a570-a72e79387d7d",
+  "sourceTitle": "chapter-05-memory-architecture-and-data-locality.pdf",
+  "artifactType": "slide-deck",
+  "artifactLabel": "Slide Deck",
+  "generatedAt": "2026-07-13T13:32:13.481556Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "幻灯片大纲：内存架构与数据局部性 (Chapter 5: Memory Architecture and Data Locality)",
+    "summary": "本幻灯片组提炼了《大规模并行处理器编程》第五章的核心内容，系统讲解计算访存比与Roofline模型、CUDA内存层级、共享内存与分块(Tiling)优化技术。同时深入剖析数据依赖同步陷阱、越界访存边界检查以及共享内存对硬件占用率(Occupancy)的性能影响。",
+    "sections": [
+      {
+        "heading": "使用建议 (Usage Tips)",
+        "points": [
+          "前3页侧重于性能推理(Performance Reasoning)，介绍FLOP/B和Roofline模型，用于判断内核瓶颈。",
+          "第4-6页梳理CUDA内存架构，重点区分寄存器、本地内存(Local memory)与共享内存(Shared memory)的作用域与物理实质。",
+          "第7-10页通过矩阵乘法实例，拆解分块(Tiling)策略、条带开采(Strip-mining)机制，并强调极其重要的读写依赖与同步屏障(`__syncthreads()`)。",
+          "最后4页聚焦实现细节与优化陷阱，涵盖非整除矩阵的复杂边界检查以及避免占用率暴跌的动态内存分配技巧。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "slideNumber": 1,
+        "title": "计算访存比与性能瓶颈 (Compute-to-Global-Memory-Access Ratio)",
+        "bullets": [
+          "定义 (FLOP/B)：衡量内核每访问 1 字节 (Byte) 全局内存所执行的浮点运算次数。",
+          "计算受限 (Compute-bound)：FLOP/B 极高，大部分时间用于执行算术指令，受限于硬件峰值计算吞吐量 (Peak Computational Throughput)。",
+          "内存受限 (Memory-bound)：FLOP/B 极低，计算核心闲置等待数据传输，受限于硬件峰值内存带宽 (Peak Memory Bandwidth)。",
+          "判定阈值：硬件峰值计算吞吐量 / 硬件峰值内存带宽 (例如 H100 的阈值为 20.0 FLOP/B)。"
+        ],
+        "speakerNotes": "在优化任何内核之前，必须先计算它的 FLOP/B。基础的矩阵乘法内核通常只有 0.25 FLOP/B，远低于 H100 的 20.0 阈值，因此是典型的内存受限程序。如果在这种情况下盲目优化计算指令，不仅毫无作用，还会浪费大量开发时间。",
+        "visualSuggestion": "展示一个天平，一端是“计算能力 (TFLOPS)”，另一端是“内存带宽 (TB/s)”，说明两者之间的平衡点即为判定阈值。"
+      },
+      {
+        "slideNumber": 2,
+        "title": "Roofline 模型与光速性能分析 (The Roofline Model)",
+        "bullets": [
+          "模型坐标：X 轴为计算强度 (FLOP/B)，Y 轴为计算吞吐量 (GFLOPS)。",
+          "硬件限制线：一条是代表内存带宽的斜线，另一条是代表峰值计算吞吐量的水平线。",
+          "光速性能分析 (Speed-of-light analysis)：通过对比应用在模型中的位置与硬件限制线，评估内核资源利用效率。",
+          "优化方向：若应用处于斜线区域 (内存受限)，唯有通过减少全局内存流量 (提升 X 轴) 才能突破当前的吞吐量天花板。"
+        ],
+        "speakerNotes": "Roofline 模型是我们进行性能推理的指南针。如果你的程序处于斜线下方，说明你被内存带宽卡住了；如果处于水平线下方，说明你被算力卡住了。通过这个模型，我们可以准确判断应用距离硬件的理论极限（即光速）还有多远。",
+        "visualSuggestion": "展示一个标准的 Roofline 模型图表，标注内存受限斜线区和计算受限水平区，并在斜线区放置点 A1 和 A2，解释向右上方优化的路径。"
+      },
+      {
+        "slideNumber": 3,
+        "title": "CUDA 内存类型层级 (CUDA Memory Types)",
+        "bullets": [
+          "全局内存 (Global Memory)：设备与主机均可读写，延迟极高，生命周期跨越整个应用。",
+          "常量内存 (Constant Memory)：只读，带有高速缓存，适合存放内核参数，受限于 64KB 容量限制。",
+          "共享内存 (Shared Memory)：片上高速暂存器，单 Block 内线程共享，适合协同加载重用数据。",
+          "寄存器 (Registers) 与 本地内存 (Local Memory)：单线程私有，自动标量变量默认入寄存器，而自动数组可能溢出至位于片外的本地内存。"
+        ],
+        "speakerNotes": "GPU 之所以能实现极致性能，在于它提供了程序员可显式控制的内存层级。要特别警惕“本地内存 (Local Memory)”，它虽然叫本地，但物理上依然位于缓慢的全局 DRAM 中。如果在内核中滥用自动数组，就会触发本地内存溢出，严重拖慢速度。",
+        "visualSuggestion": "展示 CUDA 内存层级金字塔或硬件拓扑图，从最顶端极速的 Register 到中间的 Shared Memory，再到最底端巨大的 Global Memory。"
+      },
+      {
+        "slideNumber": 4,
+        "title": "寄存器的隐藏优势 (Hidden Advantages of Registers)",
+        "bullets": [
+          "消除访存指令：寄存器操作数是内置于算术指令中的 (如 `fadd r1, r2, r3`)，无需额外的 load 指令，节省了宝贵的指令分发周期。",
+          "极致能效 (Energy Efficiency)：访问寄存器的能耗比访问全局内存低至少一个数量级。",
+          "寄存器分块 (Register Tiling)：将线程频繁重用的单个数据 (如矩阵乘法的累加器 Pvalue) 放置在寄存器中，是最基础的局部性优化。"
+        ],
+        "speakerNotes": "寄存器不仅仅是快。在底层，如果数据在全局内存，我们需要先发一条 load 指令，再发一条 add 指令。如果数据在寄存器，直接一条 add 指令搞定。这不仅提升了性能，还节省了极其可观的芯片功耗。",
+        "visualSuggestion": "指令对比图：左侧展示全局内存数据相加需要的 `load r2, addr` + `fadd r1, r2, r3`，右侧展示全寄存器操作仅需的 `fadd r1, r2, r3`。"
+      },
+      {
+        "slideNumber": 5,
+        "title": "共享内存与分布式协作 (Shared Memory & Distributed Collaboration)",
+        "bullets": [
+          "物理位置：位于 SM 片上 (On-chip) 的高速暂存器内存 (Scratchpad memory)。",
+          "声明方式：使用 `__shared__` 修饰符。数据在 Block 结束时自动销毁。",
+          "访问特点：需显式执行 load 操作 (区别于寄存器)，但具有极高带宽和极低延迟。",
+          "Hopper 架构新特性：引入线程块集群 (Thread block cluster) 机制，支持分布式共享内存，允许集群内的 Block 互相访问对方的共享数据。"
+        ],
+        "speakerNotes": "共享内存是我们用来打破内存带宽瓶颈的核心武器。不同于 CPU 无法控制的 L1 缓存，共享内存是程序员可以精确控制的暂存区。在最新的 Hopper 架构中，这种协作更是跨越了单个 Block，扩展到了集群级别。",
+        "visualSuggestion": "展示一个 SM 内部的结构图，强调 Shared Memory 模块被多个处理单元 (Processing Units) 共同连接和访问。"
+      },
+      {
+        "slideNumber": 6,
+        "title": "分块技术减少内存流量 (Tiling for Reduced Memory Traffic)",
+        "bullets": [
+          "核心动机：解决全局内存低带宽与高算力需求之间的矛盾。",
+          "数据局部性 (Data Locality)：将可以复用的数据子集 (Tile) 集中加载到共享内存中供多次读取。",
+          "流量缩减比例：对于 `TILE_WIDTH` 尺寸的分块矩阵乘法，每个元素被重复利用 `TILE_WIDTH` 次，从而将全局内存流量缩减至原本的 `1 / TILE_WIDTH`。",
+          "性能跃升：将 FLOP/B 提升至硬件阈值附近，使内核从深度内存受限转向轻度受限或计算受限。"
+        ],
+        "speakerNotes": "分块 (Tiling) 的思想可以用贴瓷砖来比喻。我们不一次性搬起整面墙，而是一块一块地处理。通过让线程协作，把一个 Tile 的数据加载到共享内存，所有线程就可以高速地重复读取它。如果是 32x32 的 Tile，全局内存流量直接降低 32 倍！",
+        "visualSuggestion": "展示矩阵相乘的全局内存重复读取冗余图，对比分块后将 Tile 放入共享内存的集中访问图。用显著的大字标出 `Traffic / TILE_WIDTH`。"
+      },
+      {
+        "slideNumber": 7,
+        "title": "分块执行与条带开采 (Strip-mining & Execution Phases)",
+        "bullets": [
+          "条带开采 (Strip-mining)：将长长的原始计算循环拆解为多个短小的执行阶段 (Phases)。",
+          "协作加载 (Collaborative Loading)：在每个阶段，Block 内的所有线程共同参与，每人负责将一个或多个元素从全局内存搬运至共享内存。",
+          "局部计算：加载完毕后，线程仅使用共享内存中的当前 Tile 数据完成该阶段的乘加运算。"
+        ],
+        "speakerNotes": "因为共享内存很小，装不下整个矩阵，我们需要用 Strip-mining 技术把计算切成多个阶段。就像蚂蚁搬家一样，第一阶段大家一起搬第一块 Tile，算完；第二阶段再一起搬第二块 Tile，覆盖上一块，继续算。",
+        "visualSuggestion": "展示矩阵乘法的多个阶段 (Phase 0, Phase 1...)。利用颜色高亮输入矩阵中正在被当前阶段处理的特定 Tile 块。"
+      },
+      {
+        "slideNumber": 8,
+        "title": "关键缺陷：屏障遗漏与数据依赖 (Data Dependences & Missing Barriers)",
+        "bullets": [
+          "读后写真依赖 (Read-after-write/True dependence)：读取数据前必须确保负责加载该数据的线程已完成写入。",
+          "写后读假依赖 (Write-after-read/False dependence)：覆盖加载下一阶段新数据前，必须确保所有线程已完成对当前共享内存数据的读取。",
+          "强制同步：在加载完成后、计算开始前，以及计算完成后、下一阶段加载前，必须各调用一次 `__syncthreads()`。",
+          "灾难后果：遗漏任何一次同步，都会导致线程读取到未初始化的垃圾值或被提前覆盖的数据。"
+        ],
+        "speakerNotes": "在分块内核中，最致命的实现错误就是漏掉同步屏障。由于 GPU 内部的 Warp 调度是乱序的，跑得快的线程可能会在跑得慢的线程还没读完数据时，就把下一阶段的新数据写进共享内存了。记住，分块循环内必定是两次 __syncthreads()。",
+        "visualSuggestion": "代码逻辑流图：Collaborative Load -> `__syncthreads()` (解决 RAW) -> Compute Phase -> `__syncthreads()` (解决 WAR) -> Loop。"
+      },
+      {
+        "slideNumber": 9,
+        "title": "边界检查的必要性 (The Necessity of Boundary Checks)",
+        "bullets": [
+          "非整除陷阱：当矩阵尺寸不是 Block 尺寸 (TILE_WIDTH) 的整数倍时，必然产生冗余线程。",
+          "隐蔽越界 (Hidden out-of-bounds)：即使是负责计算有效输出元素的线程，在处理矩阵边缘 Tile 时，其所负责加载的输入矩阵元素也可能跨越真实的物理边界。",
+          "后果：读取非法内存空间可能引发返回随机垃圾值，甚至导致程序直接崩溃 (Segmentation fault)。"
+        ],
+        "speakerNotes": "初学者常犯的错误是：只要在代码开头判断一下线程输出坐标是否越界就万事大吉了。大错特错！在分块加载时，即使是合法的线程，如果它被分配去搬运 Tile 边缘的数据，这块数据可能根本不在真实的矩阵里。所以，每次内存 load 都必须检查边界。",
+        "visualSuggestion": "展示一个 3x3 矩阵被套入 2x2 分块网格 (需要 4个 Block) 的示意图。高亮标出边缘 Block 中那些试图读取不存在的 M0,3 或 N1,3 的合法线程的访问越界。"
+      },
+      {
+        "slideNumber": 10,
+        "title": "安全边界填充机制 (Safe Boundary Padding)",
+        "bullets": [
+          "独立判定：对于输入矩阵 M 和 N，必须分别针对其各自的行、列索引编写条件保护 (如 `Row < Width && Col_M < Width`)。",
+          "越界占位 (Padding zero)：当检测到试图加载的元素越界时，不要抛弃该操作，而是向共享内存对应位置填入安全的占位值 `0.0f`。",
+          "计算无害性：由于 `0.0f` 在乘加运算 (Dot-product) 中没有任何副作用，这保证了后续的同步计算环节代码的整洁和正确性。"
+        ],
+        "speakerNotes": "发现越界了怎么办？我们不能让线程直接退出，因为后续还有 __syncthreads() 在等它。正确的做法是，当坐标越界时，让该线程往共享内存里填入 0.0。因为 0 乘以任何数都是 0，加起来没有任何影响，这是一种非常优雅的边界防御机制。",
+        "visualSuggestion": "展示一段代码切片对比，重点高亮 `if (Row < Width && ...) Mds[ty][tx] = M[...]; else Mds[ty][tx] = 0.0f;` 逻辑。"
+      },
+      {
+        "slideNumber": 11,
+        "title": "内存使用与占用率悬崖 (Impact of Memory on Occupancy)",
+        "bullets": [
+          "硬性资源制约：SM 的共享内存容量是极其有限的 (如 H100 每 SM 最高 228 KB)。",
+          "分配平衡：过大的 Tile 尺寸会极大地消耗共享内存，导致单个 SM 能够并发容纳的 Block 数量锐减。",
+          "性能悬崖 (Performance Cliff)：占用率 (Occupancy) 的降低会导致 SM 无法找到足够的活跃 Warp 来实现零开销上下文切换，从而彻底丧失延迟容忍 (Latency Tolerance) 能力。"
+        ],
+        "speakerNotes": "别以为共享内存是万能药，Tile 越大越好。资源是守恒的，你的 Block 吃掉了过多的共享内存，SM 就装不下其他 Block 了。占用率一旦掉下悬崖，GPU 就没有足够的线程来掩盖访存延迟，这叫做“优化过度导致的反噬”。",
+        "visualSuggestion": "天平图：左侧是“Tile 尺寸 (共享内存消耗)”，右侧是“驻留 Block 数量 (Occupancy)”。指出过度倾斜会导致延迟掩盖失效。"
+      },
+      {
+        "slideNumber": 12,
+        "title": "动态共享内存分配 (Dynamic Shared Memory Allocation)",
+        "bullets": [
+          "硬编码的劣势：使用如 `__shared__ float Mds[1];` 声明会导致代码与特定的 Tile 尺寸绑定，无法在运行时根据硬件自动适配。",
+          "动态声明：使用 `extern __shared__ Mds_Nds[];` 声明一个未指定大小的一维数组。",
+          "运行时配置：在主机端通过执行配置参数传入所需内存字节数：`kernel<<<grid, block, size_in_bytes>>>(...)`。",
+          "地址扁平化拆解：开发者需在内核中手动计算线性偏移量，在一维动态数组中切分出所需的多个逻辑子数组。"
+        ],
+        "speakerNotes": "为了让代码在不同的 GPU (比如从 2080 到 H100) 都能发挥极致性能，共享内存的大小不应该被写死。我们应当使用 extern __shared__，在启动 kernel 时通过主机查询当前硬件属性，动态计算并传入第三个参数 size_in_bytes，实现完美的硬件适配。",
+        "visualSuggestion": "展示 Host 端的执行配置代码 `<<<grid, block, size>>>` 并高亮 `size` 参数，用箭头指向 Device 端 `extern __shared__` 数组。"
+      }
+    ]
+  }
+}

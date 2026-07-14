@@ -1,0 +1,186 @@
+{
+  "chapterId": "chapter-16-dynamic-programming-and-wavefront-parallelism",
+  "chapterTitle": "Dynamic Programming And Wavefront Parallelism",
+  "sourceId": "53d954fd-2c4e-4132-a9e4-fa18b0c18262",
+  "sourceTitle": "chapter-16-dynamic-programming-and-wavefront-parallelism.pdf",
+  "artifactType": "slide-deck",
+  "artifactLabel": "Slide Deck",
+  "generatedAt": "2026-07-13T14:40:16.717306Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "幻灯片大纲：动态规划与波前并行 (Chapter 16: Dynamic Programming And Wavefront Parallelism)",
+    "summary": "本幻灯片组系统讲解了 GPU 上动态规划算法的波前并行化 (Wavefront Parallelism) 策略。内容从基础的自底向上迭代与块级分块，深入到解决 Warp 闲置的超平面变换 (Hyperplane transformation)，并剖析了超分块引发的 Bank 冲突等底层实现陷阱及跨块同步优化。",
+    "sections": [
+      {
+        "heading": "使用建议 (Usage Tips)",
+        "points": [
+          "第 1-3 页介绍动态规划的 GPU 适配性，解释为何抛弃自顶向下 (Top-down) 策略，并定义波前 (Wavefront)。",
+          "第 4-7 页对比恒定波前 (Floyd-Warshall) 与动态波前 (Smith-Waterman)，讲解块级分块 (Block-level tiling) 与共享内存合并访存。",
+          "第 8-12 页为核心架构优化：深度剖析矩形分块的 Warp 闲置缺陷，引入超平面变换 (Hypertiling)，并解决其带来的垃圾值越界与 Bank 冲突 (Bank conflicts) 陷阱。",
+          "第 13-14 页探讨高级同步与硬件生态：跨块同步 (Inter-block synchronization) 以及 Hopper 架构的 DPX 指令。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "slideNumber": 1,
+        "title": "动态规划与波前并行 (Dynamic Programming & Wavefront Parallelism)",
+        "bullets": [
+          "算法特征：动态规划通过组合重叠子问题 (Overlapping sub-problems) 的最优解来求解原问题。",
+          "波前 (Wavefront) 定义：在计算过程中，一组彼此独立、无数据依赖且可被完全并行计算的中间子问题集合。",
+          "并行潜力：波前内的所有单元天然适合 GPU 的海量线程进行并发处理，相邻波前之间则需严格同步。"
+        ],
+        "speakerNotes": "动态规划在图论和生物信息学中无处不在。要把它搬上 GPU，核心概念就是寻找“波前”。波前就像水波一样向前推进，在同一道波纹上的水分子（子问题）互不依赖，可以被几万个 GPU 线程同时处理。我们的优化目标就是让这条波前尽可能宽、尽可能平稳。",
+        "visualSuggestion": "展示一个简单的 2D 网格，用对角线高亮标出一组正在并行计算的单元，箭头指向其依赖的左侧、上方单元，标注为“Wavefront”。"
+      },
+      {
+        "slideNumber": 2,
+        "title": "实现策略：自顶向下 vs 自底向上 (Top-down vs Bottom-up)",
+        "bullets": [
+          "自顶向下 (Top-down) 陷阱：依赖递归与哈希表记忆化。GPU 不支持无限内联深层递归，函数调用开销极大；且访问哈希表会引发极严重的非合并访存 (Uncoalesced memory accesses)。",
+          "自底向上 (Bottom-up) 优势：采用迭代建表 (Tabulation)，从最小子问题开始逐步求解。",
+          "架构契合：迭代循环天然匹配 GPU 的 Kernel 启动模式，按规则的内存步长推进，完美暴露波前并行度。"
+        ],
+        "speakerNotes": "在 CPU 上写 DP，大家习惯用递归加备忘录。但在 GPU 上这是灾难。GPU 编译器无法无限制地内联递归函数，导致严重的调用栈开销。而且查哈希表会让同一个 Warp 里的线程去读散乱的内存，破坏合并访存。因此，在 GPU 上我们必须全部改写为自底向上的迭代填表法。",
+        "visualSuggestion": "对比图：左侧是“Top-down”，画着纠缠的递归调用树和散乱的内存访问（打红叉）；右侧是“Bottom-up”，画着整齐的 for 循环和规则的 2D 内存填表（打绿勾）。"
+      },
+      {
+        "slideNumber": 3,
+        "title": "波前模式的多样性 (Diversity of Wavefront Patterns)",
+        "bullets": [
+          "恒定规模波前 (Constant Wavefront)：波前包含的并发任务数在所有迭代中保持一致（如迭代更新整个 2D 平面）。",
+          "动态规模波前 (Dynamic Wavefront)：波前的长度随迭代次数增长或收缩（如矩阵的抗角线 Anti-diagonal）。",
+          "架构挑战：动态波前极易导致 GPU 的负载不均衡，初期和末期存在大量闲置的计算资源。"
+        ],
+        "speakerNotes": "波前并不是一成不变的。有些算法的波前自始至终一样大，GPU 跑起来很舒服。但像基因比对这种，波前是矩阵的对角线，它会从 1 个细胞慢慢变长到成百上千，然后再缩回 1 个。这种动态伸缩会让 GPU 在头尾阶段大量闲置，是我们后续优化的重点对象。",
+        "visualSuggestion": "展示图 16.2 中的 (a) 恒定波前（平移推进）和 (c) 动态抗角线波前（长度先增后减）的对比示意图。"
+      },
+      {
+        "slideNumber": 4,
+        "title": "恒定波前：Floyd-Warshall 算法",
+        "bullets": [
+          "算法原理：通过增加中间节点 k，迭代更新所有节点对 (i, j) 的最短路径。每轮 k 的波前是整个 2D 距离矩阵。",
+          "全局同步机制：由于第 k+1 轮完全依赖第 k 轮的结果，必须通过主机端的主循环反复触发内核终止与重启 (Kernel termination and relaunch)。",
+          "原地更新无竞态：因为 `dist[k][k] = 0`，本轮依赖的第 k 行/列在迭代前后值不变。因此多线程并发读写唯一的距离矩阵是安全的，无需双缓冲 (Double buffering)。"
+        ],
+        "speakerNotes": "Floyd-Warshall 是恒定波前的代表。每一轮迭代我们都把整个 2D 矩阵更新一遍，并行度拉满。由于下一轮必须等上一轮全算完，我们通过 CPU 发射 Kernel 来做全局同步。巧妙的是，因为节点到自身的距离是 0，数学上保证了作为基准的第 k 行列不会被中途改变，所以连双缓冲都省了，直接原地更新。",
+        "visualSuggestion": "展示一个 2D 距离矩阵，高亮第 k 行和第 k 列，展示任意一个格子 (i, j) 如何依赖这两个高亮格子进行更新。"
+      },
+      {
+        "slideNumber": 5,
+        "title": "动态波前：Smith-Waterman 算法",
+        "bullets": [
+          "生物学背景：用于基因序列比对，寻找局部最优序列匹配。",
+          "数据依赖：得分矩阵中的细胞 (i, j) 依赖于其上方、左方和左上方三个相邻细胞的结果。",
+          "抗角线波前 (Anti-diagonal wavefront)：只有处于同一条抗角线上的细胞是互不依赖的。波前大小随扫描过程先增后减。"
+        ],
+        "speakerNotes": "相比之下，Smith-Waterman 就棘手得多。它的每一个格子都要看它左边、上面和左上的邻居。这意味着你只能斜着算。同一条抗角线上的点才能并行。波前就像一条扫描线，从左上角划到右下角，长度动态变化，这是极难并行化的一类经典模式。",
+        "visualSuggestion": "展示图 16.6 的细胞依赖关系，三个红紫箭头指向中心细胞。旁边展示整个矩阵上波前像扫描线一样推进的动画感。"
+      },
+      {
+        "slideNumber": 6,
+        "title": "架构优化：块级分块 (Block-Level Tiling)",
+        "bullets": [
+          "分治策略：为降低全局同步开销，将庞大的动态规划矩阵分割为多个子块 (Tiles)，每个 Thread Block 负责一个子块。",
+          "局部同步：块内抗角线迭代利用极低延迟的共享内存 (Shared memory) 进行缓冲，并使用 `__syncthreads()` 实现轻量级的局部波前同步。",
+          "减少重启：仅在子块计算完毕，跨越子块边界时，才需要昂贵的内核级全局同步。"
+        ],
+        "speakerNotes": "如果每算一条长抗角线就停一次 Kernel，GPU 会被启动延迟卡死。我们引入块级分块。把大矩阵切成小豆腐块，让每个 Thread Block 领一块。块里的线程在超快的共享内存里用 __syncthreads 快速推进小波前，等这一整块算完了，再和其他 Block 汇报。这就把全局同步的次数降到了最低。",
+        "visualSuggestion": "展示图 16.7(b) 的网格结构，实线代表块边界，虚线代表块内的抗角线波前。对比块间和块内的同步频率。"
+      },
+      {
+        "slideNumber": 7,
+        "title": "共享内存与合并写回 (Coalesced Storing)",
+        "bullets": [
+          "散列计算困境：抗角线计算在物理地址上是斜向跳跃的。如果边算边写回全局内存，会引发灾难性的非合并访存 (Uncoalesced accesses)。",
+          "缓冲重组：整个子块在共享内存中计算完毕后，Warp 内的线程重新分配任务。",
+          "合并写回：所有线程协同工作，按行 (Row-by-row) 连续发出向量化存储指令，将共享内存完美转储至全局内存。"
+        ],
+        "speakerNotes": "块级分块不仅为了同步，更是为了救命的显存带宽。算抗角线是斜着走的，如果让线程斜着往全局内存写数据，带宽会直接崩溃。共享内存完美充当了缓冲池。算完一整块后，大家重新排队，按着物理行顺序平平整整地写回全局内存，把最散乱的计算化解为最完美的合并访存。",
+        "visualSuggestion": "访存流转图：抗角线计算（散乱的红色箭头，位于 Shared Memory 内部） -> 协同按行写出（整齐平行的绿色箭头，指向 Global Memory），标注为 Coalesced Storing。"
+      },
+      {
+        "slideNumber": 8,
+        "title": "微架构缺陷：矩形分块的闲置惩罚 (Underutilization)",
+        "bullets": [
+          "Warp 闲置问题：在矩形 (或正方形) 分块内部扫描抗角线时，初期和末期波前极短，导致大量分配的 Warp 线程无事可做，处于极低利用率状态。",
+          "理论效率低：边长为 n 的正方形分块需要 2n-1 次迭代，平均每次迭代的活跃线程仅约 n/2，大量算力被浪费。",
+          "局部性丢失：当计算推进到右下角时，后续相邻块亟需的右上角边界数据可能已被逐出 L2 缓存 (L2 Cache)。"
+        ],
+        "speakerNotes": "矩形分块看起来很美，但微架构底层在滴血。因为在这个矩形里扫对角线，一开始只有 1 个格子，然后 2 个，到了中间才达到峰值。你的 GPU 派了一个完整的 Block 进去，结果大部分时间很多 Warp 都在旁边干瞪眼。此外，算到最后，最先算出的右上角数据早被 L2 缓存踢出去了，导致邻居块又要重新读内存。",
+        "visualSuggestion": "展示图 16.13，左侧高亮抗角线中间活跃的蓝色线程和两端闲置的白色线程，右侧展示边界数据在 L2 缓存中的年龄差异（局部性流失）。"
+      },
+      {
+        "slideNumber": 9,
+        "title": "终极解法：超平面变换 (Hyperplane Transformation)",
+        "bullets": [
+          "几何变换：通过剪切变换 (Shear transformation)，将常规的矩形分块扭曲映射为平行四边形的超分块 (Hypertiles)。",
+          "对齐波前：此仿射变换的核心目的是使原矩阵的列，在变换后恰好与抗角线波前方向完全对齐。",
+          "索引映射：全局内存索引通过 `(r, q + m * r_tile)` 公式进行反向映射推导。"
+        ],
+        "speakerNotes": "为了榨干 GPU 算力，我们祭出大杀器：超平面变换。数学上叫 Shear 剪切变换。我们把正方形狠狠推成平行四边形。神奇的事情发生了：原本长度不断变化的抗角线，在这个平行四边形里被拉直成了长度固定的列！",
+        "visualSuggestion": "展示图 16.14(a) 到 (b) 的演变：正方形网格如何发生倾斜（第二行左移1，第三行左移2格），斜线变成了垂直线。"
+      },
+      {
+        "slideNumber": 10,
+        "title": "架构收益：恒定并行度与效率翻倍",
+        "bullets": [
+          "消除闲置：在超分块内部，每一次迭代的计算列长度均恒定为 n。分配的线程在整个子块计算周期内保持 100% 活跃。",
+          "工作效率翻倍 (Doubled Work Efficiency)：计算同样的 n×n 工作量，迭代次数从 2n-1 骤降至 n 次，整体计算效率提升一倍。",
+          "保护局部性：超分块的数据推进模式完美契合空间相邻性，大幅提升 L2 缓存的边界数据命中率。"
+        ],
+        "speakerNotes": "形变带来的是巨大的架构红利。因为波前被拉平了，所以每一次迭代，所有分派的线程都有活干，没有一个人闲着。正方形需要 2n-1 次循环才能算完的活，超分块只用 n 次循环就搞定了，工作效率直接翻倍。同时它也完美修复了边界数据的缓存局部性问题。",
+        "visualSuggestion": "用柱状图对比：Square Tile (迭代次数高，利用率曲线呈三角形) vs Hypertile (迭代次数低一半，利用率曲线为满格矩形)。"
+      },
+      {
+        "slideNumber": 11,
+        "title": "超分块陷阱一：垃圾值越界读取",
+        "bullets": [
+          "越界现象：为了维持恒定并行度，位于矩阵物理边界之外的线程也会被强行保持活跃状态。",
+          "风险成因：如果不处理，这些越界线程在后续迭代中，会从共享内存读取到未初始化的垃圾值 (Garbage values) 参与数学运算。",
+          "解决方案：必须编写 `initialize_tile` 函数，在计算开始前将共享内存超分块显式清零，以防止越界计算引发非法指令异常或数据污染。"
+        ],
+        "speakerNotes": "天下没有免费的午餐，超分块极其危险。因为我们强迫所有线程一直干活，有些位于矩阵边缘外的线程实际上在“空转算空气”。如果你不把共享内存提前清零，它们就会读到别人留下的随机垃圾值。一旦这些垃圾值进入 max4 等函数，可能会导致溢出甚至程序直接崩溃。预初始化是绝对必须的。",
+        "visualSuggestion": "代码提示：展示 `initialize_tile` 的片段，并在共享内存界外区域标注红色的骷髅头（Garbage Values），通过清零操作转为安全的绿色 0。"
+      },
+      {
+        "slideNumber": 12,
+        "title": "超分块陷阱二：隐藏的 Bank 冲突",
+        "bullets": [
+          "冲突成因：超分块在共享内存中依然以行主序 (Row-major) 存储。倾斜带来的步幅访问，使得如果分块宽度是 32 的倍数，跨行读取将精准命中同一 Bank。",
+          "串行化惩罚：高频度的上方/左上方依赖拉取将触发严重的 Bank 冲突，硬件强制串行化会导致访存极度变慢。",
+          "填充技术 (Padding)：使用 `x + (x >> LOG_NUM_BANKS)` 强行在每行末尾插入空白单元，打乱物理映射，将并发请求均匀错开。"
+        ],
+        "speakerNotes": "超分块的第二个死穴是 Bank 冲突。它在逻辑上是倾斜的，但物理上还是按行存的。这意味着你每次往上或者往左上找数据，跨的步子很可能正好是 Bank 数 32 的倍数。这会触发严重的 Bank 冲突，让你的加速收益全部吐回去。解决办法是经典的 Padding 技术，用位运算在地址里塞进空白列，打乱冲突的步伐。",
+        "visualSuggestion": "展示图 16.20，清晰地表明 Padding（灰色方块）是如何将原本在同一列的数据强制错开，分配到不同的 Bank 颜色块中。"
+      },
+      {
+        "slideNumber": 13,
+        "title": "进阶优化：跨块同步 (Inter-block Synchronization)",
+        "bullets": [
+          "性能痛点：依赖主机端 for 循环触发内核重启 (Kernel relaunch) 来同步波前，会导致极高的调度延迟与 SM 空闲。",
+          "标志位轮询：在全局内存维护一组 Flags。持久化线程块 (Persistent thread blocks) 在死循环中轮询依赖的邻居块标志位，满足即刻开工。",
+          "死锁风险：如果发射的 Block 总数超出了目标 GPU 所有 SM 物理能并发驻留的上限，会导致系统全局死锁 (Deadlock)。"
+        ],
+        "speakerNotes": "如果你对极限性能有追求，你会发现让 CPU 不断重启 Kernel 太慢了。我们可以用标志位加持久化线程块，实现跨块的直接点对点同步。邻居一算完，我立刻接着算。但这有个致命陷阱：千万别发射超过硬件物理上限的 Block，否则未调度的 Block 会一直等着，占据 SM 的 Block 永远不释放，整个 GPU 就死锁了。",
+        "visualSuggestion": "展示图 16.21 左右对比：左侧是 Kernel 终止重启留下的巨大白色空隙（Saved cycles），右侧是利用 Flag 紧凑衔接的流水线状态。"
+      },
+      {
+        "slideNumber": 14,
+        "title": "前沿生态：DPX 硬件指令加速",
+        "bullets": [
+          "底层算力跃升：自从 NVIDIA Hopper 架构起，CUDA 引入了专为动态规划设计的 DPX 指令集。",
+          "指令融合：例如 `__vimax3_s32_relu()` 指令，能够用专有硬件直接在一个周期内算出三个有符号整数与 0 之间的最大值。",
+          "消灭分支：完美替代了 Smith-Waterman 中繁杂的级联 `max()` 函数与 `if-else` 判断，极大提升了指令吞吐率。"
+        ],
+        "speakerNotes": "最后讲一点最新的硬件红利。NVIDIA 在 Hopper 架构直接为动态规划加上了硬件级指令 DPX。比如 Smith-Waterman 里最耗时的那步——找出左、上、左上加惩罚后的最大值，还要和 0 比大小。以前要写一堆 max 函数，现在直接调一条 `__vimax3_s32_relu` 指令，硬件底层一次性给你算完，这是降维打击。",
+        "visualSuggestion": "将复杂的数学公式 `max(a, b, c, 0)` 用一个漏斗图标表示，下方对应输出一条闪光的硬件指令 `__vimax3_s32_relu()`。"
+      }
+    ]
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "chapterId": "chapter-19-convolutional-neural-networks",
+  "chapterTitle": "Convolutional Neural Networks",
+  "sourceId": "765c4df9-5672-44d9-9eee-974ff60884f9",
+  "sourceTitle": "chapter-19-convolutional-neural-networks.pdf",
+  "artifactType": "flashcards",
+  "artifactLabel": "Flashcards",
+  "generatedAt": "2026-07-13T14:56:14.437822Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "闪卡：卷积神经网络 (Chapter 19: Convolutional Neural Networks)",
+    "summary": "包含 17 张精选闪卡，专为复习 GPU 上卷积神经网络 (CNN) 加速的核心微架构优化而设计。内容涵盖并行度解耦策略、3D Grid 索引线性解码、显式/隐式通用矩阵乘法 (GEMM) 展开的带宽惩罚与极致权衡，以及 cuDNN 的片上访存优化理念。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Tips)",
+        "points": [
+          "利用简单 (Easy) 难度卡片掌握 CNN 并行化维度的基本选择，以及批量执行 (Batched execution) 的核心目的。",
+          "通过中等 (Medium) 难度卡片理解 3D Grid 中应对 2D 空间切片时的线性化索引解码 (Linearized index decoding)，以及卷积转 GEMM 的基本思路。",
+          "挑战困难 (Hard) 难度卡片，深入死磕显式展开 (Explicit unfolding) 导致的带宽膨胀率数学规律，以及隐式展开 (Implicit unfolding) 在共享内存上极其复杂的按需实时索引映射。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "front": "卷积层之所以非常适合 GPU 加速，其最核心的算法特性是什么？",
+        "back": "卷积层拥有极高的计算访存比 (Compute-to-memory-access ratio) 与海量的数据并行度 (Parallelism)，完美契合 GPU 庞大的浮点运算吞吐能力。",
+        "difficulty": "easy",
+        "sourceHint": "19.1 Convolutional neural networks"
+      },
+      {
+        "front": "在编写基础的 CUDA 卷积内核时，哪四个维度的循环提供了最易于提取的并行性 (Easy parallelism)？",
+        "back": "批次样本 (N)、输出特征图 (M) 以及输出像素的空间高度和宽度 (H_out, W_out)。这些维度的计算相互独立，无数据依赖。",
+        "difficulty": "easy",
+        "sourceHint": "19.2 A CUDA convolutional layer kernel"
+      },
+      {
+        "front": "在基础 CUDA 卷积内核中，为什么强烈建议将输入通道 (C) 和滤波器窗口 (K) 的循环保持为串行执行？",
+        "back": "如果将它们并行化，多个线程会并发累加同一个输出像素的值，这将迫使内核使用高延迟的原子操作 (Atomic operations)，引发严重的读改写冲突并摧毁指令吞吐量。",
+        "difficulty": "medium",
+        "sourceHint": "19.2 A CUDA convolutional layer kernel"
+      },
+      {
+        "front": "在 CNN 训练和推理中，引入批量执行 (Batched execution) 是如何直接提升 GPU 硬件利用率的？",
+        "back": "批量处理使得我们可以在 Grid 的 Z 维度 (对应批次大小 N) 发射大量额外的 Thread Blocks。这极大充实了硬件的调度池，提升了 GPU 占用率 (Occupancy)，避免了单样本计算时 SM 可能出现的闲置。",
+        "difficulty": "easy",
+        "sourceHint": "19.1 Convolutional neural networks"
+      },
+      {
+        "front": "在典型的 CNN 3D Grid 映射中，`blockIdx.x` 和 `blockIdx.z` 通常分别被用来映射什么维度的数据？",
+        "back": "`blockIdx.x` 映射到特定的输出特征图 (Output feature map, M)，`blockIdx.z` 映射到批次中的独立样本 (Sample in batch, N)。",
+        "difficulty": "medium",
+        "sourceHint": "19.2 A CUDA convolutional layer kernel"
+      },
+      {
+        "front": "为什么在 3D Grid 中映射卷积输出的二维图像切片 (Tiles) 时，需要在内核中执行线性化索引解码 (Linearized index decoding)？",
+        "back": "因为 Grid 的 X 和 Z 维度已被占用，仅剩下 Y 维度。必须将 2D 的切片坐标使用行主序展平分配给 `blockIdx.y`，并在内核中利用除法和取模 (`blockIdx.y / W_grid` 和 `% W_grid`) 恢复其真实的 2D 坐标。",
+        "difficulty": "hard",
+        "sourceHint": "19.2 A CUDA convolutional layer kernel"
+      },
+      {
+        "front": "尽管基础的 CUDA 卷积内核可以暴露出极高的并行度，但其最大的性能瓶颈通常受制于什么？",
+        "back": "全局内存带宽 (Global memory bandwidth)。由于每个输出像素都需要从全局内存重复拉取大量输入特征图和滤波器数据，缺乏数据复用机制会导致系统瞬间遭遇访存瓶颈。",
+        "difficulty": "medium",
+        "sourceHint": "19.2 A CUDA convolutional layer kernel"
+      },
+      {
+        "front": "将卷积层公式化为通用矩阵乘法 (GEMM) 的核心性能动机是什么？",
+        "back": "为了引入数据复用 (Data reuse)。分块矩阵乘法 (Tiled GEMM) 能通过共享内存 (Shared memory) 极大降低全局内存带宽消耗，并且可以无缝接入经过极致优化的 cuBLAS 等线性代数底层库。",
+        "difficulty": "medium",
+        "sourceHint": "19.3 Formulating convolutional layer as GEMM"
+      },
+      {
+        "front": "当把卷积转化为 GEMM 时，滤波器组 (Filter banks) 在内存中还需要进行复杂的转置或重组吗？",
+        "back": "不需要。只要以“输出特征图”为最高维度存储，滤波器组在 C 语言的行主序 (Row-major order) 内存布局中就已经自然满足了 GEMM 所需的左侧矩阵格式。",
+        "difficulty": "medium",
+        "sourceHint": "19.3 Formulating convolutional layer as GEMM"
+      },
+      {
+        "front": "显式展开 (Explicit unfolding) 输入特征图以生成 GEMM 所需的右侧矩阵 B 时，面临的最致命的微架构惩罚是什么？",
+        "back": "内存冗余膨胀。由于相邻像素的感受野在空间上高度重叠，单个输入像素会被物理复制多次。这会导致灾难性的全局内存容量消耗和带宽浪费 (Memory bandwidth consumption)。",
+        "difficulty": "hard",
+        "sourceHint": "19.3 Formulating convolutional layer as GEMM"
+      },
+      {
+        "front": "显式展开 (Explicit unfolding) 导致的输入特征图显存膨胀率理论上趋近于什么数值？",
+        "back": "趋近于 $K^2$ (其中 K 为滤波器的边长尺寸)。在实际模型中，这常常意味着输入数据会被无意义地放大数十倍，其带来的额外显存 IO 搬运代价会直接抹平 GEMM 带来的计算提速。",
+        "difficulty": "hard",
+        "sourceHint": "19.3 Formulating convolutional layer as GEMM"
+      },
+      {
+        "front": "隐式展开 (Implicit unfolding) 技术是如何做到既享受 GEMM 极速吞吐又实现“零显存膨胀”的？",
+        "back": "隐式展开绝不在全局内存中真生物理构造矩阵 B。而是在分块 GEMM 执行时，当线程将数据从全局内存拉入共享内存 (Shared memory) 的瞬间，通过映射公式“实时”从原始未展开的输入张量 X 中精准抓取所需像素。",
+        "difficulty": "hard",
+        "sourceHint": "19.3 Formulating convolutional layer as GEMM"
+      },
+      {
+        "front": "在隐式展开的数学映射公式中，概念矩阵元素 $B[u,v]$ 的列索引 $v$ 的物理意义是什么？",
+        "back": "$v$ 对应输出特征图像素的行主序线性化索引。通过 $v / W\\_out$ 和 $v \\% W\\_out$ 可以解码出当前输出像素的二维空间坐标，这也是对应的输入感受野的起始左上角坐标。",
+        "difficulty": "hard",
+        "sourceHint": "19.3 Formulating convolutional layer as GEMM"
+      },
+      {
+        "front": "在隐式展开的数学映射公式中，概念矩阵元素 $B[u,v]$ 的行索引 $u$ 的物理意义是什么？",
+        "back": "$u$ 包含了输入通道信息 $c = u / (K^2)$，以及该像素在当前滤波器感受野内部的相对局部二维坐标 $(u \\% K^2) / K$ 和 $(u \\% K^2) \\% K$。",
+        "difficulty": "hard",
+        "sourceHint": "19.3 Formulating convolutional layer as GEMM"
+      },
+      {
+        "front": "为什么基于 GEMM 的卷积策略能在神经网络的深层和浅层中始终保持极高的硬件资源利用率？",
+        "back": "因为不论是浅层 (空间尺寸大但通道少) 还是深层 (空间尺寸小但通道大)，其参数的乘积 ($C \\times H\\_out \\times W\\_out$) 在整个网络中均保持庞大。这保证了转换后的 GEMM 矩阵规模总是足够大，能稳定填满 GPU 的计算管线。",
+        "difficulty": "medium",
+        "sourceHint": "19.3 Formulating convolutional layer as GEMM"
+      },
+      {
+        "front": "顶级深度学习库 cuDNN 是如何处理由动态张量布局引起的内存延迟 (Memory latency) 问题的？",
+        "back": "cuDNN 运用了类似于隐式展开的思路，通过动态计算映射关系，在片上内存 (On-chip memory/caches) 中懒加载 (Lazily generating) 并管理数据分块。通过计算指令的并发执行完美掩盖了全局内存抓取延迟。",
+        "difficulty": "hard",
+        "sourceHint": "19.4 CUDNN library"
+      },
+      {
+        "front": "cuDNN 的 API 设计中引入“不透明描述符 (Opaque descriptors)”的核心目的是什么？",
+        "back": "它允许用户通过任意的跨度 (Strides) 极其灵活地指定多维张量在内存中的物理布局，将上层深度学习框架的复杂数据格式与底层的特定 GPU 硬件加速算法彻底解耦。",
+        "difficulty": "medium",
+        "sourceHint": "19.4 CUDNN library"
+      }
+    ]
+  }
+}

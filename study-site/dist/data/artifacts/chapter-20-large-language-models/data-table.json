@@ -1,0 +1,72 @@
+{
+  "chapterId": "chapter-20-large-language-models",
+  "chapterTitle": "Large Language Models",
+  "sourceId": "a4b5617c-66a4-46b0-8327-9858947bc83d",
+  "sourceTitle": "chapter-20-large-language-models.pdf",
+  "artifactType": "data-table",
+  "artifactLabel": "Data Table",
+  "generatedAt": "2026-07-13T15:00:49.903679Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "数据表格：大语言模型架构与注意力机制 (Chapter 20: Large Language Models)",
+    "summary": "本表格系统整理了大型语言模型 (LLM) 推理过程中的 GPU 架构挑战与核心优化技术，重点解析了融合 Softmax、KV 缓存 (KV caching)、Flash Attention 的分块合并规则，以及 MQA/GQA 显存优化等关键概念及其在 CUDA 中的实现底层权衡与常见陷阱。",
+    "sections": [
+      {
+        "heading": "表格说明 (Table Description)",
+        "points": [
+          "对比了预填充 (Prefill) 与生成 (Generation) 阶段在算术强度 (Arithmetic intensity) 上的本质物理差异。",
+          "剖析了如何通过数学等价重构 (如局部 Softmax 合并规则) 将访存密集型操作转移至片上共享内存 (Shared memory) 中完成，彻底消除中间矩阵的全局内存 (Global memory) 流量。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "concept": "融合因果掩码与 Softmax (Fused Causal Masking & Softmax)",
+        "definition": "在单个 CUDA Kernel 中同时完成矩阵乘法的缩放、因果掩码 (屏蔽未来 Token) 以及 Softmax 概率分布计算，避免矩阵多次往返全局内存。",
+        "cudaRelevance": "因果掩码无需显式构建并在显存中执行加 $-\\infty$ 的操作，而是利用线程索引条件 (如 `idx <= blockIdx.x`) 在寄存器中隐式跳过无效元素的计算，最大化指令吞吐量。",
+        "performanceConcern": "将原本需要三次独立 Kernel 调用的操作融合，极大地提升了算术强度 (Arithmetic intensity)，并且仅需使用块级同步 (`__syncthreads()`) 代替昂贵的全局同步屏障。",
+        "commonMistake": "按照数学公式 $O = \\text{softmax}(QK^T + M)V$ 按部就班地将其拆分为多个 Kernel，导致庞大的 $N \\times N$ 中间矩阵频繁读写全局内存，造成极其严重的内存带宽受限 (Memory-bound)。"
+      },
+      {
+        "concept": "KV 缓存 (KV Caching)",
+        "definition": "在生成 (Generation) 阶段，由于每次迭代仅追加一个 Token，系统将之前所有 Token 计算好的 K 和 V 矩阵存储在内存中并重用，以避免极度昂贵的全局重复投影计算。",
+        "cudaRelevance": "彻底改变了 LLM 推理后期的微架构行为：预填充阶段 (Prefill) 是高算术强度的矩阵-矩阵乘法 (GEMM)，而生成阶段随着 KV 缓存的引入退化为极其低效的向量-矩阵乘法 (GEMV)。",
+        "performanceConcern": "导致生成阶段的算术强度骤降至大约 1 FLOPS/Byte 级别，GPU 从计算受限 (Compute-bound) 瞬间变为极度的内存带宽受限，造成计算核心严重闲置。",
+        "commonMistake": "误以为通过常规的多用户批处理 (Batching) 就能像优化全连接层那样提升注意力层 (Attention layer) 的算术强度。实际上，不同用户的 KV 缓存无法共享，批处理仅能增加线性投影层的吞吐，对注意力层无效。"
+      },
+      {
+        "concept": "Flash Attention 分块架构 (Flash Attention Tiling)",
+        "definition": "一种数学上精确的注意力重构算法，允许在片上内存 (On-chip memory) 中以分块 (Tiling) 和迭代的方式计算完整的注意力头结果，中间无需写回全局内存。",
+        "cudaRelevance": "精心设计的数据放置策略：将 $Q, O$ 以及局部最大值 ($m_i$) 和分母 ($D_i$) 放入寄存器 (Registers) 极速访问；将 $K^T, V$ 以及临时矩阵 $S, P$ 切片载入共享内存 (Shared memory)。",
+        "performanceConcern": "彻底消灭了大小为 $O(N^2)$ 的中间矩阵 $S$ 和 $P$ 对全局显存容量和带宽的消耗，使得 GPU 可以全速执行计算。最新版本还利用 Hopper 架构的 TMA 和 WGMMA 实现异步数据移动与计算掩盖。",
+        "commonMistake": "在向共享内存加载 $K^T$ 或 $V$ 矩阵切片时，忘记进行正确的内存填充 (Padding) 处理。由于多个 Warp 线程按列读取数据，未对齐的跨步访问极易引发灾难性的 Bank 冲突 (Bank conflicts)。"
+      },
+      {
+        "concept": "Softmax 局部合并规则 (Local Softmax Composition Rule)",
+        "definition": "Flash Attention 能够分块执行的数学基石。通过分别维护各数据块的局部最大值 (Local maximum) 和分母和 (Denominator sum)，并利用指数差值进行重缩放，将分块的 Softmax 无损拼装为全局 Softmax。",
+        "cudaRelevance": "使得原本需要对整行数据进行全局规约 (Global reduction) 的 Softmax 操作，可以完美适配 GPU 的分层架构，被拆解为独立的 Warp/Block 级别迭代任务。",
+        "performanceConcern": "避免了在计算分母之前需要进行一整轮全局遍历的同步开销，允许 Kernel 在单一的流式循环中边加载分块、边乘加、边更新概率。",
+        "commonMistake": "在迭代更新到下一个数据块 $B$ 时，发现新的全局最大值，却忘记对之前已经累加到输出矩阵 $O$ 中的局部结果 (基于旧最大值) 乘以校正系数 $e^{m_{old} - m_{new}}$，导致数值结果完全错误。"
+      },
+      {
+        "concept": "多查询与分组查询注意力 (MQA & GQA)",
+        "definition": "模型架构级别的内存优化。MQA 让所有的 Query 头共享唯一一组 K 和 V；GQA 则是让几个组的 Query 头共享对应的 K 和 V，在模型精度与物理显存之间取得折中。",
+        "cudaRelevance": "在生成阶段，极大地压缩了 KV 缓存 (KV cache) 在全局内存中的绝对物理体积（最高达几十倍的缩减）。",
+        "performanceConcern": "这使得一次从全局显存读取的 K/V 缓存能被多个并行处理 Query 的线程复用，直接将生成阶段的算术强度成倍提升（提升倍数等于组内的 Query 头数 $h_q/g_q$），极大缓解了 Memory Wall 问题。",
+        "commonMistake": "在部署原生多头注意力 (MHA) 模型时，盲目扩大批处理规模 (Batch size)，导致 GPU 显存因庞大、非共享的 KV 缓存瞬间爆满并抛出 OOM (Out Of Memory) 异常。"
+      },
+      {
+        "concept": "投机解码 (Speculative Decoding)",
+        "definition": "使用一个小巧的草稿模型 (Draft model) 快速预测未来的若干个 Token，随后将这些预测批量提交给大型目标模型 (Target model) 进行一次性的并行验证。",
+        "cudaRelevance": "这是一种特殊形态的批处理 (Batching)。被验证的 Token 共享同一个前缀上下文，因此它们可以完美复用同一份底层的 KV 缓存内存读取。",
+        "performanceConcern": "强行将被严重带宽受限的逐 Token 生成过程 (GEMV)，逆转为能够复用 KV 缓存的高算术强度过程。原本读取一次缓存只能验证 1 个 Token，现在读取一次可以并行验证 $N$ 个预测，大幅提升推理吞吐率。",
+        "commonMistake": "认为优化大模型推理只能从底层算子如 Flash Attention 着手。在极度依赖自回归 (Autoregressive) 的生成后期，算子级优化边际效应递减，必须引入诸如投机解码等算法与系统级联合优化方可破局。"
+      }
+    ]
+  }
+}

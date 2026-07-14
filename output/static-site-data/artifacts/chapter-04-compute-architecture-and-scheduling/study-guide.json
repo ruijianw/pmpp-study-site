@@ -1,0 +1,74 @@
+{
+  "chapterId": "chapter-04-compute-architecture-and-scheduling",
+  "chapterTitle": "Compute Architecture And Scheduling",
+  "sourceId": "c4dee50c-ba72-41d3-819f-b65012626952",
+  "sourceTitle": "chapter-04-compute-architecture-and-scheduling.pdf",
+  "artifactType": "study-guide",
+  "artifactLabel": "Study Guide",
+  "generatedAt": "2026-07-13T13:21:57.531373Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "学习指南：计算架构与调度 (Chapter 4: Compute Architecture and Scheduling)",
+    "summary": "本章深入探讨了现代GPU的底层计算架构，解析了流式多处理器(SM)的资源分配、线程块调度(Thread block scheduling)及Warp执行机制(SIMT)。重点讨论了延迟容忍(Latency tolerance)、控制分支发散(Control divergence)、占用率(Occupancy)计算以及资源限制导致的性能悬崖(Performance cliff)等核心性能推理概念。",
+    "sections": [
+      {
+        "heading": "学习目标 (Learning Objectives)",
+        "points": [
+          "1. 理解现代GPU架构中流式多处理器(SM)、流处理器(Streaming processors)及线程块集群(Thread block cluster)的层级组织结构。",
+          "2. 掌握线程块调度机制及透明可扩展性(Transparent scalability)如何使得同一代码在不同规模硬件上实现自适应运行。",
+          "3. 深入理解Warp与SIMD硬件的关系，掌握多维线程块如何被线性化(Linearized)并划分为32个线程的Warp。",
+          "4. 识别并评估控制分支发散(Control divergence)对性能的影响，特别是边界条件判断中的发散代价。",
+          "5. 理解Warp级调度如何通过细粒度多线程(Fine-grained multithreading)和零开销调度(Zero-overhead scheduling)实现延迟容忍(Latency tolerance)。",
+          "6. 能够基于寄存器(Registers)、线程槽(Thread slots)等硬件限制进行性能推理，计算并优化内核的占用率(Occupancy)。",
+          "7. 掌握使用 CUDA API (如 cudaGetDeviceProperties) 动态查询设备资源，以适配网格执行配置。"
+        ]
+      },
+      {
+        "heading": "章节结构映射 (Section-by-Section Chapter Map)",
+        "points": [
+          "4.1 现代GPU架构 (Architecture of a modern GPU): 介绍 SM、GPC (如Hopper架构) 以及内存控制器(Memory Controller)的宏观硬件拓扑。",
+          "4.2 线程块调度 (Thread block scheduling): 阐述以Block为基本单位分配至SM的机制，引入支持分布式共享内存的线程块集群(Thread block cluster)。",
+          "4.3 同步与透明可扩展性 (Synchronization and transparent scalability): 解析 __syncthreads() 的屏障同步原理，探讨Wave调度概念和因Block数无法整除引发的尾部效应(Tail effect)。",
+          "4.4 Warp与SIMD硬件 (Warps and SIMD hardware): 讲解Warp（32个线程）作为基本调度单位，多维Block的行主序线性化，以及SIMT执行模型硬件原理。",
+          "4.5 控制发散 (Control divergence): 剖析if-else或循环中由于控制流路径不同导致的多遍(Multi-pass)串行执行代价及独立线程调度(Independent thread scheduling)。",
+          "4.6 Warp调度与延迟容忍 (Warp scheduling and latency tolerance): 揭示GPU如何通过过载分配(Oversubscription)和零开销上下文切换来隐藏访存等长延迟。",
+          "4.7 资源划分与占用率 (Resource partitioning and occupancy): 分析寄存器、Block/Thread限制对占用率(Occupancy)的综合影响，解析因微小资源增加引发的“性能悬崖(Performance cliff)”。",
+          "4.8 查询设备属性 (Querying device properties): 使用 cudaGetDeviceCount 等 API 在运行时获取硬件能力，辅助动态优化配置。"
+        ]
+      },
+      {
+        "heading": "关键概念精解 (Key Concepts)",
+        "points": [
+          "Warp与SIMT: Warp是SM中硬件调度的最小单位（通常为32个线程）。SIMT (Single Instruction, Multiple Thread) 模型允许开发者编写标量线程代码，由硬件自动分组为Warp并以SIMD方式执行，分摊了取指和指令分发成本。",
+          "控制发散 (Control divergence): 同一Warp内不同线程走向不同的控制流分支时，硬件必须分多遍(Multi-pass)依次执行各分支路径。在执行某一路径时，不属于该路径的线程将被暂时置为非活跃状态，导致执行资源的闲置浪费。",
+          "延迟容忍 (Latency tolerance): GPU通过为每个SM分配远超其当前执行单元数量的线程(Oversubscription)，在某些Warp等待长延迟操作（如全局内存访问）时，能够实现零开销(Zero-overhead)切换到其他就绪的Warp，从而隐藏延迟。",
+          "占用率 (Occupancy): 实际分配给SM的Warp（或线程）数量与SM硬件支持的最大数量之比。受到线程槽、Block槽、共享内存容量和寄存器数量的严格动态约束。",
+          "透明可扩展性 (Transparent scalability): 硬件可以按任意相对顺序并发执行独立的线程块。这保证了同一套CUDA代码在拥有较少或较多SM的不同代际GPU上，无需修改也能实现高效负载分配。"
+        ]
+      },
+      {
+        "heading": "常见误区与实现缺陷 (Common Misunderstandings & Mistakes)",
+        "points": [
+          "错误：在可能产生发散的条件分支内部调用 __syncthreads()。真相：如果一个Block中的部分线程绕过了该屏障（例如进入了else分支），将导致部分线程永远等待，引发死锁(Deadlock)或未定义行为。",
+          "错误：认为设置正好包含32个线程的Block可以安全省去 __syncthreads()。真相：自Volta架构起，GPU引入了独立线程调度(Independent thread scheduling)，Warp内的线程在发散后不再保证隐式重新收敛(Reconverge)。即使在Warp内，必须同步时也要显式调用 __syncwarp() 等原语。",
+          "错误：过度优化以消除所有边界条件引起的发散。真相：随着数据量增大（如向量长度超过一万），由于边界检查导致发散的Warp数量在总体Warp中占比极小（远低于1%）。为此大幅增加代码复杂度通常是不划算的。",
+          "错误（性能悬崖）：不顾硬件限制随意增加局部变量。真相：每个线程增加一两个寄存器(Registers)，可能导致整个SM在分配Block时因超出寄存器总限额而将可同时驻留的Block数锐减（例如占用率从100%暴降至75%），引发性能断崖式下跌。"
+        ]
+      },
+      {
+        "heading": "三阶段实践计划 (3-Session Practice Plan)",
+        "points": [
+          "Session 1: Warp线性化与发散推演。在纸上画出 8x8 的 2D Block 线程矩阵。基于行主序映射，手动推算它如何被线性化为2个Warp（每Warp 32线程）。随后分析：若条件是 if(threadIdx.y > 0)，会有几个Warp发生控制发散？",
+          "Session 2: 屏障死锁与API实践。编写一段包含 if-else 且依据 threadIdx.x 发生发散的代码，并在其中错误地放入 __syncthreads()，观察程序的挂起或报错行为。修复该逻辑，将其移出分支结构。",
+          "Session 3: 占用率(Occupancy)计算挑战。假设某SM支持最高2048个线程和64K寄存器。给定内核A（Block大小256，每线程34个寄存器），手动计算其由于寄存器超限带来的占用率下降，并思考如何利用 cudaGetDeviceProperties 提前预判该问题。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

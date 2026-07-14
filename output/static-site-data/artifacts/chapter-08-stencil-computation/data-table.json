@@ -1,0 +1,65 @@
+{
+  "chapterId": "chapter-08-stencil-computation",
+  "chapterTitle": "Stencil Computation",
+  "sourceId": "216acd9e-1b90-4169-9dd3-45891e57857c",
+  "sourceTitle": "chapter-08-stencil-computation.pdf",
+  "artifactType": "data-table",
+  "artifactLabel": "Data Table",
+  "generatedAt": "2026-07-13T13:47:09.209366Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "数据表格：模板计算 (Chapter 8: Stencil Computation)",
+    "summary": "本数据表格系统整理了《大规模并行处理器编程》第八章关于 3D 模板计算优化的核心知识。重点对比了模板计算与卷积的算术强度差异，剖析了 3D 共享内存分块的硬件限制与访存缺陷，并深度解析了通过 z 轴线程粗化 (Thread Coarsening) 与寄存器分块 (Register Tiling) 打破内存带宽瓶颈的高级策略。",
+    "sections": [
+      {
+        "heading": "表格说明 (Table Description)",
+        "points": [
+          "结构化呈现 3D 模板计算面临的极低算术强度与高光环开销 (Halo overhead) 难题。",
+          "解析 z 轴线程粗化与寄存器分块技术在提升内存合并访问效率、降低共享内存压力方面的底层原理与实现防错指南。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "concept": "模板计算的算术强度 (Arithmetic Intensity of Stencils)",
+        "definition": "模板模式通常缺乏对角线邻居的复用，导致其数据复用率远低于尺寸相近的卷积（如 3D 7点模板理想强度仅为 1.625 FLOP/B，而 7x7x7 卷积上限为 85.75 FLOP/B）。",
+        "cudaRelevance": "极低的算术强度使得基础 3D 模板内核严重受限于全局内存带宽 (Memory-bound)，这迫使开发者必须采用激进的高级分块策略来提升算力利用率。",
+        "performanceConcern": "在求解偏微分方程 (PDEs) 时常需使用双精度浮点数 (FP64)，这会使数据吞吐字节数翻倍，进一步恶化内存带宽瓶颈，并对片上内存容量提出极大挑战。",
+        "commonMistake": "在优化时盲目套用 2D/3D 卷积的预期，忽略了 3D 模板天生极低的数据复用属性，导致对共享内存分块收益的评估产生严重偏差。"
+      },
+      {
+        "concept": "3D 共享内存分块的硬件制约 (Hardware Limits of 3D Shared-memory Tiling)",
+        "definition": "试图使用与 3D 模板形状相匹配的立体 3D 线程块（如 8x8x8）来实施传统的共享内存分块协作加载技术。",
+        "cudaRelevance": "受限于现代 GPU 单 Block 最大 1024 线程的硬性硬件限制，3D 完美立方体线程块的单边长 (t) 最大只能设为 8。",
+        "performanceConcern": "边长为 8 会带来双重性能灾难：1. 光环单元 (Halo cells) 占比极高（对于一阶 3D 模板达 58%），严重拉低算术强度；2. 彻底破坏全局内存合并访问 (Coalescing)，因为一个 32 线程的 Warp 需跨越 4 行非连续内存读取（每行仅 8 元素），导致总线效率极其低下。",
+        "commonMistake": "初学者常认为使用立体的 3D 线程块组织来处理 3D 模板数据是理所当然的最优解，却浑然不知已陷入了非连续访存和极低算术强度的陷阱。"
+      },
+      {
+        "concept": "Z 轴线程粗化 (Z-axis Thread Coarsening)",
+        "definition": "将 3D 线程块降维至 2D（如 32x32），让每个单线程负责沿 Z 轴顺序循环计算一整列输出网格点的高级并行粒度调整策略。",
+        "cudaRelevance": "在内核中引入 Z 轴 for 循环，并在共享内存中仅维护一个包含三层数据（Prev, Curr, Next）的滑动窗口，成功替代了庞大且低效的完整 3D 块加载。",
+        "performanceConcern": "由于 x-y 平面尺寸 t 可以扩大到 32，极大地摊薄了光环开销，显著提升了算术强度（如从 0.96 跃升至 1.52 FLOP/B），同时完美恢复了内存合并访问 (Coalescing) 效率。共享内存消耗也从庞大的 t^3 缩减为高效的 3 * t^2。",
+        "commonMistake": "在 Z 轴循环推进滑动窗口（即将 Curr 数据变为 Prev，Next 变为 Curr）时，遗漏必要的 `__syncthreads()` 同步屏障。这会导致旧层的共享内存数据在被所有线程读取完毕前就被新层数据提前覆盖，引发严重的数据竞争。"
+      },
+      {
+        "concept": "模板中的寄存器分块 (Register Tiling in Stencils)",
+        "definition": "针对仅包含正交方向邻居的模板（如 3D 7点模板），将 Z 轴的前后层数据（Prev, Next）保存在线程私有的寄存器中，仅把需要跨线程共享的当前层（Curr）留存在共享内存中。",
+        "cudaRelevance": "巧妙利用了“Z 轴邻居在计算时仅被当前线程单独使用”这一特殊的数据隔离属性，将部分重用数据从共享内存转移至寄存器进行暂存。",
+        "performanceConcern": "将原本已经优化的滑动窗口共享内存消耗量再次降低至三分之一（仅保留一层）。由于寄存器具有比共享内存更低的延迟和更高的带宽，这进一步提升了底层的访存执行速度。",
+        "commonMistake": "在处理高阶模板 (High-order stencils) 时盲目扩大寄存器分块规模，导致单线程寄存器用量暴涨 (Register Pressure)。这会致使 SM 能够并发驻留的 Warp 数量锐减，引发占用率 (Occupancy) 骤降的性能悬崖。"
+      },
+      {
+        "concept": "模板阶数与光环开销 (Stencil Order and Halo Overhead)",
+        "definition": "模板阶数指从中心点向各个维度单侧延伸的有效网格点数量（如 1D 3点模板为一阶，5点为二阶）。",
+        "cudaRelevance": "阶数直接决定了分块计算时光环单元 (Halo cells) 的厚度。高阶模板需要在输入块中向外扩展更多的冗余加载线程，增加了边界检查 (Boundary checks) 的复杂性。",
+        "performanceConcern": "阶数的增加会导致光环数据比例呈几何级数上升，从而进一步稀释实际的算术强度。在评估分块策略时，高阶 3D 模板比低阶模板更迫切地需要借助线程粗化来扩大内部核心数据的相对占比。",
+        "commonMistake": "在修改基础内核以支持更高阶模板时，忘记相应地扩大共享内存数组的尺寸边界（需增加 2 * Order 的大小），或者遗漏对新增外围线程的停用逻辑，导致内存越界或越界计算污染结果。"
+      }
+    ]
+  }
+}

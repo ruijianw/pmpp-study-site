@@ -1,0 +1,72 @@
+{
+  "chapterId": "chapter-11-scan",
+  "chapterTitle": "Scan",
+  "sourceId": "9cc447c1-78a3-4adb-9800-672372e26c29",
+  "sourceTitle": "chapter-11-scan.pdf",
+  "artifactType": "data-table",
+  "artifactLabel": "Data Table",
+  "generatedAt": "2026-07-13T14:05:13.695226Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "数据表格：扫描 (Chapter 11: Scan)",
+    "summary": "本数据表格梳理了 GPU 并行扫描 (Parallel Scan/Prefix-Sum) 的核心技术点。涵盖了从 Kogge-Stone 算法的工作效率分析、双缓冲同步优化，到通过线程粗化和寄存器分块逼近内存带宽极限的高级策略，以及单 Kernel 跨块全局扫描的底层内存顺序语义。",
+    "sections": [
+      {
+        "heading": "表格说明 (Table Description)",
+        "points": [
+          "结构化展示并行扫描在工作效率 (Work efficiency)、内存带宽瓶颈和同步开销之间的权衡。",
+          "深入剖析多 Kernel 扫描分解策略与单 Kernel 跨块单向同步 (Unidirectional synchronization) 技术的底层实现与常见陷阱。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "concept": "Kogge-Stone 并行扫描 (Kogge-Stone Parallel Scan)",
+        "definition": "一种基于二叉树结构的并行扫描算法。其跨度 (Span) 极短，为 O(log N)，但通过冗余加法来避免共享依赖，总工作量为 O(N log N)。",
+        "cudaRelevance": "在拥有丰富执行资源的 GPU 上能以极快的速度完成扫描计算，是基础并行扫描的经典选择。",
+        "performanceConcern": "它是一种非工作效率 (Not work-efficient) 算法。在硬件执行资源受限时（如处理超大规模数据），多余的 O(N log N) 操作会导致其执行速度反而比 O(N) 的顺序扫描更慢。",
+        "commonMistake": "误认为所有能缩短并行步数的算法都能直接提升性能，忽视了额外增加的计算复杂度对底层计算资源的吞吐量压力。"
+      },
+      {
+        "concept": "双缓冲技术 (Double-buffering)",
+        "definition": "在循环迭代中使用两个交替扮演输入和输出角色的内存缓冲区，以解耦同次迭代内的读写依赖。",
+        "cudaRelevance": "在 Kogge-Stone 内核中，用于消除写后读 (Write-after-read) 的假依赖。线程在向输出缓冲区写入时，可以安全读取输入缓冲区的值，无需担心覆盖未读的旧数据。",
+        "performanceConcern": "能够直接省去循环体内部一半的 `__syncthreads()` 块级同步屏障，大幅降低了同步开销，但也带来了双倍的共享内存 (Shared memory) 资源占用。",
+        "commonMistake": "在未实施双缓冲的原位扫描 (In-place scan) 内核中，遗漏循环底部的第二个 `__syncthreads()`，导致执行较快的线程提前覆盖了较慢线程还未读取的旧值，引发极难排查的数据竞争 (Race condition)。"
+      },
+      {
+        "concept": "线程粗化与寄存器分块 (Thread Coarsening & Register Tiling)",
+        "definition": "让单个 GPU 线程先利用寄存器 (Registers) 串行扫描分配给它的一段数据，然后再通过并行的块级扫描合并各线程结果。",
+        "cudaRelevance": "将大量运算转化为无控制流发散 (Control divergence) 且无需同步的串行操作，并避免了对共享内存的频繁读写。",
+        "performanceConcern": "一方面摊薄了并行同步开销，更重要的是将整体算法的工作效率重新拉近至 O(N)，是在资源受限场景下提升吞吐量的核心手段。",
+        "commonMistake": "在实施粗化并向寄存器加载数据时，让单线程直接读取全局内存中连续的数据块。这会导致 Warp 内发生严重的非合并访存 (Uncoalesced accesses)。必须先将数据交替分块加载至共享内存，再由线程加载至寄存器。"
+      },
+      {
+        "concept": "全局扫描分解 (Global Scan Decomposition)",
+        "definition": "处理超大数组时，将跨 Block 的扫描任务分解的技术。常见有“扫描-扫描-相加 (Scan-scan-add)”和“归约-扫描-扫描 (Reduce-scan-scan)”。",
+        "cudaRelevance": "如果采用启动多个 Kernel 的策略，Reduce-scan-scan 在第一阶段只需将 Block 的总和写入全局内存，比 Scan-scan-add 写出全部中间扫描结果更节省带宽。",
+        "performanceConcern": "扫描的算术强度极低 (Arithmetic intensity ≈ 1/8 OP/B)，是纯粹的内存受限 (Memory-bound) 程序。多 Kernel 方法因必须将中间数组重复读写到全局内存 (DRAM)，无法达到理论峰值带宽。",
+        "commonMistake": "在使用 Reduce-scan-scan 策略时，未评估扫描算子是否满足交换律 (Commutativity)。因为前序的归约 (Reduce) 内核优化可能打乱了操作数的相加顺序。"
+      },
+      {
+        "concept": "单向同步与单回溯 (Unidirectional Synchronization & Single Lookback)",
+        "definition": "在单个 Kernel 内实现跨 Block 全局扫描的机制。后期 Block 不依赖全局屏障，而是通过原子轮询等待前序 Block 设置的“计算完成”标志位。",
+        "cudaRelevance": "结合动态分配的 Block 索引，可以确保较早的 Block 被优先调度，从而在单 Kernel 内部安全地建立起 Block 之间的数据依赖链，避免多 Kernel 调用的巨大带宽惩罚。",
+        "performanceConcern": "彻底避免了多 Kernel 的冗余内存访问。但“单回溯”会形成长依赖链，在高并发 Block 数量下可能导致严重的等待延迟；通常需进阶为“解耦回溯 (Decoupled lookback)”以缩短关键路径。",
+        "commonMistake": "在标志位的原子读取/写入中使用 `cuda::memory_order_relaxed`。必须使用 `acquire` 语义以防止编译器/硬件提前执行后续内存读取，并使用 `release` 语义确保标志更新前所有局部扫描结果已被安全写入全局内存。"
+      },
+      {
+        "concept": "Brent-Kung 与 SIMD 执行模型 (Brent-Kung vs. SIMD)",
+        "definition": "Brent-Kung 是另一种并行扫描算法，理论上具有 O(N) 的最优工作效率，但相较于 Kogge-Stone 有着更长 (更多的步骤) 的跨度 (Span)。",
+        "cudaRelevance": "虽然理论复杂度更优，但在 GPU 的 Warp (SIMD) 架构下，Brent-Kung 节省掉的操作会被转化为非活跃的闲置线程，而这些闲置线程仍然会消耗执行周期。",
+        "performanceConcern": "在 Warp 内部，Kogge-Stone 通常比 Brent-Kung 执行得更快，因为 Kogge-Stone 虽然做了更多“多余”的加法，但它充分利用了无法被释放的 SIMD 闲置资源，以更少的总步骤完成了计算。",
+        "commonMistake": "迷信算法理论时间复杂度，忽视了底层 GPU 锁步执行 (Lockstep execution) 机制，错误地认为 O(N) 的 Brent-Kung 在任何情况下都优于 Kogge-Stone。"
+      }
+    ]
+  }
+}

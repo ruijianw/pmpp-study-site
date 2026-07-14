@@ -1,0 +1,72 @@
+{
+  "chapterId": "chapter-12-filter",
+  "chapterTitle": "Filter",
+  "sourceId": "b72b13d3-d8d2-405c-ba31-db66494d85be",
+  "sourceTitle": "chapter-12-filter.pdf",
+  "artifactType": "study-guide",
+  "artifactLabel": "Study Guide",
+  "generatedAt": "2026-07-13T14:10:41.965885Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "学习指南：过滤与 Warp 投票 (Chapter 12: Filter)",
+    "summary": "本章重点探讨了在 GPU 上并行实现过滤 (Filter) 操作的底层策略。针对不稳定过滤 (Unstable filter) 中全局原子操作引发的串行化瓶颈，引入了合并原子操作 (Coalesced atomic operations) 与共享内存私有化 (Privatization) 技术。同时，针对稳定过滤 (Stable filter) 解析了如何利用排他扫描 (Exclusive scan)、线程粗化 (Thread coarsening) 实现高效的合并访存，并探讨了原位过滤 (In-place filter) 中关键的跨 Block 数据依赖。 ",
+    "sections": [
+      {
+        "heading": "学习目标 (Learning Objectives)",
+        "points": [
+          "1. 区分不稳定过滤 (Unstable filter) 与稳定过滤 (Stable filter) 的应用场景，并理解其底层实现的根本区别（原子累加 vs. 排他扫描）。",
+          "2. 识别基础不稳定过滤中，多个线程对同一全局计数器执行原子操作导致的严重硬件串行化瓶颈。",
+          "3. 掌握利用 Warp 投票 (Warp voting)、洗牌指令及协作组 (Cooperative groups) API 实现合并原子操作 (Coalesced atomic operations) 的原理。",
+          "4. 应用共享内存 (Shared memory) 实现块级私有化 (Block-level privatization)，大幅降低原子竞争并触发合并访存 (Memory coalescing)。",
+          "5. 理解稳定过滤如何利用排他扫描 (Exclusive scan) 精确计算每个元素的输出偏移量，并结合线程粗化 (Thread coarsening) 提升扫描效率。",
+          "6. 分析原位稳定过滤 (In-place stable filter) 的跨 Block 读写依赖图 (Dependence diagram)，理解单向同步如何防止数据被错误覆盖。"
+        ]
+      },
+      {
+        "heading": "章节结构映射 (Section-by-Section Chapter Map)",
+        "points": [
+          "12.1 背景 (Background): 定义过滤操作及压缩列表的概念，区分原位/异位 (In-place/Out-of-place) 以及稳定/不稳定 (Stable/Unstable) 变体。",
+          "12.2 基础不稳定过滤 (A simple parallel unstable filter): 演示直接使用全局原子操作的代码，指出竞争 (Contention) 导致的序列化问题。",
+          "12.3 合并原子操作 (Coalescing atomic operations with warp-level primitives): 利用 __activemask()、__popc() 及 coalesced_group 选举领导线程，合并 Warp 内的原子请求。",
+          "12.4 私有化 (Privatization): 通过在共享内存中创建局部输出列表和局部计数器，分散全局竞争压力，并优化最终向全局内存的连续写入。",
+          "12.5 基础稳定过滤 (A simple parallel stable filter): 讲解如何生成 keep 标志数组，并对其进行全局排他扫描 (Exclusive scan) 来获取严格保序的索引偏移。",
+          "12.6 改善合并访存 (Improving memory coalescing): 结合共享内存暂存和线程粗化，整合零散的活跃线程，形成更大块的连续全局内存写入。",
+          "12.7 原位稳定过滤 (In-place stable filter): 探讨读写复用同一内存空间时的时序要求，证明单次传递扫描天然满足了前向 Block 的读取优先级。",
+          "12.8 相关模式 (Related patterns): 延伸至去重、矩阵行列操作。指出当数据向外扩张（如增加行）时，需要逆向的跨 Block 同步机制。"
+        ]
+      },
+      {
+        "heading": "关键概念精解 (Key Concepts)",
+        "points": [
+          "合并原子操作 (Coalesced Atomic Operations): 通过 Warp 级原语识别活跃线程，选出一个 Leader 线程计算出需要的总递增量。由 Leader 统一执行一次原子操作，然后再通过 Warp 洗牌将基底偏移广播给其他线程，极大地减少了硬件串行化冲突。",
+          "协作组 (Cooperative Groups): CUDA 提供的一种 API，其中 coalesced_group 可直接代表 Warp 内的活跃线程。调用其 .size() 和 .thread_rank() 方法可以取代底层的位运算（如 __popc），使合并原子操作的代码更简洁安全。",
+          "私有化 (Privatization): 针对全局内存原子争用，为每个 Thread Block 在共享内存分配一个私有的计数器和输出数组。Block 内部在局部极速完成过滤后，再由单个线程执行一次全局原子累加，并将私有数组连续地写入全局内存。",
+          "原位过滤 (In-place Filter): 为节省显存，输出列表直接覆盖输入列表。核心难点在于必须保证旧数据被安全读取后，新数据才能写入（Read-before-Write）。在 GPU 上这表现为后续 Block 的写入绝不能早于前序 Block 的读取。"
+        ]
+      },
+      {
+        "heading": "常见误区与实现缺陷 (Common Misunderstandings & Implementation Mistakes)",
+        "points": [
+          "过度依赖编译器优化：误以为现代 CUDA 编译器会自动处理所有级别的原子冲突。真相是，编译器最多只能在单 Warp 级别尝试合并原子操作。对于几百个 Block 竞争同一个全局计数器的灾难，必须通过架构级的私有化 (Privatization) 来重构。",
+          "Warp 内的索引计算错误：在手写合并原子操作时，误用 threadIdx.x 计算输出偏移。真相是，必须基于掩码 (Active mask) 执行位级的前缀和，或直接使用 coalesced_group 的 thread_rank()，因为只有部分线程通过了过滤条件（处于活跃状态）。",
+          "原位稳定过滤的依赖陷阱：误以为可以在完全独立的内核中并发执行原位读写。真相是，如果没有底层扫描机制或单向同步提供的 Block 调度保障（即 Block j>i 时，i 的读取必然发生于 j 的写入之前），后调度的 Block 会摧毁未读的数据。",
+          "合并访存的错觉：在基础稳定过滤中，认为每个线程写入各自算出的索引就是高效的。真相是，由于只有部分线程存活，相邻存活线程的原始物理跨度很大。直接写入会导致碎片化的内存事务。必须先在共享内存中聚合，再连续写入全局内存。"
+        ]
+      },
+      {
+        "heading": "三阶段实践计划 (3-Session Practice Plan)",
+        "points": [
+          "Session 1: 不稳定过滤与 Warp 投票探究。编写并压测纯全局原子操作的不稳定过滤。接着，利用 coalesced_group 重构代码实现合并原子操作，观察 Nsight Compute 中 Atomic operations 统计指标的断崖式下降。",
+          "Session 2: 共享内存私有化与合并访存。实现基于共享内存的私有化 (Privatization) 不稳定过滤，重点调试 __syncthreads() 的调用时机。理解这一步是如何将原本散乱的全局内存写入转化为连续合并访存 (Coalesced accesses) 的。",
+          "Session 3: 稳定过滤与原位依赖。基于之前章节的排他扫描 (Exclusive scan) 实现一个完整的稳定过滤。引入线程粗化 (Thread coarsening) 并在共享内存中组装分块，最终实现原位 (In-place) 过滤，在纸上推演其跨 Block 读写依赖图。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

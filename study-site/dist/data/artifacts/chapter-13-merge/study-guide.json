@@ -1,0 +1,69 @@
+{
+  "chapterId": "chapter-13-merge",
+  "chapterTitle": "Merge",
+  "sourceId": "fe2cbf02-e8a0-4d31-8236-d29aa0d0b96c",
+  "sourceTitle": "chapter-13-merge.pdf",
+  "artifactType": "study-guide",
+  "artifactLabel": "Study Guide",
+  "generatedAt": "2026-07-13T14:18:14.158023Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "学习指南：归并 (Chapter 13: Merge)",
+    "summary": "本章探讨了在 GPU 上实现有序归并 (Ordered Merge) 操作的并行化策略。从引入协同秩 (Co-rank) 函数解决动态输入数据划分问题开始，逐步讲解基础内核、基于共享内存 (Shared memory) 的分块 (Tiling) 优化，最终通过循环缓冲区 (Circular-buffer) 和线程粗化 (Thread coarsening) 实现合并访存并压榨内存带宽。",
+    "sections": [
+      {
+        "heading": "学习目标 (Learning Objectives)",
+        "points": [
+          "1. 理解有序归并的稳定性 (Stability) 及其在归并排序和 Map-Reduce 框架中的基础作用。",
+          "2. 掌握协同秩 (Co-rank) 的概念，理解如何利用 O(log N) 的二分查找解决动态输入数据识别问题。",
+          "3. 分析基础并行归并内核中由于数据依赖导致相邻线程输入不连续，从而引发的非合并访存 (Uncoalesced accesses) 缺陷。",
+          "4. 运用分块技术 (Tiling) 与共享内存 (Shared memory) 将全局内存的零散访问转化为协作式的合并访存。",
+          "5. 识别基础分块算法中的带宽浪费问题，并掌握使用循环缓冲区 (Circular-buffer) 消除重复数据加载的高级技巧。",
+          "6. 运用线程粗化 (Thread coarsening) 摊薄昂贵的二分查找开销，提升内核的计算效率。"
+        ]
+      },
+      {
+        "heading": "章节结构映射 (Section-by-Section Chapter Map)",
+        "points": [
+          "13.1-13.2 背景与顺序算法: 介绍归并操作、稳定性 (Stability) 要求以及时间复杂度为 O(m+n) 的双指针顺序合并算法。",
+          "13.3-13.4 并行化与协同秩 (Co-rank): 提出通过输出目标段倒推输入段的并行化思路。详述利用二分查找快速确定输入边界 (i 和 j) 的 Co-rank 函数，维持 i+j=k 不变式。",
+          "13.5 基础并行归并内核 (Basic merge kernel): 实现每个线程独立调用 Co-rank 和顺序归并的内核。指出其二分查找直接访问全局内存及输入数组访问非合并的严重缺陷。",
+          "13.6 分块归并内核 (Tiled merge kernel): 引入共享内存，以 Block 为单位预先加载输入子数组以改善合并访存。指出由于输入数据消耗的不可预测性，每次迭代只能部分利用已加载数据，导致带宽浪费。",
+          "13.7 循环缓冲区归并内核 (Circular-buffer merge kernel): 引入指针回绕机制，仅补充加载上一轮已消耗的 (consumed) 数据，榨干显存带宽。展示如何通过接口抽象 (Simplified model) 隐藏回绕带来的索引计算复杂度。",
+          "13.8 线程粗化 (Thread coarsening): 强调给单个线程分配多个输出元素，用顺序归并替代部分并行搜索，以摊薄 Co-rank 二分查找带来的高昂开销。"
+        ]
+      },
+      {
+        "heading": "关键概念精解 (Key Concepts)",
+        "points": [
+          "协同秩 (Co-rank): 一种反向映射机制。已知目标输出数组 C 中的排名 (Rank) k，求解在输入数组 A 和 B 中的对应边界 i 和 j，满足 k = i + j 且划定的子数组包含所有应填入 C[0..k-1] 的较小元素。",
+          "稳定性 (Stability): 当输入数组 A 和 B 存在相等键值时，A 中的元素优先放入输出。在 Co-rank 判定条件中体现为寻找使 A[i-1] <= B[j] 且 B[j-1] < A[i] 成立的 i 与 j，这确保了原有的部分排序信息不被破坏。",
+          "动态输入数据识别 (Dynamic input data identification): 不同于矩阵乘法等静态映射，归并内核中线程所需的输入数据边界完全取决于数据的值。这要求在运行时进行探索 (如使用二分查找)，为内核的访存优化带来了巨大挑战。",
+          "循环缓冲区 (Circular-buffer): 针对共享内存中未被完全消耗的输入数据，使用 start 指针和取模 (%) 操作进行回绕复用。它使得下一次迭代仅需从全局内存中填补缺失的数据，彻底消除了冗余加载。"
+        ]
+      },
+      {
+        "heading": "常见误区与实现缺陷 (Common Misunderstandings & Implementation Mistakes)",
+        "points": [
+          "误区：为每一个输出元素分配一个独立的 GPU 线程是最优的。真相：如果不实施线程粗化 (Thread coarsening)，意味着生成每一个元素都要执行一次 O(log N) 的全局二分查找。由于搜索成本远高于单一元素的比较写入，这种极端细粒度的并行反而会导致性能灾难。",
+          "实现缺陷：在基础内核中直接让相邻线程并发读取全局内存进行合并。由于子数组的起始位置和长度高度依赖于数据值，相邻线程(如 Warp 内)所需读取的 A 或 B 数组位置极大概率是不连续的，这将直接引发极其严重的非合并访存 (Uncoalesced accesses)。",
+          "实现缺陷：在循环缓冲区 (Circular-buffer) 设计中，将模运算 (Modulo) 回绕逻辑直接硬编码进底层的二分查找循环中。这不仅容易出错，还会导致代码不可读。正确的做法是提供一个简化的连续缓冲区抽象模型，仅在访问共享内存元素的最终一刻 (`A_S[(start + offset) % size]`) 暴露环形结构。"
+        ]
+      },
+      {
+        "heading": "三阶段实践计划 (3-Session Practice Plan)",
+        "points": [
+          "Session 1: 算法核心与基础并行化。首先在 CPU/Host 端实现并测试图 13.5 所示的 Co-rank 二分查找算法，重点验证其对 `i_low` 和 `j_low` 的边界处理机制。然后将其移植到 GPU，编写基础并行归并内核，利用 Profiler (如 Nsight Compute) 观察其全局内存的事务数 (Memory transactions)。",
+          "Session 2: 共享内存分块与带宽分析。实现基于共享内存的分块 (Tiling) 归并内核。重点调试单 Block 内部如何协同加载数据，以及 Block-level Co-rank 的应用。在 Profiler 中对比其与基础版本在访存合并度上的提升，并计算每次迭代中因数据重载带来的带宽浪费比例。",
+          "Session 3: 循环缓冲区进阶与粗化调优。重构上一步的内核，引入 `start` 和 `consumed` 变量实现循环缓冲区管理。编写带环形偏移逻辑的 `co_rank_circular` 接口。最终，引入线程粗化参数 (Elements per thread)，进行多组性能基准测试，寻找平衡二分查找开销与并发度的最佳粗化系数。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

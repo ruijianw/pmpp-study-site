@@ -1,0 +1,62 @@
+{
+  "chapterId": "chapter-19-convolutional-neural-networks",
+  "chapterTitle": "Convolutional Neural Networks",
+  "sourceId": "765c4df9-5672-44d9-9eee-974ff60884f9",
+  "sourceTitle": "chapter-19-convolutional-neural-networks.pdf",
+  "artifactType": "briefing",
+  "artifactLabel": "Briefing",
+  "generatedAt": "2026-07-13T14:54:36.085118Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "简报：卷积神经网络 (Chapter 19: Convolutional Neural Networks)",
+    "summary": "本简报概述了在 GPU 上加速卷积神经网络 (CNN) 卷积层前向传播的核心架构策略。深入剖析了如何通过批量执行 (Batched execution) 提升并行度，以及如何利用隐式展开 (Implicit unfolding) 技术将卷积高效转化为通用矩阵乘法 (GEMM)，从而在压榨 GPU 浮点吞吐量的同时彻底规避显存膨胀瓶颈。",
+    "sections": [
+      {
+        "heading": "执行摘要 (Executive Summary)",
+        "points": [
+          "卷积层具有极高的计算访存比 (Compute-to-memory-access ratio) 和海量的并行度，是 GPU 加速的绝佳场景。",
+          "基础的 CUDA 实现虽能捕获各维度并行性，但受制于全局内存带宽 (Global memory bandwidth)。",
+          "业界顶级的优化手段（如 cuDNN）的核心在于算法级重构：将卷积运算公式化为 GEMM，并配合动态片上内存映射 (On-chip memory mapping) 隐藏访存延迟。"
+        ]
+      },
+      {
+        "heading": "核心主张 (Core Claims)",
+        "points": [
+          "并行维度解耦：输出特征图 (Output feature maps)、空间像素 (H/W) 和批次 (Batch) 提供了充足的“安全”并行度。而对于输入通道 (C) 和滤波器窗口 (K) 维度，应保持串行累加，否则强行并行将引入高延迟的原子操作 (Atomic operations) 和读写冲突。",
+          "批量执行 (Batched Execution) 的资源红利：将多个独立输入打包处理，可将网格 (Grid) 的 Z 维度按批次大小扩展，有效解决单样本并行度不足导致的 GPU 占用率 (Occupancy) 偏低问题。",
+          "显存膨胀代价 (Cost of Explicit Unfolding)：若显式地将输入特征图的感受野展开拼装成供 GEMM 计算的矩阵 B，由于感受野的重叠，内存占用和带宽消耗将膨胀接近 K^2 倍 (K 为滤波器尺寸)，直接抵消 GEMM 带来的计算优势。",
+          "隐式展开 (Implicit Unfolding) 的极致权衡：高性能内核（及 cuDNN 等库）采用“概念性”矩阵 B。在分块矩阵乘法加载共享内存 (Shared memory) 的阶段，通过索引映射公式直接从原始张量中提取对应像素，既享受了 GEMM 的极速计算，又实现了零显存膨胀。"
+        ]
+      },
+      {
+        "heading": "本章重要性 (Why This Chapter Matters)",
+        "points": [
+          "本章揭示了现代深度学习框架底层（如 PyTorch/TensorFlow 调用的 cuDNN）实现卷积算子的真正秘密：看似复杂的卷积实质上是被高度优化的分块矩阵乘法 (Tiled GEMM)。",
+          "展示了如何将算法转换 (Algorithm formulation) 与底层微架构特性 (片上共享内存缓冲) 结合，解决由于算法重构带来的内存冗余 (Memory redundancy) 问题。"
+        ]
+      },
+      {
+        "heading": "先决条件 (Prerequisites)",
+        "points": [
+          "熟练掌握多维网格和线程块的组织方式，以及基于行主序 (Row-major order) 的多维数组线性化索引推导。",
+          "深刻理解分块通用矩阵乘法 (Tiled GEMM) 在 GPU 共享内存上的实现机制及其对全局内存带宽的节约原理。",
+          "了解基本的神经网络前向传播逻辑及特征图 (Feature maps) 与滤波器 (Filters) 的基本概念。"
+        ]
+      },
+      {
+        "heading": "实现启示与常见错误 (Implementation Implications)",
+        "points": [
+          "三维 Grid 映射二维切片的索引陷阱：由于 Grid 只有 3 个维度，且 X 和 Z 被特征图通道和批次占用，必须将输出图像二维切片 (Tiles) 线性化到 `blockIdx.y` 中。在内核开头必须使用除法 (`/ W_grid`) 和取模 (`% W_grid`) 手动对其进行二维坐标解码。",
+          "误用显式 GEMM：在 GPU 显存中分配巨大缓冲区来显式存储展开后的矩阵 B 是新手常见错误。这会瞬间耗尽 GPU 显存容量并使内核陷入严重的内存带宽受限 (Memory-bound) 状态。",
+          "未处理动态张量布局的延迟：由于层与层之间特征图通道数 (C) 与空间尺寸 (H/W) 的变化，单一固定参数的内核无法在所有层中维持高效率。工业级库 (如 cuDNN) 会在片上内存中动态处理切片加载以持续隐藏内存延迟 (Memory latency)。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

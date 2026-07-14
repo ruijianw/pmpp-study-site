@@ -1,0 +1,139 @@
+{
+  "chapterId": "chapter-09-histogram",
+  "chapterTitle": "Histogram",
+  "sourceId": "7f3b148b-9490-4fb1-8047-9a97a835fbee",
+  "sourceTitle": "chapter-09-histogram.pdf",
+  "artifactType": "flashcards",
+  "artifactLabel": "Flashcards",
+  "generatedAt": "2026-07-13T13:53:31.975273Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "闪卡：直方图与原子操作 (Chapter 9: Histogram)",
+    "summary": "包含 18 张精选闪卡，用于快速复习《大规模并行处理器编程》第九章关于直方图计算的核心概念。涵盖读-改-写竞态条件、原子操作延迟瓶颈、以及通过共享内存私有化 (Privatization)、交错线程粗化 (Interleaved Thread Coarsening) 与线程级私有化突破访存瓶颈的高级优化技巧。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Tips)",
+        "points": [
+          "利用简单 (Easy) 难度卡片理解原子操作 (Atomic operations) 与输出干扰 (Output interference) 的基本概念。",
+          "通过中等 (Medium) 难度卡片掌握原子操作吞吐量受限的原理，以及共享内存分块级私有化 (Block-level privatization) 的实现方式。",
+          "挑战困难 (Hard) 难度卡片，深入剖析连续划分与交错划分在 GPU 线程粗化中的合并访存 (Coalescing) 差异，以及线程级私有化的适用场景与副作用。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "front": "为什么并行直方图计算无法像之前的计算模式那样应用“所有者计算 (Owner-computes)”法则？",
+        "back": "因为直方图的输出位置是由输入数据的值决定的（数据依赖）。这导致多个线程可能会试图同时更新同一个输出位置，产生输出干扰 (Output interference)。",
+        "difficulty": "easy",
+        "sourceHint": "9.1 Background / 9.2 Atomic operations"
+      },
+      {
+        "front": "什么是“读-改-写竞态条件 (Read-modify-write race condition)”？",
+        "back": "当多个线程并发执行包含读取、修改、写入序列时，最终的内存结果依赖于这些操作序列交织的相对时间顺序。这会导致一些线程的更新被错误地覆盖或丢失。",
+        "difficulty": "medium",
+        "sourceHint": "9.2 Atomic operations and a basic histogram kernel"
+      },
+      {
+        "front": "在 CUDA 中，原子操作 (Atomic operation) 是如何解决竞态条件的？",
+        "back": "原子操作由底层硬件保障其为不可分割的读-改-写序列。当多个线程对同一内存地址执行原子操作时，硬件会将其强制串行化 (Serialize)，确保每次更新不会重叠。",
+        "difficulty": "easy",
+        "sourceHint": "9.2 Atomic operations and a basic histogram kernel"
+      },
+      {
+        "front": "在 CUDA C++ 中，通常使用哪个模板类来创建用于执行原子操作的引用？",
+        "back": "使用 `<cuda/atomic>` 库中的 `cuda::atomic_ref` 类，它允许我们在指定的同步作用域内对对象执行原子操作（如 `fetch_add`）。",
+        "difficulty": "medium",
+        "sourceHint": "9.2 Atomic operations and a basic histogram kernel"
+      },
+      {
+        "front": "在 `cuda::atomic_ref` 的模板参数中，`cuda::thread_scope_device` 代表什么含义？",
+        "back": "它指定了原子操作的同步作用域。代表该原子操作将对整个 GPU 设备 (Device) 内的所有线程进行串行化同步，无论这些线程是否在同一个 Block 中。",
+        "difficulty": "hard",
+        "sourceHint": "9.2 Atomic operations and a basic histogram kernel"
+      },
+      {
+        "front": "为什么在全局内存 (Global Memory) 中执行高度冲突的原子操作，其吞吐量 (Throughput) 会极低？",
+        "back": "因为对同一地址的原子操作必须串行执行。每次操作的持续时间约等于极长的内存读取延迟加上写入延迟。这意味着最高吞吐量受限于内存延迟的倒数，导致大量内存带宽闲置。",
+        "difficulty": "medium",
+        "sourceHint": "9.3 Latency and throughput of atomic operations"
+      },
+      {
+        "front": "现代 GPU 硬件是如何缓解原子操作延迟过高问题的？",
+        "back": "现代 GPU 允许在设备共享的末级缓存 (L2 Cache) 中直接进行原子操作。如果数据在 L2 缓存中命中，原子更新的延迟将从数百周期大幅降至数十周期，吞吐量可提升一个数量级。",
+        "difficulty": "medium",
+        "sourceHint": "9.3 Latency and throughput of atomic operations"
+      },
+      {
+        "front": "在应对严重输出干扰时，什么是“私有化 (Privatization)”优化技术？",
+        "back": "将高度竞争的输出数据结构复制成多份私有副本，分配给不同的线程子集（如每个 Thread Block 一份）。这能将全局竞争分散为局部竞争，并在计算完成后再统一合并。",
+        "difficulty": "easy",
+        "sourceHint": "9.4 Privatization"
+      },
+      {
+        "front": "在直方图的“分块级私有化 (Block-level privatization)”中，私有副本最适合存放在 GPU 的哪种内存中？为什么？",
+        "back": "最适合存放在共享内存 (Shared memory) 中。因为共享内存对 SM 是私有的且访问延迟极低（仅需几周期），能极大提升局部原子更新的吞吐量。",
+        "difficulty": "medium",
+        "sourceHint": "9.4 Privatization"
+      },
+      {
+        "front": "私有化 (Privatization) 优化会带来哪两项主要的额外性能开销 (Overhead)？",
+        "back": "1. 必须由线程先将私有副本初始化（清零）；2. 在计算结束时，必须执行额外的原子操作（Commit overhead）将私有副本合并到全局公共副本中。",
+        "difficulty": "hard",
+        "sourceHint": "9.4 Privatization / 9.5 Thread coarsening"
+      },
+      {
+        "front": "在分块级私有化的内核中，为什么在最后向全局直方图提交 (Commit) 数据前必须调用 `__syncthreads()`？",
+        "back": "为了防止读后写 (Read-after-write) 竞态。必须确保该 Block 内的所有线程都已经完全完成了对私有共享内存直方图的更新，才能允许线程开始读取这些局部结果并合并到全局内存中。",
+        "difficulty": "hard",
+        "sourceHint": "9.4 Privatization"
+      },
+      {
+        "front": "引入线程粗化 (Thread coarsening) 是如何帮助减少私有化开销的？",
+        "back": "线程粗化让每个单线程处理多个输入元素，这成倍减少了所需的 Thread Blocks 总数。Block 数量越少，需要分配、初始化和最终合并的私有副本数量就越少，从而摊薄了私有化开销。",
+        "difficulty": "medium",
+        "sourceHint": "9.5 Thread coarsening"
+      },
+      {
+        "front": "在 GPU 上进行线程粗化时，为什么照搬 CPU 常用的“连续划分 (Contiguous partitioning)”策略会导致性能灾难？",
+        "back": "如果让每个 GPU 线程处理一整块连续数据，那么同一个 Warp 内的 32 个相邻线程在同一时刻访问的内存地址将跨越极大的跨度。这彻底破坏了硬件的合并访存 (Memory coalescing)，导致总线效率暴跌。",
+        "difficulty": "hard",
+        "sourceHint": "9.5 Thread coarsening"
+      },
+      {
+        "front": "在 GPU 线程粗化中，为了保持内存合并访问 (Coalescing)，必须使用哪种划分策略？",
+        "back": "必须使用“交错划分 (Interleaved partitioning)”。每次循环时，所有线程访问相邻的内存元素（偏移量为 `c * blockDim.x`），确保 Warp 内线程在每个周期都能发起连续对齐的合并访问。",
+        "difficulty": "medium",
+        "sourceHint": "9.5 Thread coarsening"
+      },
+      {
+        "front": "什么是直方图计算中的“线程级私有化 (Thread-level privatization)”？",
+        "back": "一种在粗化循环内的高级优化。它利用线程的私有寄存器 (Registers) 记录连续出现的相同输入值，并在寄存器中先进行局部累加，直到输入值发生变化时，才使用原子操作将其提交至共享内存。",
+        "difficulty": "hard",
+        "sourceHint": "9.6 Thread-level privatization"
+      },
+      {
+        "front": "输入数据具备什么特征时，线程级私有化 (Thread-level privatization) 才能发挥最大的加速效果？",
+        "back": "当输入数据表现出极高的局部重复性 (High similarity) 时，例如图像中大面积纯色的天空像素。这种集中重复会引发最严重的共享内存原子冲突，而寄存器聚合能完美过滤这些冗余操作。",
+        "difficulty": "medium",
+        "sourceHint": "9.6 Thread-level privatization"
+      },
+      {
+        "front": "如果输入数据是高度随机跳跃的，强行应用线程级私有化 (Thread-level privatization) 会带来什么反噬？",
+        "back": "由于数据不重复，寄存器聚合几乎不起作用，原子更新次数并未减少。反而因为引入了额外的局部状态变量和 if-else 判断，增加了指令负担并引发了控制流发散 (Control divergence)，导致内核速度变慢。",
+        "difficulty": "hard",
+        "sourceHint": "9.6 Thread-level privatization"
+      },
+      {
+        "front": "在调用 `fetch_add(1, cuda::memory_order_relaxed)` 时，`memory_order_relaxed` 指示了什么？",
+        "back": "它是 C++ 标准库中的编译期常量。指示该原子操作除了天然存在的指令级数据依赖外，不需要附加任何其他的内存访问重排 (Reordering) 限制，允许编译器或硬件进行最大程度的优化调度。",
+        "difficulty": "medium",
+        "sourceHint": "9.2 Atomic operations and a basic histogram kernel"
+      }
+    ]
+  }
+}

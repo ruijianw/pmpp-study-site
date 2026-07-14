@@ -1,0 +1,159 @@
+{
+  "chapterId": "chapter-09-histogram",
+  "chapterTitle": "Histogram",
+  "sourceId": "7f3b148b-9490-4fb1-8047-9a97a835fbee",
+  "sourceTitle": "chapter-09-histogram.pdf",
+  "artifactType": "quiz",
+  "artifactLabel": "Quiz",
+  "generatedAt": "2026-07-13T13:54:30.504798Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "测试题：直方图与原子操作 (Chapter 9: Histogram)",
+    "summary": "本测试题用于检验读者对 CUDA 直方图计算优化的核心知识掌握程度，重点考察读-改-写竞态条件 (Read-modify-write race conditions)、原子操作 (Atomic operations) 延迟瓶颈，以及如何运用分块级私有化 (Block-level privatization)、交错划分 (Interleaved partitioning) 和线程级私有化突破内存带宽限制。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Advice)",
+        "points": [
+          "1. 理解输出干扰：直方图计算打破了“所有者计算 (Owner-computes)”法则，数据依赖的输出位置使得并发更新必然产生读-改-写竞态条件。",
+          "2. 洞悉原子操作瓶颈：硬件强制的串行化使得原子操作吞吐量受限于内存延迟的倒数，在全局内存中极度低效。L2 缓存是现代 GPU 缓解此问题的重要依托。",
+          "3. 掌握私有化降维打击：将全局竞争转化为共享内存 (Shared memory) 的局部竞争，是提升原子操作吞吐量的核心策略，但需权衡初始化与提交的开销 (Commit overhead)。",
+          "4. 避开线程粗化陷阱：在 GPU 上实施线程粗化处理时，务必使用交错划分 (Interleaved partitioning) 以维持合并访存 (Memory coalescing)，绝不可照搬 CPU 的连续划分模式。",
+          "5. 数据驱动的极限优化：线程级私有化 (Thread-level privatization) 的效果强依赖于输入数据的相似度。无脑应用反而会导致控制流发散 (Control divergence) 拖慢性能。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "type": "multiple-choice",
+        "question": "为什么并行直方图计算无法应用经典的“所有者计算 (Owner-computes)”法则？",
+        "options": [
+          "A. 因为直方图需要使用双精度浮点数",
+          "B. 因为计算每个输出元素所需的输入数据量过大",
+          "C. 因为每个输出位置被更新的频率完全由输入数据的值决定，无法预先将特定的输出元素独占地分配给特定线程，必然引发输出干扰 (Output interference)",
+          "D. 因为直方图的输入数据必须存储在常量内存 (Constant memory) 中"
+        ],
+        "answer": "C",
+        "explanation": "在直方图中，输入像素的值决定了它落入哪个 Bin，因此任何线程都可能更新任何一个输出 Bin。这种数据依赖性打破了所有者计算法则，导致多线程同时更新同一位置时产生输出干扰。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "当成千上万的 GPU 线程对全局内存中同一个地址执行原子操作 (Atomic operations) 时，什么因素决定了该操作的最大吞吐量 (Throughput)？",
+        "options": [
+          "A. GPU 的核心频率与浮点运算单元 (ALU) 的数量",
+          "B. 内存读写延迟的倒数，因为硬件强制将对同一地址的原子操作进行严格串行化 (Serialize) 执行",
+          "C. 全局内存总线 (Memory bus) 的位宽",
+          "D. Warp 调度器切换线程上下文的速度"
+        ],
+        "answer": "B",
+        "explanation": "由于原子操作是不可分割的读-改-写序列，对同一地址的操作必须排队。这就意味着每次更新的耗时约等于一次完整的内存访问延迟，其吞吐量被限制在极低的水平（如每秒仅数百万次）。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "现代 GPU 硬件是如何在底层有效缓解全局变量原子操作 (Atomic operations) 延迟过高问题的？",
+        "options": [
+          "A. 允许在设备共享的末级缓存 (L2 cache) 中直接完成原子操作，将延迟从数百周期缩短至数十周期",
+          "B. 通过自动丢弃部分冲突的原子请求来维持吞吐量",
+          "C. 强制将所有原子变量自动分配到寄存器 (Registers) 中",
+          "D. 在内存控制器中引入了乱序执行 (Out-of-order execution) 逻辑"
+        ],
+        "answer": "A",
+        "explanation": "现代 GPU 支持在 L2 缓存中执行原子操作。对于被多线程高频竞争的热点地址，它们往往能驻留在 L2 缓存中，直接在缓存层级完成读改写，从而使吞吐量提升一个数量级。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在直方图计算中实施分块级私有化 (Block-level privatization) 时，主要的性能开销 (Overhead) 来源于何处？",
+        "options": [
+          "A. 分支预测失败 (Branch misprediction) 带来的惩罚",
+          "B. L1 缓存命中率的断崖式下跌",
+          "C. 对私有副本进行初始化清零的开销，以及最终将各个局部副本通过原子操作合并 (Commit) 到全局内存的开销",
+          "D. 线程间通信使用的消息传递接口 (MPI) 的网络延迟"
+        ],
+        "answer": "C",
+        "explanation": "虽然私有化大幅降低了更新时的竞争，但每个 Thread Block 都必须在计算前初始化自己的局部直方图，并在计算后使用全局原子操作将结果累加到最终的公共直方图里，这构成了主要的额外开销。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在对直方图内核应用线程粗化 (Thread coarsening) 时，如果错误地采用了 CPU 编程中常见的连续划分 (Contiguous partitioning) 策略，会导致什么灾难性后果？",
+        "options": [
+          "A. 导致 GPU 内存泄漏 (Memory leak)",
+          "B. 导致同一个 Warp 内的相邻线程访问跨度极大的物理内存地址，彻底破坏合并访存 (Memory coalescing)，总线带宽利用率暴跌",
+          "C. 导致内核因陷入死循环而触发 Watchdog 超时",
+          "D. 导致私有直方图 (Private histograms) 发生数组越界"
+        ],
+        "answer": "B",
+        "explanation": "连续划分让单线程处理一整块连续数据，意味着 Warp 中的 Thread 0 和 Thread 1 处理的数据块相隔甚远。这直接违背了 GPU 要求 Warp 内部线程访问连续地址以触发内存合并读取的底层硬件逻辑。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "为了在 GPU 线程粗化中维持高效的合并访存 (Memory coalescing)，应当采用哪种数据划分策略？",
+        "options": [
+          "A. 随机划分 (Random partitioning)",
+          "B. 连续划分 (Contiguous partitioning)",
+          "C. 交错划分 (Interleaved partitioning)，确保 Warp 内的相邻线程每次循环都访问连续的相邻数据元素",
+          "D. 基于哈希的划分 (Hash-based partitioning)"
+        ],
+        "answer": "C",
+        "explanation": "在交错划分中，线程访问元素的步长通常为 blockDim.x。这样在任何一次循环迭代中，Warp 中的线程都能以连续的线程索引访问连续的内存地址，完美满足硬件的合并访存条件。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "关于线程级私有化 (Thread-level privatization) 的适用场景，以下哪种说法是正确的？",
+        "options": [
+          "A. 无论输入数据是什么特征，它都能带来成倍的性能提升",
+          "B. 当且仅当输入数据集极其庞大时才有效",
+          "C. 只有在输入数据呈现高度重复和相似性 (High similarity) 时（如大面积的纯色图像），寄存器聚合才能发挥优势并超越额外的指令开销",
+          "D. 它只适用于共享内存 (Shared memory) 完全耗尽的极端情况"
+        ],
+        "answer": "C",
+        "explanation": "线程级私有化利用寄存器累加连续的相同值以减少向共享内存发起原子操作的次数。如果数据完全随机跳跃，这种聚合形同虚设，额外引入的控制流判断反而会拖慢执行速度。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在 CUDA 中调用 `fetch_add(1, cuda::memory_order_relaxed)` 时，关于 `cuda::memory_order_relaxed` 的描述，哪一项最准确？",
+        "options": [
+          "A. 它指示硬件绕过 L2 缓存，直接在 DRAM 级别进行计算",
+          "B. 它指示编译器和硬件无需对此次内存访问施加额外的重排 (Reordering) 限制，允许最大程度的指令调度优化",
+          "C. 它会将原子操作的同步范围自动限制在单个 Warp 内部",
+          "D. 它强制要求该原子操作必须在 1 个时钟周期内返回结果"
+        ],
+        "answer": "B",
+        "explanation": "Memory order 指定了原子操作前后的内存访问同步语义。对于直方图递增这种除了使用该像素外没有其他外部依赖的操作，使用 relaxed 意味着没有额外的内存屏障要求，从而获得最佳的编译和调度性能。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在 C++ atomic 库扩展的 CUDA 实现中，定义 `cuda::atomic_ref` 时的模板参数 `cuda::thread_scope_block` 和 `cuda::thread_scope_device` 在实际应用和性能上有何关键区别？",
+        "expectedAnswer": "`cuda::thread_scope_block` 将原子操作的同步范围局限于同一个 Thread Block 内部的线程，由于范围小，硬件实现通常延迟更低；而 `cuda::thread_scope_device` 强制整个 GPU 设备上所有线程对该地址的操作进行全局串行化，同步开销更高。在实施共享内存分块级私有化时，应使用 block 作用域。",
+        "explanation": "精准选择原子操作的同步作用域 (Scope) 是避免无谓性能损耗的关键，局部数据不需要全局级别的锁定代价。"
+      },
+      {
+        "type": "short-answer",
+        "question": "简述读-改-写竞态条件 (Read-modify-write race condition) 是如何在并行直方图计算中引发数据更新丢失的？",
+        "expectedAnswer": "当线程 1 读取了某 Bin 的值为 0，正准备加 1 时；线程 2 也同时读取了该 Bin，由于线程 1 尚未写回，线程 2 读到的也是 0。随后两个线程分别计算得到 1 并写入内存。两次递增操作原本应让结果变为 2，但由于执行时序的重叠，最终结果为 1，其中一个线程的更新被错误覆盖而丢失。",
+        "explanation": "这是理解为何不能直接使用 `++bins[b]` 而必须引入原子操作 (Atomic operations) 强制串行化的核心物理图像。"
+      },
+      {
+        "type": "short-answer",
+        "question": "为什么在直方图的分块级私有化 (Block-level privatization) 策略中，引入线程粗化 (Thread coarsening) 能够显著提升整体的执行速度？",
+        "expectedAnswer": "分块级私有化的核心开销在于每个 Block 必须进行私有数组的清零初始化，以及最终向全局内存原子合并的提交阶段。通过线程粗化让单线程处理多个元素，可以成倍减少所需的 Thread Block 总数量，从而按比例大幅削减初始化和合并带来的无谓开销，摊薄了私有化成本。",
+        "explanation": "私有化并不是免费的午餐，配合线程粗化来控制总体并发 Block 数量是平衡竞争延迟与合并开销的标准范式。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在使用共享内存 (Shared memory) 保存私有直方图副本时，为什么在最后向全局直方图发起合并提交 (Commit) 之前，必须调用一次 `__syncthreads()` 屏障？",
+        "expectedAnswer": "为了解决读后写 (Read-after-write) 数据依赖问题。必须确保当前 Block 内部的所有线程都已经彻底完成了遍历输入并累加到局部共享内存的工作。若不同步，执行较快的线程可能会过早地读取并提交尚未被较慢线程更新完毕的脏数据，导致局部结果丢失。",
+        "explanation": "在多线程协同计算中，从“并发写入阶段”切换到“读取汇聚阶段”时，强制同步是保证数据完整性的绝对前提。"
+      },
+      {
+        "type": "short-answer",
+        "question": "如果分析发现输入图像数据呈现极端的白噪点特性（即相邻像素的值完全随机且没有相似性），此时应用线程级私有化 (Thread-level privatization) 会对程序性能产生什么影响？为什么？",
+        "expectedAnswer": "会导致程序性能不升反降。因为数据缺乏相似性，线程在寄存器中几乎无法聚合连续相同的计数值，依然需要频繁触发对共享内存的原子更新。与此同时，引入的用于对比“当前像素与前一像素是否一致”的 if-else 控制逻辑增加了额外的指令开销，并引发大量的控制流发散 (Control divergence)，得不偿失。",
+        "explanation": "这一题点明了“数据驱动优化”的核心思想：再高级的优化技术如果脱离了输入数据的实际分布规律（Similarity），也可能变成反噬性能的毒药。"
+      }
+    ]
+  }
+}

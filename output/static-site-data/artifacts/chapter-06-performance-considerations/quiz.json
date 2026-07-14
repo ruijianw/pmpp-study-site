@@ -1,0 +1,158 @@
+{
+  "chapterId": "chapter-06-performance-considerations",
+  "chapterTitle": "Performance Considerations",
+  "sourceId": "5227cb2e-9a3a-4d4a-8fa3-7cd998d7f56d",
+  "sourceTitle": "chapter-06-performance-considerations.pdf",
+  "artifactType": "quiz",
+  "artifactLabel": "Quiz",
+  "generatedAt": "2026-07-13T13:38:12.964414Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "测试题：性能考量 (Chapter 6: Performance Considerations)",
+    "summary": "本测试题用于检验读者对 CUDA 第六章性能优化核心知识的掌握程度。涵盖全局内存合并访问 (Coalescing)、隐藏内存延迟 (Latency Hiding)、共享内存存储体冲突 (Bank Conflicts)、线程粗化 (Thread Coarsening) 及双缓冲 (Double Buffering) 等底层性能推理与实现技巧。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Advice)",
+        "points": [
+          "1. 理解硬件底层行为：优化内存带宽的关键在于迎合 DRAM 的突发 (Burst) 读取特性，确保 Warp 内的线程执行合并访问 (Coalesced access)。",
+          "2. 警惕隐性资源冲突：如共享内存中由于步长 (Stride) 为 32 引发的存储体冲突 (Bank conflicts)，这会直接导致 32 倍的性能惩罚，需熟练运用 Padding 打破冲突。",
+          "3. 资源权衡的智慧：线程粗化 (Thread Coarsening) 是把双刃剑，它能减少并行开销，但过度粗化会导致单线程寄存器超载，使占用率 (Occupancy) 跌下悬崖。",
+          "4. 瓶颈驱动优化：在动手前，利用 Roofline 模型和 Profiler 工具弄清内核是计算受限 (Compute-bound) 还是内存受限 (Memory-bound)，切忌盲目套用优化策略。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "type": "multiple-choice",
+        "question": "在 CUDA 中，硬件触发全局内存合并访问 (Memory Coalescing) 的最理想条件是什么？",
+        "options": [
+          "A. 同一个 Warp 内的所有线程访问连续且对齐的全局内存地址",
+          "B. 同一个 Block 内的所有线程访问同一个片上缓存行 (Cache line)",
+          "C. 采用线程粗化 (Thread Coarsening) 将粗化系数设定为 4 以上",
+          "D. 所有线程同时访问共享内存中的同一个 Bank"
+        ],
+        "answer": "A",
+        "explanation": "当同一个 Warp 中的线程执行加载或存储指令，并且访问的地址连续且对齐时，硬件能够将它们合并为一个大型内存请求，从而完美匹配 DRAM 突发 (Burst) 读取的硬件特性，最大化带宽利用率。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "为什么非合并的全局内存存储 (Uncoalesced stores) 造成的性能惩罚往往比非合并读取 (Uncoalesced loads) 更严重？",
+        "options": [
+          "A. 存储操作会强制清空 L1 缓存的全部内容",
+          "B. 存储操作会引发部分存储操作 (Partial store operations)，在启用 ECC 校验的设备上会导致高开销的读-改-写 (Read-modify-write) 访问",
+          "C. 全局内存对 GPU 是只读的，存储会触发页错误",
+          "D. 存储操作不支持双缓冲 (Double buffering) 掩盖延迟"
+        ],
+        "answer": "B",
+        "explanation": "非合并存储导致只能部分修改内存块，这要求硬件先将原始数据块读出、修改对应的部分字节，然后再写回（读-改-写），尤其在启用 ECC (Error Correcting Code) 时这会极其严重地消耗内存带宽。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "处理列主序 (Column-major) 数据矩阵时，什么是“转角 (Corner Turning)”优化技术的核心思想？",
+        "options": [
+          "A. 直接在全局内存中按列读取，利用缓存命中率弥补速度",
+          "B. 将输入矩阵直接在 CPU 端转置为行主序后再传给 GPU",
+          "C. 线程先以行主序将数据块合并加载到共享内存，然后在无合并限制的共享内存中按列提取数据",
+          "D. 利用向量加载 (Vector loads) 强制连续读取 16 字节"
+        ],
+        "answer": "C",
+        "explanation": "列主序数据直接按行分工读取会导致极大的步长跨度，无法合并访问。转角技术巧妙地利用了共享内存作为中转站，将全局内存的合并要求转化为低延迟的共享内存局部访问。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "保持高占用率 (Occupancy) 对隐藏全局内存延迟 (Hiding memory latency) 有何重要作用？",
+        "options": [
+          "A. 可以减少单线程对寄存器的消耗量",
+          "B. 能让更多的 Warp 发出并发内存请求，充分利用 DRAM 多通道 (Channels) 和多存储体 (Banks) 的交错带宽来重叠隐藏延迟",
+          "C. 会自动增加 DRAM 的单次突发 (Burst) 大小",
+          "D. 可以避免共享内存的存储体冲突 (Bank conflicts)"
+        ],
+        "answer": "B",
+        "explanation": "仅仅有并发的算术指令是不够的。高占用率确保有足够多的活跃线程同时执行加载指令，使得 DRAM 的多个通道和 Bank 都有数据在传输，用总线的高吞吐量掩盖单次访问的长延迟。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在内核中使用向量加载 (Vector loads，如 `float4`) 的主要性能优势是什么？",
+        "options": [
+          "A. 它可以彻底消除由 if-else 分支带来的控制发散 (Control divergence)",
+          "B. 允许单个线程用一条指令连续加载更大块数据 (如 16 字节)，大幅减少内存访问的指令执行开销 (Instruction execution overhead)",
+          "C. 它能自动在共享内存中添加数据填充 (Padding)",
+          "D. 它能将内存受限 (Memory-bound) 程序直接转化为计算受限 (Compute-bound)"
+        ],
+        "answer": "B",
+        "explanation": "通过一次取回多个浮点数，可以成倍减少程序中 load/store 指令的数量，将执行这些指令花费的时钟周期省下来，是进一步榨取内存带宽的有效手段。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在一个 32x32 的二维共享内存数组中，如果 Warp 按照步长 (Stride) 为 32 进行同列元素的跨步访问，会引发什么后果？",
+        "options": [
+          "A. 触发完美的 DRAM 突发 (Burst) 连续读取",
+          "B. 会被编译器自动优化为寄存器访问以加速",
+          "C. 触发双缓冲 (Double buffering) 机制自动切换内存区",
+          "D. 引发灾难性的 32-way 存储体冲突 (Bank conflicts)，因为所有地址对 32 取模后都映射到同一个 Bank，导致访问被迫串行化"
+        ],
+        "answer": "D",
+        "explanation": "共享内存由 32 个独立的 Bank 组成，跨度为 32 的倍数的线性地址必然全部落在同一个 Bank。硬件无法同时服务同一个 Bank 的多个请求，必须分 32 步逐个处理，性能直接下降 32 倍。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "过度应用线程粗化 (Thread Coarsening) 最有可能导致什么负面后果？",
+        "options": [
+          "A. 单线程寄存器和共享内存用量激增，导致 SM 驻留线程块减少，占用率 (Occupancy) 跌下悬崖，并可能引发尾部效应",
+          "B. 会导致指令调度 (Instruction scheduling) 出现致命错误",
+          "C. 会导致代码无法使用循环展开 (Loop unrolling)",
+          "D. 会强制引发原本不存在的写后读假依赖 (Write-after-read dependence)"
+        ],
+        "answer": "A",
+        "explanation": "线程粗化让单线程干更多活，必然占用更多局部资源。如果粗化系数过大导致资源超限，并发度降低，反而会使 GPU 失去掩盖延迟的能力。未被网格完全填满的剩余计算还会引发资源闲置的尾部效应 (Tail effect)。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "双缓冲 (Double Buffering) 机制主要用于消除哪种数据依赖及其带来的同步延迟？",
+        "options": [
+          "A. 读后写真依赖 (Read-after-write true dependence)",
+          "B. 写后读假依赖 (Write-after-read false dependence)",
+          "C. 共享内存存储体冲突 (Bank conflicts)",
+          "D. 全局内存非合并访问 (Uncoalesced accesses)"
+        ],
+        "answer": "B",
+        "explanation": "假依赖是由于读取和随后的写入被迫共用了同一个内存地址，为了防止旧数据在读取完毕前被覆盖，必须调用 `__syncthreads()`。双缓冲通过交替使用两块独立的内存区，完美解开了这一伪依赖，从而移除了多余的屏障同步。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在对带有局部数组 (Local array) 的内核代码进行线程粗化 (Thread Coarsening) 后，为什么通常必须搭配使用循环展开 (Loop Unrolling, `#pragma unroll`) 才能获得性能提升？",
+        "expectedAnswer": "如果不展开循环，局部数组会通过变量索引进行访问，这会迫使编译器将其存放到高延迟的片外本地内存 (Local memory) 中；使用循环展开后，所有的索引都变为了编译期常量，编译器就能将该数组直接提升分配到极速的寄存器 (Registers) 中。",
+        "explanation": "这是高级调优中极易踩坑的细节。寄存器寻址不支持动态变量索引，强制展开循环是将数据从慢速内存提升至极速寄存器的前置条件。"
+      },
+      {
+        "type": "short-answer",
+        "question": "为了消除 32x32 共享内存块严重的存储体冲突 (Bank Conflicts)，常使用数据填充 (Padding) 将列数扩充为 33 列。除了消耗一点额外的共享内存外，这还会带来什么计算层面的代价？",
+        "expectedAnswer": "会增加线性索引计算指令的开销。由于数组的列数（宽度）不再是 2 的幂次方（如 32），编译器无法再仅使用极快的一步位移操作 (Shift operation，如 `i >> 5`) 来计算行地址，而必须引入成本更高的加法和移位组合甚至实际的乘法指令。",
+        "explanation": "在性能敏感的 GPU 编程中，几乎所有的优化都是一种权衡。用少许的指令计算开销，换取消除致命的 32-way 串行内存访问，在绝大多数场景下是非常值得的。"
+      },
+      {
+        "type": "short-answer",
+        "question": "根据 Roofline 模型和资源瓶颈原理，如果一个内核当前正严重受限于极低的占用率 (Occupancy) 并处于计算受限 (Compute-bound) 状态，此时对其进一步引入共享内存分块 (Shared memory tiling) 优化会带来性能提升吗？为什么？",
+        "expectedAnswer": "不会带来提升，反而可能会严重降低性能。因为内核目前是计算受限，减少内存流量（Tiling 的主要作用）并不能突破计算能力的瓶颈。更糟的是，引入 Tiling 需要消耗大量的共享内存资源，这会进一步压低原本就已捉襟见肘的占用率 (Occupancy)，导致更多的计算核心因为没有足够的活跃 Warp 而被迫闲置等待。",
+        "explanation": "这一题点明了“瓶颈驱动优化”的核心思想。如果你在使用大量资源去优化一个并非瓶颈的环节，结果往往适得其反。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在多线程协调计算中，读后写真依赖 (True dependence) 与写后读假依赖 (False dependence) 的本质区别是什么？",
+        "expectedAnswer": "真依赖是逻辑上不可避免的，即线程必须等待某个新数据被真正计算并写入完毕后，才能读取它进行后续计算；假依赖并非逻辑必然，它仅仅是因为新的写入操作与上一次的读取操作被迫共用了同一个内存地址。只要能分配独立的内存区域（如双缓冲），假依赖就能被彻底消除。",
+        "explanation": "识别这两种依赖是减少同步延迟 (Synchronization latency) 的基础。不可避免的真依赖需要 `__syncthreads()`，而假依赖则可以用空间换时间来消除。"
+      },
+      {
+        "type": "short-answer",
+        "question": "为什么保证同一 Warp 中的线程执行全局内存合并访问 (Coalescing) 能够极大提升内存总线带宽利用率？这与 DRAM 底层硬件的什么固有机制直接相关？",
+        "expectedAnswer": "这与 DRAM 的突发 (Burst) 读取机制以及缓存行 (Cache line) 架构直接相关。DRAM 每次响应请求并不是只传回单个字节，而是连带传回该地址周围连续的一大块数据。如果 Warp 的访问在物理地址上是连续且对齐的，硬件就能将这 32 个线程的请求合并为极少数的几次 Burst 传输，避免了请求碎片化造成的总线拥堵与数据浪费。",
+        "explanation": "把零散的并发访问合并成规律的成块访问，就像是将数十辆私家车合并为一辆大巴车（Carpooling），能极大地缓解“高速公路（系统总线）”的交通堵塞。"
+      }
+    ]
+  }
+}

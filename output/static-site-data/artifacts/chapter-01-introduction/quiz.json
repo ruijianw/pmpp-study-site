@@ -1,0 +1,158 @@
+{
+  "chapterId": "chapter-01-introduction",
+  "chapterTitle": "Introduction",
+  "sourceId": "36d65c10-46f4-41a0-8d73-eea6b485aea1",
+  "sourceTitle": "chapter-01-introduction.pdf",
+  "artifactType": "quiz",
+  "artifactLabel": "Quiz",
+  "generatedAt": "2026-07-13T12:09:27.654972Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "测试题：引言 (Chapter 1: Introduction)",
+    "summary": "本测试题旨在检验对异构并行计算基础概念的掌握，涵盖多核 CPU 与多线程 GPU 的架构对比、Amdahl 定律的量化分析、以及大规模并行编程中常见的性能瓶颈与实现缺陷。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Advice)",
+        "points": [
+          "1. 架构对比：深入理解延迟导向 (Latency-oriented) 和吞吐量导向 (Throughput-oriented) 的根本区别，不要用 CPU 的优化思维去套用 GPU 编程。",
+          "2. 性能推理：牢记 Amdahl 定律，在遇到性能瓶颈时，首先评估程序中串行部分的占比，避免盲目优化。",
+          "3. 识别瓶颈：熟悉并行编程的四大挑战（内存带宽、同步开销、工作效率、数据特征），在实际编码前能预判可能触发的性能陷阱。",
+          "4. 历史背景：了解 GPGPU 时代的痛点与 CUDA 的硬件级突破，有助于理解 CUDA API 设计的初衷。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "type": "multiple-choice",
+        "question": "传统的 CPU 主要采用何种架构设计哲学？",
+        "options": [
+          "A. 吞吐量导向设计 (Throughput-oriented design)",
+          "B. 延迟导向设计 (Latency-oriented design)",
+          "C. 内存受限设计 (Memory-bound design)",
+          "D. 尴尬并行设计 (Embarrassingly parallel design)"
+        ],
+        "answer": "B",
+        "explanation": "CPU 采用延迟导向设计，通过投入大量芯片面积用于大容量片上缓存 (Caches) 和复杂的分支预测控制逻辑，以最小化单线程内算术运算和内存访问的延迟。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "GPU 架构主要通过哪种机制来隐藏长内存访问和算术运算的延迟 (Latency hiding)？",
+        "options": [
+          "A. 引入极大的片上 L3 缓存",
+          "B. 提高单线程的执行时钟频率",
+          "C. 依赖数十万个并发线程 (Concurrent threads) 的极速切换",
+          "D. 使用复杂的乱序执行 (Out-of-order execution) 逻辑"
+        ],
+        "answer": "C",
+        "explanation": "GPU 采用吞吐量导向设计，摒弃复杂控制逻辑，当部分线程因访存或运算阻塞时，硬件会瞬间无缝切换到其他就绪的线程执行，从而隐藏等待时间。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "根据 Amdahl 定律，如果一个程序的 30% 只能串行执行，即使将并行部分加速到无限大，整个程序的最大理论加速比是多少？",
+        "options": [
+          "A. 1.43x",
+          "B. 3.33x",
+          "C. 10x",
+          "D. 100x"
+        ],
+        "answer": "A",
+        "explanation": "整体加速比严格受限于串行比例，计算公式为 1 / 0.30 ≈ 1.43 倍。这意味着绝大部分代码必须被并行化才能获得显著的性能提升。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "将应用简单并行化后往往最高只能获得约 10 倍加速，此时最常见的性能瓶颈通常是什么？",
+        "options": [
+          "A. GPU 的 ALU 数量不足",
+          "B. 内存受限 (Memory-bound)，受制于主存 (DRAM) 带宽",
+          "C. 并行算法冗余工作 (Redundant work) 过多",
+          "D. 强制串行化执行"
+        ],
+        "answer": "B",
+        "explanation": "单纯的并行化会迅速饱和系统的主存带宽，导致计算单元闲置等待数据。必须利用片上存储 (On-chip memory) 进行访存优化才能突破此瓶颈。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "2007年 CUDA 发布之前，早期 GPGPU 时代进行通用计算面临的最大技术障碍是什么？",
+        "options": [
+          "A. GPU 硬件不支持浮点数运算",
+          "B. 缺少充足的显存 (DRAM) 容量",
+          "C. 必须使用图形API (如 OpenGL/Direct3D)，将通用计算极其困难地伪装成像素渲染操作",
+          "D. GPU 无法与 CPU 共享同一主板"
+        ],
+        "answer": "C",
+        "explanation": "CUDA 最大的突破在于加入了专门的通用计算硬件接口，使得开发者可以直接使用原生 C/C++ 语言进行并行编程，完全绕过了繁杂的图形渲染管线。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "为什么某些并行算法在处理大规模数据集时，整体运行速度可能反而比最优的串行算法还要慢？",
+        "options": [
+          "A. 由于缺乏工作效率 (Work efficiency)，并行算法为了并发执行产生了过多的冗余工作",
+          "B. GPU 的单核时钟频率大幅度低于 CPU",
+          "C. 线程之间的数据传输速度低于网络延迟",
+          "D. 系统无法分配足够数量的线程"
+        ],
+        "answer": "A",
+        "explanation": "如果并行算法引入的冗余工作 (Redundant work) 过多，时间复杂度的增加会抵消掉硬件并行带来的吞吐量优势。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "输入数据的特征（如极其不规则的尺寸或分布）对并行执行最具破坏性的影响是什么？",
+        "options": [
+          "A. 增加原子操作的成功率",
+          "B. 导致线程间被分配的工作量极度不平衡，大量线程被迫闲置等待",
+          "C. 强制关闭 GPU 的多线程调度器",
+          "D. 引起 CPU 与 GPU 之间的 PCIe 带宽降级"
+        ],
+        "answer": "B",
+        "explanation": "数据特征敏感性是并行编程的挑战之一。不均的数据会导致负载不均衡，从而削弱并发执行的整体效能。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在需要大量线程协作 (Collaboration) 的场景下，过度使用全局屏障 (Barriers) 或原子操作 (Atomic operations) 会导致什么性能问题？",
+        "options": [
+          "A. 内存受限 (Memory-bound)",
+          "B. 自动触发工作效率 (Work efficiency) 优化",
+          "C. 触发严重的同步开销 (Synchronization overhead)，阻塞并发流水线",
+          "D. 提升片上缓存的命中率"
+        ],
+        "answer": "C",
+        "explanation": "同步机制会让大量线程在特定执行点陷入等待状态，破坏了 GPU 隐藏延迟的核心机制，从而导致系统吞吐量断崖式下降。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在介绍异构计算分工的“桃子模型 (Peach model)”中，“桃核”与“桃肉”分别隐喻了应用中的哪两类代码？",
+        "expectedAnswer": "“桃核”代表具有高度顺序依赖、难以并行化的串行代码，适合由 CPU 执行；“桃肉”代表高度数据并行、计算密集型的代码，适合由 GPU 执行加速。",
+        "explanation": "异构并行计算的精髓在于发挥不同架构的专长，CPU 的延迟导向设计应对串行逻辑，GPU 的吞吐量导向设计应对海量并发逻辑。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在芯片架构设计中，为什么降低算术运算的“延迟 (Latency)”比增加“吞吐量 (Throughput)”的代价要昂贵得多？",
+        "expectedAnswer": "增加吞吐量只需复制现有的计算单元，面积和功耗呈线性增长；而将单次运算延迟减半，通常需要增加极为复杂的电路控制逻辑，会消耗两倍以上的芯片面积并增加四倍以上的功耗。",
+        "explanation": "正是这种巨大的成本不对称性，促使业界发展出了依靠多线程并发来隐藏延迟的 GPU 架构。"
+      },
+      {
+        "type": "short-answer",
+        "question": "为什么现代 GPU 能够提供比同时期 CPU 高出约 10 倍的内存带宽？",
+        "expectedAnswer": "图形渲染任务天生需要海量数据吞吐且接受较为宽松的内存一致性模型；而 CPU 必须满足旧有操作系统和 I/O 设备极其严苛的细粒度访存规范，极大限制了其带宽设计的灵活性。",
+        "explanation": "这一硬件基因决定了 GPU 在处理现代大型数据密集型 (Data-intensive) 应用时具有天然的访存优势。"
+      },
+      {
+        "type": "short-answer",
+        "question": "并行编程语境中的“尴尬并行 (Embarrassingly parallel)”应用指的是什么？",
+        "expectedAnswer": "指的是那些极易被分割成大量完全独立的子任务的应用程序，在执行过程中各个线程之间几乎不需要进行任何协作和同步操作。",
+        "explanation": "这类应用极少产生同步开销 (Synchronization overhead)，能够最直接、最纯粹地榨取 GPU 的全部并发算力。"
+      },
+      {
+        "type": "short-answer",
+        "question": "《大规模并行处理器编程》一书中强调的核心能力——“计算思维 (Computational Thinking)”，指的是什么能力？",
+        "expectedAnswer": "开发人员深入思考特定领域的实际问题，并将其抽象、转化为适合在大规模并行处理器上高效执行的逻辑结构与算法形式的能力。",
+        "explanation": "掌握计算思维是解决更高级复杂应用（如将串行递归转化为并行前缀和算法）以及跨硬件世代扩展性能的核心基石。"
+      }
+    ]
+  }
+}

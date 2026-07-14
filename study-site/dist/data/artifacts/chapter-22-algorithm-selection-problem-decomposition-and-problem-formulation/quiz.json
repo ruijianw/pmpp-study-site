@@ -1,0 +1,158 @@
+{
+  "chapterId": "chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation",
+  "chapterTitle": "Algorithm Selection Problem Decomposition And Problem Formulation",
+  "sourceId": "63fe8416-b018-40da-bcf6-b694e07d8fea",
+  "sourceTitle": "chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation.pdf",
+  "artifactType": "quiz",
+  "artifactLabel": "Quiz",
+  "generatedAt": "2026-07-13T15:14:37.930058Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "测试题：算法选择、问题分解与问题重构 (Chapter 22)",
+    "summary": "本测试题旨在检验读者对并行程序设计高级抽象思维的掌握程度。内容涵盖算法选择的多维权衡、问题分解策略（输入中心与输出中心）对底层 GPU 访存行为的决定性影响，以及阿姆达尔定律和批处理在系统级性能优化中的应用。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Advice)",
+        "points": [
+          "1. 深刻理解并行化“优化悖论”与分解策略的映射关系：牢记输出中心 (Output-centric) 对应 Gather 访存并避免原子操作，输入中心 (Input-centric) 对应 Scatter 访存并强制依赖原子操作 [1, 2]。",
+          "2. 熟练运用阿姆达尔定律 (Amdahl's law)：应用级性能瓶颈往往受限于不起眼的串行代码部分，掌握利用多流 (CUDA Streams) 提取任务级并行以掩盖延迟的架构级思维 [3, 4]。",
+          "3. 拥抱吞吐量 (Throughput) 至上的设计哲学：理解批处理 (Batching) 如何通过牺牲个体延迟，将低效内存受限操作转化为高算术强度操作，从而彻底激活 GPU 算力 [5, 6]。",
+          "4. 重视问题重构 (Problem formulation)：跳出底层指令优化的局限，学会结合领域知识改变数值近似条件，实现算法复杂度从平方级到线性级的降维打击 [7, 8]。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "type": "multiple-choice",
+        "question": "在选择并行前缀和算法时，Kogge-Stone 算法和 Brent-Kung 算法主要展示了哪两个关键指标的权衡？",
+        "options": [
+          "A. 算术强度与内存带宽",
+          "B. 算法复杂度 (Algorithmic complexity) 与暴露的并行度 (Parallelism exposed)",
+          "C. 通用性与数值精度",
+          "D. 寄存器使用量与共享内存容量"
+        ],
+        "answer": "B",
+        "explanation": "Brent-Kung 算法复杂度较低（操作数更少），使其在工作量上更为高效；但 Kogge-Stone 算法能暴露出更高的并行度，允许在更少的迭代次数内完成 [9]。这是并行算法选择中的经典权衡 [9]。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "以输出为中心 (Output-centric) 的问题分解策略在 GPU 上通常对应哪种内存访问模式？它有什么微架构优势？",
+        "options": [
+          "A. 散布 (Scatter) 模式，天然避免分支发散。",
+          "B. 收集 (Gather) 模式，线程可以将累加结果保存在私有寄存器中，且能避开原子操作。",
+          "C. 散布 (Scatter) 模式，能最大化利用常量内存。",
+          "D. 收集 (Gather) 模式，强制使用原子操作以保证计算精度。"
+        ],
+        "answer": "B",
+        "explanation": "输出中心策略通常产生收集 (Gather) 访存行为，允许多个线程共享输入，并将中间结果保留在私有寄存器中 [1]。这种模式彻底避免了多线程写入同一输出地址时所需的、高延迟的原子操作 [2, 10]。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "为什么以输入为中心 (Input-centric) 的分解策略在 CUDA 设备中往往不太理想？",
+        "options": [
+          "A. 因为它会导致收集 (Gather) 访存模式，浪费寄存器资源。",
+          "B. 因为多个线程可能同时更新同一个输出值，强制要求使用高延迟的原子操作 (Atomic operations) 来防止数据竞态。",
+          "C. 因为它只能处理一维网格 (1D Grids)。",
+          "D. 因为输入数据无法被缓存到 L1 Cache 中。"
+        ],
+        "answer": "B",
+        "explanation": "输入中心策略通常导致散布 (Scatter) 访存行为 [2]。多个线程可能会并发更新同一输出元素，为了防止竞态条件导致的数据丢失，必须使用极度缓慢的原子操作，从而严重降低内核执行性能 [2, 11]。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "尽管输入中心 (Input-centric) 分解需要原子操作，为什么在计算直方图 (Histogram) 时仍倾向于使用它，而不是输出中心 (Output-centric) 分解？",
+        "options": [
+          "A. 因为直方图的输出箱子 (Bins) 数量通常远小于输入元素，输出中心会导致严重的并行度不足、低效的全局搜索和极端负载失衡。",
+          "B. 因为输出中心分解无法使用共享内存。",
+          "C. 因为 CPU 不支持输出中心分解的直方图计算。",
+          "D. 因为输入中心分解可以完全消除对全局内存的访问。"
+        ],
+        "answer": "A",
+        "explanation": "如果直方图使用输出中心，不仅可用并行度极低（受限于极少的 Bins），而且分配给输出 Bin 的线程必须遍历所有输入来寻找映射到该 Bin 的值 [12]。这不仅效率极低，还会因为每个 Bin 的输入数量不同引发严重的负载失衡 [12]。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "静电势图计算中，从直接库仑求和 (DCS) 切换到截断分箱 (Cutoff binning) 算法，体现了问题重构 (Problem formulation) 的哪种核心权衡？",
+        "options": [
+          "A. 牺牲通用性换取更高的暴露并行度。",
+          "B. 牺牲一小部分物理精度，换取算法复杂度从 $O(V^2)$ 大幅降低到 $O(V)$。",
+          "C. 牺牲系统吞吐量换取更低的执行延迟。",
+          "D. 牺牲内存容量换取双精度浮点的计算能力。"
+        ],
+        "answer": "B",
+        "explanation": "截断分箱算法利用领域物理知识，忽略了极远原子的微小贡献（牺牲极小精度），成功将大体积计算的复杂度从平方级 $O(V^2)$ 降低到线性级别，从而打破了原始算法的根本限制 [8, 13]。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "假设一个应用中 95% 的时间用于 GPU 内核计算并实现了 100 倍加速，而剩余 5% 仍在 CPU 上串行执行，且两者不能重叠 (No overlap)。根据阿姆达尔定律，该应用的理论整体加速比约为多少？",
+        "options": [
+          "A. 100倍",
+          "B. 95倍",
+          "C. 20倍",
+          "D. 17倍"
+        ],
+        "answer": "D",
+        "explanation": "根据阿姆达尔定律，加速比计算为 1 / (0.05 + 0.95/100) = 1 / (0.05 + 0.0095) = 1 / 0.0595 ≈ 16.8倍 (即 17倍) [14]。如果 CPU 和 GPU 完美重叠执行，上限则由 5% 决定，即 1 / 0.05 = 20倍 [3]。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在稀疏矩阵向量乘法 (SpMV) 中，为什么 COO 格式强制要求使用基于输入中心 (Input-centric) 的散布模式分解？",
+        "options": [
+          "A. 因为 COO 格式的数据天然是收集 (Gather) 模式的理想载体。",
+          "B. 因为 COO 格式缺乏按行索引的结构。如果使用输出中心，线程将面临灾难性的全局遍历搜索，复杂度会急剧上升。",
+          "C. 因为 COO 格式只能完全放入常量内存中运行。",
+          "D. 因为 COO 格式根本不需要使用任何原子操作。"
+        ],
+        "answer": "B",
+        "explanation": "输出中心策略需要每个输出元素找到其对应的输入，但 COO 格式并未按行组织结构 [15, 16]。如果强行使用输出中心，负责某个输出向量元素的线程将不得不在全量非零元素中进行极其低效的搜索查找 [16]。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在处理大语言模型 (LLM) 推理等高并发场景时，引入批处理 (Batching) 通常是为了在微架构层面实现什么目的？",
+        "options": [
+          "A. 增加系统吞吐量 (Throughput) 以换取较低的算术强度。",
+          "B. 以增加个体任务的延迟 (Latency) 为代价，将低效的向量-矩阵乘法转化为高算术强度的矩阵-矩阵乘法，从而实现系统整体吞吐量 (Throughput) 的飞跃。",
+          "C. 极大降低个体任务延迟，但会略微牺牲整体吞吐量。",
+          "D. 增加原子操作的使用率，以此减少共享内存的 Bank 冲突。"
+        ],
+        "answer": "B",
+        "explanation": "批处理通过合并多个查询实例，允许这些查询复用加载到片上的同一套矩阵权重。这把算术强度极低的向量-矩阵运算转变为矩阵乘法，彻底消除了冗余的全局内存读取，从而在略微增加单任务延迟的情况下极大提升了整体吞吐量 [5, 6]。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在选择并行排序算法时，基数排序 (Radix sort) 与归并排序 (Merge sort) 展现了哪两个特性之间的经典权衡？",
+        "expectedAnswer": "它们展现了通用性 (Generality) 与并行执行效率 (Parallel execution efficiency) 之间的权衡。",
+        "explanation": "基数排序具有更低的算法复杂度和极高的并行效率，但只能处理可以解析为位的特定键值（缺乏通用性）；而归并排序基于比较操作，通用性强，但其并行化开销和复杂度相对更高 [17]。"
+      },
+      {
+        "type": "short-answer",
+        "question": "从底层微架构角度，为什么以输出为中心 (Output-centric) 的分解策略通常比以输入为中心 (Input-centric) 的分解策略执行效率更高？",
+        "expectedAnswer": "输出中心分解通常产生收集 (Gather) 访存模式，允许线程将中间累加结果存放在极速的私有寄存器 (Registers) 中，并天然避免了多个线程并发写同一地址时引发的数据竞态，从而避开了高延迟的原子操作 (Atomic operations)。",
+        "explanation": "输入中心 (Scatter) 模式强制要求线程向全局或共享内存执行大量散乱的更新操作。多线程竞争同一内存位置不仅带来延迟，还可能导致严重的硬件排队与内存事务串行化 [1, 2]。"
+      },
+      {
+        "type": "short-answer",
+        "question": "尽管在并行合并操作 (Merge operation) 中，输入中心分解也不需要原子操作，但为什么该算法最终仍强烈倾向于使用输出中心分解？",
+        "expectedAnswer": "主要是为了在实施线程粗化 (Thread coarsening) 时保证负载均衡 (Load balance) 并避免控制流发散 (Control divergence)。",
+        "explanation": "如果使用输入中心，不同的线程可能需要在另一数组中映射并合并数量完全不同的元素，导致严重负载失衡；输出中心通过让每个线程严格负责产生固定数量的输出元素，确保了工作量的均匀划分 [18]。"
+      },
+      {
+        "type": "short-answer",
+        "question": "考虑到阿姆达尔定律 (Amdahl's law) 指出小部分串行任务会严重限制系统加速比，开发者可以在 CUDA 中利用什么机制来提取任务级并行 (Task-level parallelism) 并掩盖延迟？",
+        "expectedAnswer": "开发者可以使用 CUDA 流 (Streams) 来并发执行多个小规模的内核 (Kernels) 和任务。",
+        "explanation": "即使单个小规模内核因为尺寸太小无法充分榨干 GPU 资源，通过多个并发流同时将这些小任务发射到 GPU 上，可以实现它们之间的重叠执行 (Overlapped execution)，从而有效提高硬件整体占用率并打破阿姆达尔定律带来的部分瓶颈 [4]。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在并行应用开发中，“问题重构” (Problem formulation) 为什么通常被认为比单纯的内核指令级优化更能带来根本性的性能突破？",
+        "expectedAnswer": "因为问题重构打破了单纯映射通用数值方法所固有的高计算复杂度和有限并行度。通过结合跨学科的领域知识改变底层的物理近似或数学约束条件，可以将算法复杂度实现数量级 (Order-of-magnitude) 的降维打击。",
+        "explanation": "指令级优化只能在算法复杂度固定的前提下提升有限的倍数，而问题重构（例如静电势图从 DCS 到截断分箱的重组）可以实现从 $O(N^2)$ 到 $O(N)$ 的飞跃，解锁原本在算力上不可能的大规模模拟 [7, 8]。"
+      }
+    ]
+  }
+}

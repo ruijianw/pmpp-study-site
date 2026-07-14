@@ -1,0 +1,63 @@
+{
+  "chapterId": "chapter-01-introduction",
+  "chapterTitle": "Introduction",
+  "sourceId": "36d65c10-46f4-41a0-8d73-eea6b485aea1",
+  "sourceTitle": "chapter-01-introduction.pdf",
+  "artifactType": "briefing",
+  "artifactLabel": "Briefing",
+  "generatedAt": "2026-07-13T12:07:05.245853Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "简报：引言 (Chapter 1: Introduction)",
+    "summary": "本章概述了异构并行计算 (Heterogeneous parallel computing) 的崛起背景，剖析了以降低延迟为目标的多核 CPU (Multi-core CPU) 与以最大化吞吐量为目标的多线程 GPU (Many-thread GPU) 在架构设计上的根本差异，并指出了 CUDA 如何突破早期 GPGPU 的限制，为大规模并行编程和性能优化奠定理论基础。",
+    "sections": [
+      {
+        "heading": "执行摘要 (Executive Summary)",
+        "points": [
+          "受制于能耗和散热瓶颈，单核处理器频率提升停滞，微处理器设计全面转向多核 (Multi-core) 和多线程 (Many-thread) 架构，引发了并发革命 (Concurrency revolution)。",
+          "现代高性能计算依赖异构系统：由 CPU 处理复杂的串行逻辑（“桃核”），由 GPU 加速大规模数据并行 (Data parallel) 和计算密集型的任务（“桃肉”）。",
+          "2007年发布的 CUDA 在硬件层面引入了通用并行编程接口，彻底打破了以往必须将计算伪装成图形渲染 (GPGPU) 的技术壁垒。"
+        ]
+      },
+      {
+        "heading": "核心主张 (Core Claims)",
+        "points": [
+          "设计哲学差异：CPU 采用延迟导向设计 (Latency-oriented design)，投入大量芯片面积用于大容量缓存 (Caches) 和复杂的控制/预测逻辑以最小化单线程延迟；GPU 采用吞吐量导向设计 (Throughput-oriented design)，大量部署简单的计算单元 (ALUs) 和内存通道，通过数十万个并发线程 (Concurrent threads) 切换来隐藏延迟。",
+          "成本不对称性：在芯片设计中，通过堆叠计算单元来提升吞吐量的成本（面积与功耗），远低于降低单一操作延迟的成本。",
+          "Amdahl定律 (Amdahl's Law)：应用程序的最大理论加速比 (Speedup) 受到其无法被并行化的串行部分比例的严格限制。要获得百倍级加速，代码的绝大部分必须被并行化。"
+        ]
+      },
+      {
+        "heading": "本章重要性 (Why This Chapter Matters)",
+        "points": [
+          "建立计算思维 (Computational Thinking)：引导开发者转变思路，将现实问题抽象并转化为适合大规模并行处理器高效执行的逻辑结构。",
+          "提供性能推理基础 (Performance Reasoning)：使开发者明白必须结合底层硬件的存储架构和线程调度机制来编写代码，而非盲目假设“核心越多速度越快”。",
+          "规划全书学习路径：明确了从基础并行模式、内存优化到复杂算法问题分解 (Problem Decomposition) 的系统性进阶框架。"
+        ]
+      },
+      {
+        "heading": "先决条件 (Prerequisites)",
+        "points": [
+          "C++ 基础：CUDA 模型被设计为 C++ 的扩展，因此读者需要具备基础的 C++ 编程经验。",
+          "基础执行概念：理解线程 (Thread)、程序计数器 (Program counter) 和指令顺序执行的基础逻辑。",
+          "无需深厚的硬件设计专家级知识，但需要具备接受直观架构概念的意愿。"
+        ]
+      },
+      {
+        "heading": "实现启示与常见错误 (Implementation Implications)",
+        "points": [
+          "内存受限 (Memory-bound) 陷阱：最常见的实现错误是认为算力决定一切。实际上，简单并行化的代码极易耗尽系统内存带宽 (Memory bandwidth)，导致最高仅能获得约 10 倍加速，必须利用片上存储 (On-chip memory) 进行深度优化。",
+          "工作效率缺失 (Work Efficiency)：某些并行算法为了并发执行会产生大量冗余工作 (Redundant work)，导致在处理大规模数据时性能甚至落后于串行版本。",
+          "同步开销失控 (Synchronization Overhead)：在需要线程协作 (Collaboration) 的场景中，过度使用屏障 (Barriers) 或原子操作 (Atomic operations) 会导致大量线程阻塞，严重破坏并发吞吐量。",
+          "数据分布敏感性：如果输入数据大小不规则或分布极度不均，会导致线程间工作量失衡，削弱并行执行的实际效能。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

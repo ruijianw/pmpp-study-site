@@ -1,0 +1,158 @@
+{
+  "chapterId": "chapter-08-stencil-computation",
+  "chapterTitle": "Stencil Computation",
+  "sourceId": "216acd9e-1b90-4169-9dd3-45891e57857c",
+  "sourceTitle": "chapter-08-stencil-computation.pdf",
+  "artifactType": "quiz",
+  "artifactLabel": "Quiz",
+  "generatedAt": "2026-07-13T13:49:05.511692Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "测试题：模板计算 (Chapter 8: Stencil Computation)",
+    "summary": "本测试题旨在检验读者对 CUDA 模板计算 (Stencil Computation) 优化的核心知识掌握程度，重点考察 3D 模板的算术强度瓶颈、3D 共享内存分块的硬件限制，以及如何运用 z 轴线程粗化 (Thread Coarsening) 与寄存器分块 (Register Tiling) 突破性能天花板。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Advice)",
+        "points": [
+          "1. 深刻理解算术强度：模板计算天生缺乏对角线复用，其实际与理想算术强度 (Arithmetic Intensity) 都极低，优化核心是想尽办法在硬件限制下降低全局内存流量。",
+          "2. 认清 3D 分块的硬件死穴：单 Block 最多 1024 线程，使得 3D 块的边长上限极短（如 8x8x8）。这必然导致光环比例 (Halo ratio) 过高，并彻底破坏内存合并访问 (Coalescing)。",
+          "3. 掌握降维与粗化策略：将 3D 线程块降维至 2D (如 32x32) 并让每个线程沿 z 轴循环 (Thread Coarsening)，不仅摊薄了光环开销，还完美恢复了连续合并访存。",
+          "4. 洞悉数据的局部私有特性：模板计算中 z 轴前后的数据 (Prev, Next) 仅被单线程使用且无需跨线程共享，将其放入寄存器 (Register Tiling) 可将共享内存消耗降低至三分之一，但需警惕寄存器超载 (Register pressure)。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "type": "multiple-choice",
+        "question": "对于 3D 7点模板 (3D 7-point stencil)，理想情况下的最大算术强度 (Arithmetic Intensity) 约为多少？",
+        "options": [
+          "A. 0.41 FLOP/B",
+          "B. 1.625 FLOP/B",
+          "C. 3.125 FLOP/B",
+          "D. 85.75 FLOP/B"
+        ],
+        "answer": "B",
+        "explanation": "理想情况下，对于 3D 7点模板，每计算一个输出需要 13 次浮点运算，且仅需从全局内存读取 1 个新元素(4字节)并写入 1 个结果(4字节)，其理论极限约为 13 / 8 = 1.625 FLOP/B。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在未优化的 3D 7点模板计算基础内核 (Basic kernel) 中，最致命的性能瓶颈是什么？",
+        "options": [
+          "A. 寄存器溢出 (Register spilling)",
+          "B. 边界条件判定导致的控制流发散 (Control divergence) 极其严重",
+          "C. 实际算术强度极低 (仅约 0.41 FLOP/B)，导致计算核心绝大部分时间在等待全局内存传输 (Memory-bound)",
+          "D. 共享内存 (Shared memory) 容量不足"
+        ],
+        "answer": "C",
+        "explanation": "基础内核中，每个输出的计算都需要独立读取 7 个输入值并写入 1 个输出值，实际算术强度仅为 13 / (8*4) ≈ 0.41 FLOP/B，远低于现代 GPU 算力需求，是典型的内存受限 (Memory-bound) 内核。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "如果直接在 3D 模板计算中采用立体的 3D 共享内存分块 (Shared-memory tiling)，硬件对线程块 (Thread Block) 的限制会导致什么严重后果？",
+        "options": [
+          "A. 由于单 Block 最大 1024 线程，3D 块最大只能为 8x8x8，这导致光环单元 (Halo cells) 占比极高 (达 58%)，从而严重拉低算术强度",
+          "B. 会导致寄存器直接耗尽",
+          "C. 硬件无法支持 3D 寻址",
+          "D. 常量内存 (Constant memory) 会发生溢出"
+        ],
+        "answer": "A",
+        "explanation": "单 Block 最大 1024 线程限制了 3D 块的边长上限。对于一阶 3D 模板，8x8x8 块中有 296 个冗余的光环单元加载，相对占比高达 58%，严重削弱了分块带来的内存复用收益。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "为什么使用 8x8x8 的 3D 线程块处理 3D 模板计算时，全局内存的合并访问 (Memory Coalescing) 效率极差？",
+        "options": [
+          "A. 因为光环单元强制要求随机访问",
+          "B. 因为一个包含 32 线程的 Warp 必须跨越 4 行非连续的内存地址读取数据（每行仅 8 个元素），导致总线利用率极低",
+          "C. 由于双精度浮点数 (FP64) 在 3D 内存模型下的对齐问题",
+          "D. 硬件 L2 缓存会自动屏蔽 3D 块的并发读取"
+        ],
+        "answer": "B",
+        "explanation": "合并访问要求 Warp 内的 32 个线程访问连续对齐的内存。但在 x 维度仅为 8 的 3D 块中，Warp 中的线程被折叠到了 4 个不同的行中，导致访存碎片化。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在 3D 模板计算中引入 z 轴线程粗化 (Z-axis Thread Coarsening) 的核心动机和收益是什么？",
+        "options": [
+          "A. 完全消除所有光环单元 (Halo cells) 的加载需求",
+          "B. 降维使用 2D 大尺寸线程块 (如 32x32)，摊薄光环开销，提升算术强度，并完美恢复了内存合并访问 (Coalescing)",
+          "C. 将所有的输入输出数据全部移入寄存器，彻底不使用共享内存",
+          "D. 将浮点运算总次数减少一半"
+        ],
+        "answer": "B",
+        "explanation": "通过将单线程的工作量从 1 个点扩大为沿 z 轴的 1 列，我们可以将线程块在 x-y 平面上铺开为 32x32。这不仅通过加长 x 轴实现了连续合并访存，还将光环占比大幅降低，使算术强度跃升至 1.52 FLOP/B。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在采用 z 轴线程粗化 (Thread coarsening) 的 3D 7点模板内核中，为了满足沿 z 轴的循环计算，共享内存 (Shared memory) 需要同时维护多少数据？",
+        "options": [
+          "A. 仅 1 层 (Curr)",
+          "B. 3 层滑动窗口 (Prev, Curr, Next)",
+          "C. 7 层数据",
+          "D. 与 z 轴总深度相同的所有输入数据"
+        ],
+        "answer": "B",
+        "explanation": "不需要在共享内存中装下整个 3D 块，只需维护一个随着 z 轴循环推进的 3 层数据滑动窗口。这使得共享内存消耗量从 t^3 骤降为 3 * t^2，极大缓解了容量压力。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "为什么在 3D 7点模板计算中，能够将 z 轴的前后层数据 (Prev, Next) 从共享内存转移至寄存器 (Registers) 中进行分块 (Register Tiling)？",
+        "options": [
+          "A. 因为寄存器的硬件容量远大于共享内存",
+          "B. 因为这两个 z 轴邻居数据仅被当前线程本身在计算时使用，无需在不同的并发线程之间共享",
+          "C. 因为 CUDA 编译器会强制将 3D 数组的前后指针优化为寄存器",
+          "D. 因为它们属于不随迭代变化的常量边界条件"
+        ],
+        "answer": "B",
+        "explanation": "这是模板计算（正交邻居模式）的一个特有属性。既然 z 轴前后的数据不需要跨线程交换，那么就不必浪费需要全 Block 共享的共享内存，存放在单线程私有的寄存器中反而拥有更低的延迟。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在模板计算的高级优化中，过度依赖寄存器分块 (Register Tiling) 可能会引发什么严重的性能反噬？",
+        "options": [
+          "A. 导致 L2 缓存命中率暴跌为 0",
+          "B. 导致全局内存的合并访问 (Coalescing) 彻底失效",
+          "C. 导致大量控制流发散 (Control divergence)",
+          "D. 导致单线程寄存器消耗过高，使 SM 能够并发驻留的 Warp 数量锐减，跌下占用率悬崖 (Occupancy cliff)，丧失隐藏延迟的能力"
+        ],
+        "answer": "D",
+        "explanation": "寄存器分块是典型的以资源换速度的优化。如果模板阶数较高，把过多的层放入寄存器会导致单个线程耗尽硬件寄存器配额，使得 SM 无法同时运行足够的线程，最终反而会由于无法掩盖内存延迟而拖慢整体速度。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在数据精度与内存复用特性上，模板计算 (Stencil Computation) 与卷积 (Convolution) 有何显著的区别？",
+        "expectedAnswer": "模板计算常用于求解微分方程，为了保证数值稳定性通常需要使用双精度浮点数 (FP64)，这会占用双倍的内存带宽；此外，3D 模板计算（如 7-point 模式）缺乏对角线元素的复用，数据复用率极低，导致其算术强度上限远低于同等尺寸的 3D 卷积。",
+        "explanation": "理解这一区别，就能明白为什么 3D 卷积可以用常规 3D 分块，而 3D 模板计算却会陷入极低算术强度和带宽匮乏的困境。"
+      },
+      {
+        "type": "short-answer",
+        "question": "试述为什么 3D 7点模板计算的基础实现被视为极端内存受限 (Memory-bound) 的问题？",
+        "expectedAnswer": "因为计算单个网格点仅需 13 次浮点运算，但如果不做任何分块优化，需要独立从全局内存读取 7 个单精度浮点数并写入 1 个浮点数。其实际算术强度仅为 13 / 32 ≈ 0.41 FLOP/B，远低于现代 GPU 峰值计算所需的阈值，导致计算核心严重饥饿。",
+        "explanation": "通过对比算术强度与硬件瓶颈阈值，可以精确推理出程序优化方向必须聚焦于减少对全局 DRAM 的访问流量。"
+      },
+      {
+        "type": "short-answer",
+        "question": "解释为何在 3D 模板计算中采用 8x8x8 这种 3D 线程块会导致极高的光环单元 (Halo Cells) 开销？",
+        "expectedAnswer": "由于 CUDA 单 Block 最多 1024 线程的硬件限制，3D 立体块的边长无法超过 8。对于一阶 3D 模板，8x8x8 的输入块(512 元素) 仅能计算出 6x6x6 (216 元素) 的有效输出。这意味着超过一半 (58%) 的输入数据加载都消耗在了周边冗余的光环单元上，导致算术强度无法得到有效提升。",
+        "explanation": "揭示了并行优化中三维维度爆炸带来的“表面积与体积比”恶化问题。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在实施 z 轴线程粗化 (Z-axis Thread Coarsening) 时，内核沿 z 轴循环推进滑动窗口（更新 Prev, Curr, Next 层）时，必须注意什么极其关键的同步问题？",
+        "expectedAnswer": "在更新共享内存中的滑动窗口指针或数据之前，必须调用 `__syncthreads()` 强制进行屏障同步。这能确保同一 Block 内的所有线程都已完全完成基于当前层共享内存数据的运算。若遗漏该同步，执行较快的线程会提前加载新数据，导致较慢线程的数据在读取前被覆盖，引发致命的数据读写竞争 (Race condition)。",
+        "explanation": "在使用共享内存进行多阶段 (Phases) 协作加载时，读后写 (Read-after-write) 和写后读 (Write-after-read) 的屏障同步是绝对不可忽略的正确性基石。"
+      },
+      {
+        "type": "short-answer",
+        "question": "引入 z 轴线程粗化技术（将 8x8x8 的 3D 块转变为 32x32 的 2D 块）是如何完美解决全局内存合并访问 (Memory Coalescing) 难题的？",
+        "expectedAnswer": "在 8x8x8 块中，一个 Warp (32 线程) 会被物理映射为 4 行，导致其发出内存请求时被迫跨越 4 段非连续的内存（每段仅 8 元素）。改为 32x32 块后，Warp 中 32 个线程的 x 轴连续索引正好填满一个完整且连续的 32 元素数据段。硬件因此能够完美触发全局内存的合并访问 (Coalesced Access)，从而大幅提升了总线带宽利用率。",
+        "explanation": "这展现了如何通过调整并行粒度和线程块维度，巧妙顺应底层 DRAM 突发 (Burst) 读取机制的优化哲学。"
+      }
+    ]
+  }
+}

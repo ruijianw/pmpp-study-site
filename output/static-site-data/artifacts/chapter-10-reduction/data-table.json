@@ -1,0 +1,72 @@
+{
+  "chapterId": "chapter-10-reduction",
+  "chapterTitle": "Reduction",
+  "sourceId": "32ca4118-c499-4bbc-bd3d-3f5200036719",
+  "sourceTitle": "chapter-10-reduction.pdf",
+  "artifactType": "data-table",
+  "artifactLabel": "Data Table",
+  "generatedAt": "2026-07-13T13:57:57.548858Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "数据表格：归约 (Chapter 10: Reduction)",
+    "summary": "本数据表格整理了 GPU 上并行归约算法的核心概念与优化路径。涵盖了从基础归约树的发散缺陷，到利用步长递减映射 (Stride-halved mapping) 恢复合并访存，再到引入 Warp 级原语 (Warp-level primitives) 和线程粗化 (Thread coarsening) 彻底压榨硬件性能的完整脉络。",
+    "sections": [
+      {
+        "heading": "表格说明 (Table Description)",
+        "points": [
+          "本表结构化解析了并行归约中的工作量 (Work) 与跨度 (Span) 变化，以及底层 SIMD 执行模型下的控制流发散 (Control divergence) 问题 [1-3]。",
+          "深入对比了不同线程工作分配策略对全局内存带宽 (Memory bandwidth) 的影响，并提供了避免过度同步 (Over-synchronization) 的防错指南 [4, 5]。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "concept": "归约树与算子约束 (Reduction Trees & Operator Constraints)",
+        "definition": "将顺序执行的 O(N) 步骤转换为 O(log N) 跨度 (Span) 的并行树状归并过程 [2]。",
+        "cudaRelevance": "并行归约要求二元运算符必须满足结合律 (Associativity)。若要应用重排操作数顺序的步长递减优化或使用原子操作累加多 Block 结果，算子还必须满足交换律 (Commutativity) [6, 7]。",
+        "performanceConcern": "虽然工作量 (Work) 仍为 O(N)，但在每步迭代中活跃线程数不断减半，导致归约后期出现严重的硬件利用不足 (Hardware underutilization) [8, 9]。",
+        "commonMistake": "误以为浮点加法严格满足结合律。在 GPU 上改变执行顺序 (如采用归约树) 可能会因舍入误差累积，导致结果与 CPU 顺序计算产生细微偏差 [10]。"
+      },
+      {
+        "concept": "步长倍增基础映射 (Stride-doubled Mapping)",
+        "definition": "基础的归约线程映射方式，其步长初始化为 1 并逐轮倍增，活跃线程通过 `threadIdx.x % stride == 0` 条件来判定 [11, 12]。",
+        "cudaRelevance": "该分配方式导致同一个 Warp 内部，活跃与非活跃线程交替出现。随着迭代深入，活跃线程之间的跨度成倍拉大 [3]。",
+        "performanceConcern": "引发了极度严重的控制流发散 (Control divergence) 和非合并访存 (Uncoalesced memory accesses)，使得大量执行资源闲置，且浪费了大部分全局内存总线带宽 [3, 13]。",
+        "commonMistake": "认为只要算法逻辑正确即可，忽视了线程在底层 SIMD 硬件上的空间分布，从而写出执行资源利用率 (Execution resource utilization efficiency) 仅有约 30% 的低效内核 [14]。"
+      },
+      {
+        "concept": "步长递减连续映射 (Stride-halved Mapping)",
+        "definition": "优化后的映射策略，步长从 `blockDim.x / 2` 开始并逐轮减半。保证每轮迭代中活跃线程的 `threadIdx.x` 是连续的 [15, 16]。",
+        "cudaRelevance": "让活跃线程紧凑地集中在开头的几个 Warp 中。只要当前轮次活跃线程数大于 32，就不会发生 Warp 内部的控制流发散，并且相邻线程总是访问相邻的内存地址 [17, 18]。",
+        "performanceConcern": "完美实现了全局内存的合并访存 (Coalescing)，并显著减少了控制流发散的轮数，使得内核的执行效率和 DRAM 带宽利用率获得巨大飞跃 [18, 19]。",
+        "commonMistake": "在重构为步长递减映射时，没有验证算子是否满足交换律 (Commutativity)，因为这种映射本质上重排了输入数据的组合顺序 [15, 20]。"
+      },
+      {
+        "concept": "Warp 级洗牌原语 (Warp Shuffle Primitives)",
+        "definition": "如 `__shfl_down_sync` 这种硬件级指令，允许同一个 Warp 内的线程直接通过寄存器 (Registers) 快速交换数据 [21, 22]。",
+        "cudaRelevance": "在归约树的最后 5 步（即活跃线程数 ≤ 32 的阶段），可以用它来替代共享内存 (Shared memory) 和块级同步屏障 `__syncthreads()`，实现极限极速的 Warp 内归约 (Warp-wide reduction) [23, 24]。",
+        "performanceConcern": "彻底消除了单 Warp 活跃阶段对共享内存的读写开销与同步延迟 (Synchronization overhead)，显著减少了长延迟指令的占比 [5, 25]。",
+        "commonMistake": "在使用 `__shfl_down_sync` 完成数据交换后，仍然错误且多余地调用 `__syncthreads()`。由于该原语已内置硬件级同步语义，混用块级屏障会引入完全不必要的开销 [26, 27]。"
+      },
+      {
+        "concept": "多 Block 任意长度归约 (Multi-block Arbitrary Length Reduction)",
+        "definition": "将超大输入数组切分成多个段 (Segments)，由多个 Block 独立完成局部归约，最后汇总输出的策略 [28, 29]。",
+        "cudaRelevance": "用于突破单 Block 最多 1024 线程的规模限制。由于 `__syncthreads()` 无法实现跨 Block 同步，必须使用 `atomicAdd` 等原子操作让各 Block 领头线程 (Leader threads) 将局部和安全写入全局结果 [28, 30]。",
+        "performanceConcern": "各 Block 完成时间不可预测，原子操作只能保证互斥访问但不能保证顺序。因此要求算子必须具有交换律 [31]。",
+        "commonMistake": "在跨 Block 汇总阶段未使用原子操作，试图直接通过 `output += partialSum` 进行累加，这会导致严重的读-改-写竞态条件，丢失部分 Block 的归约结果 [30, 31]。"
+      },
+      {
+        "concept": "线程粗化 (Thread Coarsening)",
+        "definition": "让单个线程在进入归约树之前，先串行循环处理多个连续的输入元素 (如由一个线程预先累加 4 个元素) [32, 33]。",
+        "cudaRelevance": "本质上是将部分并行工作转换为串行工作，从而按倍数减少所需的 Thread Block 启动总数量 [9, 32]。",
+        "performanceConcern": "粗化阶段能保证 100% 的硬件利用率且无需同步。极大地摊薄了因归约树尾部空转带来的硬件闲置浪费，减少了共享内存访问和 `__syncthreads()` 的调用总次数 [32, 34]。",
+        "commonMistake": "将粗化系数 (COARSE_FACTOR) 设置得过高，导致启动的 Thread Block 数量少于流式多处理器 (SM) 能够并发执行的容量，反而无法充分发掘硬件的数据并行吞吐潜力 [35]。"
+      }
+    ]
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "chapterId": "chapter-13-merge",
+  "chapterTitle": "Merge",
+  "sourceId": "fe2cbf02-e8a0-4d31-8236-d29aa0d0b96c",
+  "sourceTitle": "chapter-13-merge.pdf",
+  "artifactType": "data-table",
+  "artifactLabel": "Data Table",
+  "generatedAt": "2026-07-13T14:19:39.162665Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "数据表格：归并 (Chapter 13: Merge)",
+    "summary": "本数据表格梳理了 GPU 上并行有序归并 (Parallel Ordered Merge) 的核心技术点。涵盖了从协同秩 (Co-rank) 算法解决动态数据划分，到分析基础内核的非合并访存缺陷，再到利用共享内存分块 (Tiling) 以及循环缓冲区 (Circular-buffer) 榨干全局内存带宽的高级优化路径。",
+    "sections": [
+      {
+        "heading": "表格说明 (Table Description)",
+        "points": [
+          "系统对比了处理动态数据依赖 (Data-dependent memory accesses) 时的访存优化演进。",
+          "深入解析了循环缓冲区 (Circular-buffer) 与线程粗化 (Thread coarsening) 在提升内存带宽利用率和摊薄计算开销中的关键权衡。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "concept": "有序归并与稳定性 (Ordered Merge & Stability)",
+        "definition": "将两个已排序的输入数组合并为一个排序输出数组，且当遇到相等键值时，必须严格保留其在原输入列表中的相对顺序。",
+        "cudaRelevance": "是并行归并排序 (Merge sort) 和分布式 Map-Reduce 框架的基石。在 Co-rank 二分查找中，通过 `A[i-1] <= B[j]` 和 `B[j-1] < A[i]` 的严格判定来维持。",
+        "performanceConcern": "稳定性的条件判断引入了稍微复杂的控制流，但在业务层面上避免了后续排序对前序工作成果的破坏。",
+        "commonMistake": "忽略对相等键值的正确处理，导致输出数据不稳定，这在复杂应用 (如按不同键值进行的多级排序) 场景下会产生难以追踪的逻辑错误。"
+      },
+      {
+        "concept": "协同秩算法 (Co-rank Algorithm)",
+        "definition": "一种基于输出目标排名 (Rank) 反推输入边界的搜索算法。已知在输出数组 C 中的索引 k，通过二分查找找到满足 i + j = k 的输入边界 i 和 j。",
+        "cudaRelevance": "解决了 GPU 并行化中最棘手的“动态输入数据识别 (Dynamic input data identification)”问题。让各个 Thread 或 Block 能够无冲突地独立获取所需的输入分段。",
+        "performanceConcern": "二分查找的时间复杂度为 O(log N)。如果在高延迟的全局内存 (Global memory) 中频繁为每个线程执行，会带来极高的开销。",
+        "commonMistake": "在实现二分查找时，忽略当 k > n 时下界 `i_low` 必须初始化为 k - n，或 `j_low` 必须初始化为 k - m 的边界条件，导致搜索范围过大或访问越界。"
+      },
+      {
+        "concept": "基础内核与非合并访存 (Basic Kernel & Uncoalesced Accesses)",
+        "definition": "每个 GPU 线程独立调用 Co-rank 确定输入边界，然后直接在全局内存中执行顺序归并操作。",
+        "cudaRelevance": "代码逻辑最直观，且实现了完全的并行化，但严重违背了底层 GPU 硬件的内存合并访问规则。",
+        "performanceConcern": "由于输入数组的消耗高度依赖于实际数据值，同一个 Warp 内相邻线程所需的 A 或 B 物理地址极大可能是不连续的，这将直接引发极其严重的非合并访存 (Uncoalesced accesses)，导致带宽断崖式下跌。",
+        "commonMistake": "认为只要算法逻辑正确且没有分支发散 (Control divergence) 就能获得高性能，完全忽视了数据依赖型访存 (Data-dependent accesses) 对 DRAM 带宽的破坏性影响。"
+      },
+      {
+        "concept": "共享内存分块与带宽浪费 (Shared Memory Tiling & Bandwidth Waste)",
+        "definition": "以 Thread Block 为单位调用 Co-rank，所有线程协作将一大块连续的 A 和 B 预取到共享内存 (Shared memory) 中，再进行局部归并。",
+        "cudaRelevance": "利用协作加载，成功将原本离散的全局内存访问转化为了高效连续的合并访存 (Coalesced accesses)。",
+        "performanceConcern": "虽然解决了非合并访存，但由于每次迭代实际消耗的 A 和 B 元素数量不可预测（最极端情况可能全耗 A 且不耗 B），导致未被消耗的剩余数据在下一轮迭代中被重复加载，直接浪费约 50% 的全局内存带宽。",
+        "commonMistake": "误以为只要将数据放入共享内存就万事大吉，没有通过 Profiler 测算实际有效数据吞吐量与冗余加载字节数之间的悬殊比率。"
+      },
+      {
+        "concept": "循环缓冲区 (Circular-buffer)",
+        "definition": "针对分块加载中的带宽浪费，通过指针回绕 (Wrap-around) 机制复用共享内存中的未消耗数据，每次仅从全局内存中填补已经被消耗的数据空缺。",
+        "cudaRelevance": "彻底消除了重复的冗余数据加载，榨干了极为宝贵的全局内存带宽，使该内存受限 (Memory-bound) 内核的性能逼近硬件的物理极限。",
+        "performanceConcern": "显著增加了代码复杂度，同时每个线程需要分配更多寄存器 (Registers) 追踪状态，可能降低占用率 (Occupancy)。但在极端带宽受限场景下，牺牲部分计算资源换取带宽是完全值得的。",
+        "commonMistake": "将模运算 (Modulo) 回绕逻辑直接硬编码进底层的 Co-rank 二分查找中。正确的工程做法是抽象出简化接口 (Simplified model)，仅在内存访问的最后一刻执行 `% tile_size` 以保持内核代码的可维护性。"
+      },
+      {
+        "concept": "线程粗化 (Thread Coarsening)",
+        "definition": "为单个 GPU 线程分配生成多个连续输出元素的任务，用廉价的串行归并替代部分高昂的并行搜索。",
+        "cudaRelevance": "在归并内核中，每个线程在开始工作前都必须执行昂贵的 Co-rank 二分查找来确定其特有的数据边界。",
+        "performanceConcern": "粗化通过增加单线程的串行归并工作量，极大摊薄了 O(log N) 并行搜索的开销，显著提升了总体工作效率 (Work efficiency)。",
+        "commonMistake": "在并行编程中追求极限的细粒度（例如让每个线程仅输出 1 个元素），导致纯计算周期被天量的并行搜索开销彻底淹没，使得 GPU 的整体吞吐量甚至发生倒退。"
+      }
+    ]
+  }
+}

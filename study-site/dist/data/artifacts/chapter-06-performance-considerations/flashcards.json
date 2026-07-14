@@ -1,0 +1,145 @@
+{
+  "chapterId": "chapter-06-performance-considerations",
+  "chapterTitle": "Performance Considerations",
+  "sourceId": "5227cb2e-9a3a-4d4a-8fa3-7cd998d7f56d",
+  "sourceTitle": "chapter-06-performance-considerations.pdf",
+  "artifactType": "flashcards",
+  "artifactLabel": "Flashcards",
+  "generatedAt": "2026-07-13T13:36:54.109361Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "闪卡：性能考量 (Chapter 6: Performance Considerations)",
+    "summary": "包含 19 张精选闪卡，用于快速复习《大规模并行处理器编程》第六章的核心性能优化策略。内容涵盖全局内存合并访问 (Coalescing)、延迟隐藏、向量化访存、共享内存存储体冲突 (Bank conflicts)、线程粗化 (Thread coarsening)、循环展开及双缓冲机制。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Tips)",
+        "points": [
+          "利用简单 (Easy) 难度卡片巩固合并访问、存储体冲突与线程粗化等基础概念。",
+          "通过中等 (Medium) 难度卡片掌握 Padding、Double Buffering 和 Vector Loads 的具体实现原理及作用。",
+          "挑战困难 (Hard) 难度卡片，深入剖析优化策略带来的副作用（如 Padding 的计算开销、线程粗化导致的占用率暴跌及局部数组退化）。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "front": "什么是全局内存的合并访问 (Global memory access coalescing)？",
+        "back": "当同一个 Warp 内的线程同时执行加载或存储指令时，若它们访问的全局内存地址是连续且对齐的，硬件会将其合并为极少量的突发 (Burst) 请求，从而最大化利用 DRAM 带宽和缓存行 (Cache line)。",
+        "difficulty": "easy",
+        "sourceHint": "6.1 Global memory access coalescing"
+      },
+      {
+        "front": "为什么非合并的全局内存存储 (Uncoalesced stores) 的性能惩罚通常比非合并读取更为严重？",
+        "back": "因为非合并存储会产生部分存储操作 (Partial store operations)，这会引发读-改-写 (Read-modify-write) 访问。在启用了错误校验码 (ECC) 的 GPU 上，这会消耗更多的额外内存带宽。",
+        "difficulty": "hard",
+        "sourceHint": "6.1 Global memory access coalescing"
+      },
+      {
+        "front": "在处理列主序 (Column-major) 数据时，什么是“转角 (Corner Turning)”优化技术？",
+        "back": "利用共享内存 (Shared memory) 作为中转站：线程先以行主序合并加载一个数据块 (Tile) 进共享内存，然后在没有合并限制的共享内存中按列读取，从而规避全局内存的散跃访问。",
+        "difficulty": "medium",
+        "sourceHint": "6.1 Global memory access coalescing"
+      },
+      {
+        "front": "为了充分利用 DRAM 通道 (Channel) 的数据传输带宽，为什么硬件必须连接多个存储体 (Banks)？",
+        "back": "因为 DRAM 单元阵列的访问延迟极长。通过连接多个存储体，可以在一个存储体传输数据时，让其他存储体提前开始漫长的访问准备，从而重叠 (Overlap) 延迟，打满总线带宽。",
+        "difficulty": "hard",
+        "sourceHint": "6.2 Hiding memory latency"
+      },
+      {
+        "front": "保持极高的线程占用率 (Occupancy) 如何帮助隐藏全局内存延迟 (Hiding memory latency)？",
+        "back": "高占用率确保了有足够多的 Warp 能够同时发出内存访问请求。这些密集的并发请求能够充分填充 DRAM 的多通道 (Channels) 和多存储体 (Banks)，通过重叠数据传输来掩盖单次访问的漫长延迟。",
+        "difficulty": "medium",
+        "sourceHint": "6.2 Hiding memory latency"
+      },
+      {
+        "front": "在 CUDA 中使用向量加载 (Vector loads，如 `float4`) 的主要性能优势是什么？",
+        "back": "它允许单个线程通过一条汇编指令连续加载最高 16 字节的数据，能够减少高达 75% 的内存访问指令执行开销 (Instruction execution overhead)，进一步压榨内存带宽。",
+        "difficulty": "medium",
+        "sourceHint": "6.3 Vector loads and stores"
+      },
+      {
+        "front": "在使用向量加载 (Vector loads) 时，最容易忽视的实现缺陷是什么？",
+        "back": "当总数据量不能被向量长度（例如 4）完美整除时，容易遗漏边界条件检查，导致内核末尾未提供标量 (Scalar) 加载/存储的后备代码，从而引发越界内存访问。",
+        "difficulty": "easy",
+        "sourceHint": "6.3 Vector loads and stores"
+      },
+      {
+        "front": "在片上共享内存 (Shared memory) 中，什么是存储体冲突 (Bank conflict)？",
+        "back": "共享内存由 32 个独立的 Bank 组成（每 Bank 宽 4 字节）。当同一个 Warp 的多个线程同时访问同一个 Bank 的不同内存地址时，硬件被迫将这些访问串行化 (Serialize)，导致性能大幅下降。",
+        "difficulty": "medium",
+        "sourceHint": "6.4 Shared memory bank conflicts"
+      },
+      {
+        "front": "在一个 32x32 的二维共享内存数组中，为什么 Warp 按列访问 (如 `a[threadIdx.x]`) 会引发极其严重的 32-way 存储体冲突？",
+        "back": "因为 C/C++ 是行主序存储。同列相邻元素的线性索引正好相差 32。由于共享内存共有 32 个 Bank，所有步长 (Stride) 为 32 的内存地址都会对 32 取模映射到同一个 Bank（例如 Bank 0），导致 32 次串行访问。",
+        "difficulty": "hard",
+        "sourceHint": "6.4 Shared memory bank conflicts"
+      },
+      {
+        "front": "如何通过数据填充 (Padding) 技术解决 32x32 共享内存块的存储体冲突？",
+        "back": "在数组的每一行末尾人为增加一列（例如将声明改为 32 行 33 列）。这样同列元素的线性地址步长变成了 33，由于 33 与 32 互质，同一个 Warp 访问同列元素时会均匀散布到 32 个不同的 Bank 中。",
+        "difficulty": "medium",
+        "sourceHint": "6.4 Shared memory bank conflicts"
+      },
+      {
+        "front": "使用数据填充 (Padding) 消除 Bank 冲突时，除了消耗额外的共享内存，还会带来什么隐藏的计算代价？",
+        "back": "增加了线性索引计算的指令开销。例如，当宽度为 32 (2的5次方) 时，`i * 32` 可以被编译器极速优化为位移操作 `i >> 5`。但宽度变为 33 后，必须执行加法与移位组合 `i >> 5 + i` 或实际的乘法指令。",
+        "difficulty": "hard",
+        "sourceHint": "6.4 Shared memory bank conflicts"
+      },
+      {
+        "front": "什么是线程粗化 (Thread coarsening) 技术？",
+        "back": "将原本分配给多个独立线程的最小工作单元（如计算多个输出元素），合并交由单个线程在一个循环中顺序执行，以减少并行化带来的指令、同步和数据加载开销。",
+        "difficulty": "easy",
+        "sourceHint": "6.5 Thread coarsening"
+      },
+      {
+        "front": "过度应用线程粗化 (Thread coarsening) 会对硬件占用率 (Occupancy) 产生什么负面影响？",
+        "back": "粗化意味着单个线程需要接管更多的工作，通常会成倍增加每个线程对寄存器 (Registers) 或共享内存的消耗。如果超出硬件阈值，会导致 SM 能够驻留的线程块数量锐减，占用率跌下悬崖 (Occupancy cliff)。",
+        "difficulty": "medium",
+        "sourceHint": "6.5 Thread coarsening"
+      },
+      {
+        "front": "在应用线程粗化 (Thread coarsening) 时，如果粗化系数选择不当，会导致什么被称为“尾部效应 (Tail effect)”的计算闲置问题？",
+        "back": "如果粗化后使得网格 (Grid) 中的总 Block 数量无法被 SM 阵列并发容量整除，最后一波 (Wave) 执行时只有少部分 SM 在工作，而其他 SM 处于闲置状态，造成严重资源浪费。",
+        "difficulty": "hard",
+        "sourceHint": "6.5 Thread coarsening"
+      },
+      {
+        "front": "在 CUDA 中使用循环展开 (Loop unrolling, `#pragma unroll`) 能够如何改善指令调度 (Instruction scheduling)？",
+        "back": "循环展开不仅消除了分支指令 (Branch instructions) 引起的流水线停顿，还暴露出了更多独立无关的计算指令。这使得编译器可以自由重排指令顺序，在等待长延迟指令时执行其他独立指令。",
+        "difficulty": "medium",
+        "sourceHint": "6.6 Loop unrolling"
+      },
+      {
+        "front": "在对带有局部数组的代码进行线程粗化后，为什么必须强制进行循环展开 (Loop unrolling)？",
+        "back": "如果不展开，局部数组的访问使用的是变量索引（如 `x[c]`），这会迫使编译器将其放置在极慢的本地内存 (Local memory) 中。展开循环后，索引变成了编译期常量，编译器就能将该数组直接提升到极速的寄存器 (Registers) 中。",
+        "difficulty": "hard",
+        "sourceHint": "6.6 Loop unrolling"
+      },
+      {
+        "front": "什么是双缓冲 (Double buffering) 机制？",
+        "back": "通过在循环中交替轮换使用两个独立的内存缓冲区，将“当前读取”与“未来写入”物理隔离，以空间换时间的高级同步优化技术。",
+        "difficulty": "medium",
+        "sourceHint": "6.7 Double buffering"
+      },
+      {
+        "front": "双缓冲 (Double buffering) 主要用于消除哪一种特定类型的数据依赖及其带来的同步延迟？",
+        "back": "用于彻底消除写后读假依赖 (Write-after-read false dependence)。它使得原本为了防止下一轮写入覆盖当前轮次数据而必须设置的 `__syncthreads()` 屏障得以移除，削减了同步延迟。",
+        "difficulty": "hard",
+        "sourceHint": "6.7 Double buffering"
+      },
+      {
+        "front": "在 Roofline 模型指导下，如果一个内核当前是严重受到占用率 (Occupancy) 限制的计算受限 (Compute-bound) 状态，此时引入极占资源的共享内存分块 (Shared memory tiling) 会发生什么？",
+        "back": "会导致性能进一步下降。由于已经是计算受限，优化内存流量并不会提升瓶颈。反而因为占用了更多共享内存资源，进一步压低了原本就受限的占用率 (Occupancy)，导致核心闲置加剧。",
+        "difficulty": "hard",
+        "sourceHint": "6.9 Optimization strategy"
+      }
+    ]
+  }
+}

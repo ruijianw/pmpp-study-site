@@ -1,0 +1,139 @@
+{
+  "chapterId": "chapter-08-stencil-computation",
+  "chapterTitle": "Stencil Computation",
+  "sourceId": "216acd9e-1b90-4169-9dd3-45891e57857c",
+  "sourceTitle": "chapter-08-stencil-computation.pdf",
+  "artifactType": "flashcards",
+  "artifactLabel": "Flashcards",
+  "generatedAt": "2026-07-13T13:47:57.858025Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "闪卡：模板计算 (Chapter 8: Stencil Computation)",
+    "summary": "包含 18 张精选闪卡，用于快速复习《大规模并行处理器编程》第八章的核心概念。内容涵盖模板计算与卷积的算术强度差异、3D 共享内存分块的硬件限制与访存缺陷，以及利用 z 轴线程粗化 (Thread Coarsening) 与寄存器分块 (Register Tiling) 突破内存瓶颈的高级优化技巧。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Tips)",
+        "points": [
+          "利用简单 (Easy) 难度卡片熟悉模板计算、边界条件以及模板阶数等基础概念。",
+          "通过中等 (Medium) 难度卡片掌握算术强度推理，以及 z 轴线程粗化如何降低共享内存消耗并提升算术强度。",
+          "挑战困难 (Hard) 难度卡片，深入理解 3D 线程块导致的内存合并访问 (Coalescing) 退化，以及寄存器分块 (Register Tiling) 的数据隔离原理与超载陷阱。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "front": "什么是模板计算 (Stencil Computation)？",
+        "back": "一种基于结构化网格的计算模式，使用中心点及周围固定模式的邻居点来近似计算导数，常用于迭代求解偏微分方程 (PDEs)。",
+        "difficulty": "easy",
+        "sourceHint": "8.1 Background"
+      },
+      {
+        "front": "模板计算与卷积 (Convolution) 在数据精度和依赖上有什么典型区别？",
+        "back": "模板计算常用于迭代求解微分方程，通常需要更高精度 (如双精度浮点数)，并且迭代计算可能存在顺序依赖；而卷积常用于图像处理，精度要求较低且各点完全相互独立。",
+        "difficulty": "medium",
+        "sourceHint": "8.1 Background"
+      },
+      {
+        "front": "什么是模板的阶数 (Stencil Order)？",
+        "back": "模板在每个维度上从中心点向单侧延伸的网格点数量。例如，3D 7点模板在 x、y、z 方向各延伸 1 个点，因此是一阶 (Order 1) 模板。",
+        "difficulty": "easy",
+        "sourceHint": "8.1 Background"
+      },
+      {
+        "front": "对于 3D 7点模板，理想情况下的算术强度 (Arithmetic Intensity) 是多少？",
+        "back": "每计算一个点需要 13 次浮点运算，理想情况下仅需从全局内存读取 1 个新元素 (4字节) 并写入 1 个结果 (4字节)，约为 13 / 8 = 1.625 FLOP/B。",
+        "difficulty": "medium",
+        "sourceHint": "8.3 Memory bandwidth considerations"
+      },
+      {
+        "front": "为什么基础的 3D 7点模板内核 (无分块优化) 被认为是严重内存受限 (Memory-bound) 的？",
+        "back": "因为其实际算术强度仅约 0.41 FLOP/B (每次计算需独立读取 7 个输入并写入 1 个输出)，远低于理想值，导致计算核心大部分时间都在等待内存数据传输。",
+        "difficulty": "medium",
+        "sourceHint": "8.3 Memory bandwidth considerations"
+      },
+      {
+        "front": "为什么在 3D 模板计算中，直接使用立体的 3D 共享内存分块 (如 8x8x8 线程块) 是极其低效的？",
+        "back": "受到单 Block 最大 1024 线程的限制，立体块的边长极小 (如 8)。这导致光环单元 (Halo cells) 的比例极高 (高达 58%)，使算术强度暴跌，且严重破坏了全局内存的合并访问 (Coalescing)。",
+        "difficulty": "hard",
+        "sourceHint": "8.4 Shared-memory tiling for stencil sweep"
+      },
+      {
+        "front": "对于 8x8x8 的 3D 线程块，为什么会破坏全局内存的合并访问 (Memory Coalescing)？",
+        "back": "一个包含 32 线程的 Warp 在读取数据时，必须跨越 4 行（每行仅 8 个元素）进行内存访问。这种非连续访问会导致总线带宽利用率大幅降低。",
+        "difficulty": "hard",
+        "sourceHint": "8.4 Shared-memory tiling for stencil sweep"
+      },
+      {
+        "front": "什么是 z 轴线程粗化 (Z-axis Thread Coarsening)？",
+        "back": "将 3D 线程块降维至 2D（如 32x32），让每个单线程负责沿 z 轴通过循环顺序计算一整列的输出网格点，以分摊细粒度并行的光环开销。",
+        "difficulty": "medium",
+        "sourceHint": "8.5 Thread coarsening"
+      },
+      {
+        "front": "实施 z 轴线程粗化对光环开销 (Halo overhead) 和算术强度有什么帮助？",
+        "back": "降维后 x-y 平面的块尺寸可以大幅扩大（如 32x32），这极大地降低了光环单元的相对比例，使算术强度显著提升（例如从 0.96 跃升至 1.52 FLOP/B，逼近理想值）。",
+        "difficulty": "medium",
+        "sourceHint": "8.5 Thread coarsening"
+      },
+      {
+        "front": "在 z 轴线程粗化的实现中，共享内存需要多大容量来维持计算？",
+        "back": "不需要装下整个 3D 块。只需在共享内存中维护一个包含三层数据（Prev, Curr, Next）的滑动窗口，内存消耗从 t^3 降至 3 * t^2。",
+        "difficulty": "medium",
+        "sourceHint": "8.5 Thread coarsening"
+      },
+      {
+        "front": "在 z 轴循环推进滑动窗口（即将 Curr 数据变为 Prev）时，最容易犯什么实现错误？",
+        "back": "遗漏调用 `__syncthreads()` 同步屏障。这会导致旧层的共享内存数据在被所有线程读取完毕前，就被执行较快的线程用新层数据覆盖，引发严重的数据竞争。",
+        "difficulty": "hard",
+        "sourceHint": "8.5 Thread coarsening"
+      },
+      {
+        "front": "什么是模板计算中的寄存器分块 (Register Tiling)？",
+        "back": "针对仅依赖正交方向邻居的模板，将 z 轴的前后层数据 (Prev, Next) 从共享内存转移至线程私有的寄存器中进行保存的优化技术。",
+        "difficulty": "medium",
+        "sourceHint": "8.6 Register tiling"
+      },
+      {
+        "front": "为什么在 3D 7点模板中，Prev 和 Next 层的数据适合存放在寄存器中，而 Curr 层必须保留在共享内存中？",
+        "back": "因为 z 轴的 Prev 和 Next 邻居仅被当前线程自己使用，无需跨线程共享；而 Curr 层包含了 x-y 方向的邻居，必须在同一 Block 的不同线程间重用。",
+        "difficulty": "hard",
+        "sourceHint": "8.6 Register tiling"
+      },
+      {
+        "front": "引入寄存器分块 (Register Tiling) 对共享内存消耗有什么直接影响？",
+        "back": "能够将滑动窗口所需的共享内存消耗量再次降低至原来的三分之一（仅保留 Curr 一层），从而允许流式多处理器 (SM) 并发驻留更多的线程块。",
+        "difficulty": "medium",
+        "sourceHint": "8.6 Register tiling"
+      },
+      {
+        "front": "过度使用寄存器分块 (Register Tiling) 可能会导致什么被称为“寄存器超载 (Register Pressure)”的陷阱？",
+        "back": "会导致单个线程分配过多的寄存器，超出硬件阈值，使得 SM 能够并发驻留的 Warp 数量急剧减少，跌下占用率悬崖 (Occupancy cliff)，反而降低了掩盖延迟的能力。",
+        "difficulty": "hard",
+        "sourceHint": "8.6 Register tiling"
+      },
+      {
+        "front": "在处理 3D 模板计算边界时，为什么内核通常只计算内部网格点而不更新边界单元？",
+        "back": "在数值方法求解微分方程时，边界单元通常存储着固定的边界条件 (Boundary conditions)，在迭代扫描 (Stencil sweep) 过程中这些值设定为不会改变。",
+        "difficulty": "easy",
+        "sourceHint": "8.2 Parallel stencil – a basic kernel"
+      },
+      {
+        "front": "模板阶数 (Stencil Order) 的增加会如何影响 3D 共享内存分块的效率？",
+        "back": "阶数增加意味着光环单元 (Halo cells) 更厚。对于受限于单 Block 1024 线程上限的 3D 线程块，这将导致光环比例进一步恶化，算术强度极速下降，迫切需要引入线程粗化。",
+        "difficulty": "medium",
+        "sourceHint": "8.4 Shared-memory tiling for stencil sweep"
+      },
+      {
+        "front": "与 3D 卷积相比，3D 模板（如 7-point）的理论算术强度上限为何差距悬殊？",
+        "back": "因为 3D 模板缺乏对角线邻居的访问模式，单个输入数据被周围输出网格复用的次数远少于密集的 3D 卷积运算，导致其天生具有极低的算术强度（极易受限于带宽）。",
+        "difficulty": "hard",
+        "sourceHint": "8.4 Shared-memory tiling for stencil sweep"
+      }
+    ]
+  }
+}

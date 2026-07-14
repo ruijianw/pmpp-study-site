@@ -1,0 +1,72 @@
+{
+  "chapterId": "chapter-17-sparse-matrix-computation",
+  "chapterTitle": "Sparse Matrix Computation",
+  "sourceId": "d5283765-beee-4146-bd22-3fe27fe6e978",
+  "sourceTitle": "chapter-17-sparse-matrix-computation.pdf",
+  "artifactType": "data-table",
+  "artifactLabel": "Data Table",
+  "generatedAt": "2026-07-13T14:42:53.756267Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "数据表格：稀疏矩阵计算 (Chapter 17: Sparse Matrix Computation)",
+    "summary": "本数据表格整理了 GPU 上稀疏矩阵-向量乘法 (SpMV) 的核心存储格式及其架构权衡 [1, 2]。详细剖析了 COO、CSR、ELL、JDS 和 CSC 等格式在合并访存 (Memory coalescing)、控制流发散 (Control divergence)、空间效率与原子操作使用上的底层性能表现与实现缺陷 [3, 4]。",
+    "sections": [
+      {
+        "heading": "表格说明 (Table Description)",
+        "points": [
+          "稀疏矩阵计算通过剔除零元素节省了存储容量和内存带宽，但也引入了严重的不规则性 (Irregularity)，在并行计算中极易引发负载不均和访存瓶颈 [1, 5]。",
+          "顶级稀疏矩阵算子优化的核心哲学在于权衡：在极致的空间压缩率 (Compaction) 与通过适度填充/排序换取的正则化 (Regularization) 之间寻找最佳平衡点 [1, 6]。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "concept": "COO 格式与原子操作 (COO Format & Atomic Operations)",
+        "definition": "坐标格式使用三个等长的数组 (rowIdx, colIdx, value) 存储非零元素的信息 [7]。由于不要求特定的排列顺序，其结构极为灵活 [8, 9]。",
+        "cudaRelevance": "在并行 SpMV 中，通常为每个非零元素分配一个线程 (One thread per non-zero) [10]。这种映射方式让连续的线程访问连续的数组元素，天然保证了完美的合并访存 (Coalesced memory accesses)，并且所有线程的工作量严格相等，实现彻底的负载均衡 [11, 12]。",
+        "performanceConcern": "由于多个线程可能被分配到同一行的不同非零元素上，并尝试并发更新同一个输出向量元素，必须强制使用高延迟的原子操作 (Atomic operations) [12-14]。非确定性的原子累加顺序还会导致浮点数舍入误差累积，引发数值稳定性问题 [14]。",
+        "commonMistake": "误以为 COO 格式只能用于矩阵构建。实际上，由于其极高的灵活性，在处理结构频繁更新的矩阵，或作为 Hybrid 格式补充处理长尾数据时，COO 是极佳的组件 [9, 15]。"
+      },
+      {
+        "concept": "CSR 格式与非合并访存 (CSR Format & Uncoalesced Accesses)",
+        "definition": "压缩稀疏行格式，利用 rowPtrs 数组记录每行的起始偏移，省去了 COO 中的 rowIdx 数组，将非零元素按行紧凑排列 [16-18]。",
+        "cudaRelevance": "在 GPU 并行中为每一行分配一个单独的线程 (One thread per row) [19]。因为单个线程包揽了整行的内积计算与累加，各个线程写入的是不同的输出元素，从而彻底消除了对原子操作的依赖 [20]。",
+        "performanceConcern": "由于相邻线程负责相邻的行，它们在循环读取 value 和 colIdx 数组时，物理地址跨度极大，导致了极其严重的非合并访存 (Uncoalesced accesses) [21]。同时，各行非零元素数量的长短不一会导致严重的控制流发散 (Control flow divergence) [22]。",
+        "commonMistake": "在 GPU 编程中无脑照搬 CPU 上最流行的 CSR 格式，未意识到在吞吐量导向的 GPU 架构上，极度分散的内存请求会瞬间让内核遭遇显存带宽瓶颈 (Memory-bound) [21]。"
+      },
+      {
+        "concept": "ELL 格式与列主序对齐 (ELL Format & Column-Major Coalescing)",
+        "definition": "找出稀疏矩阵中最长的行，利用无效的填充元素 (Padding) 将其他所有短行补齐到此最大长度，然后将得到的二维矩阵转置为列主序 (Column-major order) 存储 [23, 24]。",
+        "cudaRelevance": "得益于列主序排布，同一 Warp 中的相邻线程在并行处理各自行的第 i 个元素时，访问的内存物理地址严格连续，完美触发了 GPU 的合并访存 [25, 26]。",
+        "performanceConcern": "如果稀疏矩阵的非零元素分布极度不均衡（例如少数几行异常长），所有行都被迫看齐最长行，将产生海量的无效填充，严重浪费显存容量 (Space efficiency) [27]。且 ELL 依然让线程循环迭代相同的最大次数，并没有真正解决控制流发散带来的负载不均问题 [28]。",
+        "commonMistake": "在矩阵存在极端长尾分布 (Long-tail distribution) 时直接硬套纯 ELL 格式，导致生成的填充矩阵体积比 CSR 格式大数十倍甚至超出原始密集矩阵，引发灾难性的空间浪费 [27]。"
+      },
+      {
+        "concept": "混合 ELL-COO 正则化 (Hybrid ELL-COO Regularization)",
+        "definition": "设定一个行长阈值，将绝大部分长度处于常态的行保留在 ELL 格式中处理；而对于少数超长行的溢出非零元素，将其剥离并存入独立的 COO 格式数组中 [15, 29]。",
+        "cudaRelevance": "这是一种典型的异构正则化策略。ELL 负责高效的主体计算，享受合并访存；COO 作为兜底机制吸收不规则的长尾数据。这两部分可通过无发散的内核共同维护输出向量 [30]。",
+        "performanceConcern": "极大地缩减了 ELL 的最大行宽，清除了无意义的庞大填充开销；同时通过削平最长行，减少了 ELL 核心内核中所有线程必须参与的最大循环迭代次数，极大缓解了控制流发散 [29-31]。",
+        "commonMistake": "担忧分解这两种格式会带来不可接受的预处理开销。实际上在诸如共轭梯度法 (Conjugate Gradient) 的迭代求解器中，矩阵结构常驻不变，极小的预处理成本可以被无数次高效的 SpMV 迭代完美摊销 (Amortized) [32]。"
+      },
+      {
+        "concept": "JDS 锯齿对角线存储 (Jagged Diagonal Storage)",
+        "definition": "在不进行大规模零填充的前提下，先将所有的矩阵行按非零元素数量进行降序排序 (Sorting)，随后依旧以列主序进行紧凑的连续压缩存储 [33, 34]。",
+        "cudaRelevance": "通过预先排序，JDS 将长度（工作量）相似的行物理绑定到了同一个 Warp 中 [35]。这不仅继承了 ELL 列主序带来的合并访存优势，更是在根源上消除了 Warp 内不同线程由于行长差异导致的控制流发散 [35, 36]。",
+        "performanceConcern": "它在无需引入庞大填充 (Padding) 的情况下实现了极致的负载均衡，有效利用了带宽和计算核心 [36, 37]。但因为省去了填充，各迭代列的内存起点不规律，极难强制让所有迭代对齐到特定硬件的字节对齐边界 [35]。",
+        "commonMistake": "在矩阵结构需要频繁增加非零元素的动态场景下使用 JDS 格式。JDS 的修改成本极高，甚至比 CSR 更差，任何长度的改变都可能破坏有序性并触发全局重新排序，彻底丧失灵活性 [37]。"
+      },
+      {
+        "concept": "CSC 格式的 SpMV 灾难 (CSC Format in SpMV)",
+        "definition": "压缩稀疏列格式，逻辑上是 CSR 的镜像，将非零元素按列进行紧凑分组，并使用 colPtrs 数组记录各列的起始偏移量 [38, 39]。",
+        "cudaRelevance": "若强行使用 CSC 运行常规的 SpMV，即为每列分配一个线程，将同时集齐三大致命底层缺陷：非合并访存 (跨列跳跃读取矩阵数据)、控制流发散 (各列非零数量不均)，以及灾难性的原子操作 (不同列的线程并发更新输出向量的同一行位置) [40-42]。",
+        "performanceConcern": "对于普通 SpMV，CSC 综合了 COO 和 CSR 格式的最劣属性，表现最差 [43]。但其特殊的值就在于列遍历能力。在诸如稀疏矩阵乘稀疏向量 (SpMSpV) 等场景下，它可以依靠列分组特性直接判定并跳过输入向量为零的整列计算 [44]。",
+        "commonMistake": "盲目认为 CSC 与 CSR 对于矩阵向量乘法是完全对称等价的，未意识到行向点积累加与列向发散乘加在 GPU 底层架构（尤其是原子冲突与合并访存）上的巨大性能鸿沟 [43, 45]。"
+      }
+    ]
+  }
+}

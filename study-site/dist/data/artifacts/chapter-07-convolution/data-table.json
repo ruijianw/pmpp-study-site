@@ -1,0 +1,65 @@
+{
+  "chapterId": "chapter-07-convolution",
+  "chapterTitle": "Convolution",
+  "sourceId": "b9b94d1a-3608-4143-8559-d3a3037ac123",
+  "sourceTitle": "chapter-07-convolution.pdf",
+  "artifactType": "data-table",
+  "artifactLabel": "Data Table",
+  "generatedAt": "2026-07-13T13:41:43.271308Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "数据表格：卷积 (Chapter 7: Convolution)",
+    "summary": "本数据表格整理了《大规模并行处理器编程》第七章关于并行卷积优化的核心概念。重点解析了算术强度与滤波器尺寸的关系、常量内存 (Constant Memory) 的应用，以及在处理幽灵单元 (Ghost Cells) 与光环单元 (Halo Cells) 时共享内存分块策略的权衡与陷阱。",
+    "sections": [
+      {
+        "heading": "表格说明 (Table Description)",
+        "points": [
+          "本表结构化呈现了卷积算法在 GPU 上的性能瓶颈分析与内存优化路径。",
+          "详细对比了幽灵单元与光环单元的区别，并分析了不同共享内存分块 (Tiling) 策略带来的未对齐访存 (Misaligned accesses) 与资源闲置问题。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "concept": "算术强度与内存带宽 (Arithmetic Intensity & Memory Bandwidth)",
+        "definition": "衡量卷积内核计算访存比的指标。对于 2D 卷积，其理想算术强度与滤波器尺寸的平方成正比 (如 1/4 * m^2 FLOP/B)。",
+        "cudaRelevance": "用于判定卷积内核是内存受限 (Memory-bound) 还是计算受限 (Compute-bound)。小尺寸滤波器 (如 3x3) 通常严重受限于内存带宽，而大尺寸 (如 11x11) 则逼近计算受限。",
+        "performanceConcern": "基础并行卷积内核的实际算术强度极低 (如仅 0.25 FLOP/B)，远低于硬件理想阈值。如果不应用分块 (Tiling) 或常量缓存等技术来削减 DRAM 流量，将严重浪费 GPU 的峰值计算吞吐量。",
+        "commonMistake": "在处理小尺寸滤波器时盲目优化算术指令，而忽略了此时真正的性能瓶颈是全局内存带宽的极度匮乏。"
+      },
+      {
+        "concept": "常量内存与常量缓存 (Constant Memory and Caching)",
+        "definition": "一种容量极小 (当前为 64KB) 但配有专用高效硬件缓存的设备 DRAM 区域。使用 `__constant__` 修饰符进行声明，并且在内核执行期间内容不可修改。",
+        "cudaRelevance": "完美契合卷积滤波器 (Convolution filter) 的访问模式：尺寸小、内容不变、且同一个 Warp 内的所有线程在每个周期都会请求同样的滤波器元素地址。",
+        "performanceConcern": "由于硬件级的常量缓存 (Constant cache) 可以向全 Warp 无延迟广播数据，将其用于滤波器权重能够几乎彻底消除加载滤波器带来的 DRAM 带宽消耗，显著提升算术强度。",
+        "commonMistake": "错误地尝试将声明为 `__constant__` 的变量作为指针参数传递给 CUDA 内核。正确做法是将其声明为文件作用域的全局变量，并通过主机端的 `cudaMemcpyToSymbol()` API 专门进行初始化。"
+      },
+      {
+        "concept": "幽灵单元 (Ghost Cells)",
+        "definition": "在计算图像或一维信号的物理边界元素时，卷积公式需要访问但实际超出了输入数组范围的假想元素。",
+        "cudaRelevance": "开发者需要在 CUDA 内核中使用边界检查 (Boundary checks) 来识别对幽灵单元的访问，并通常为这些缺失的元素跳过计算或赋予默认值 (如 0.0f)。",
+        "performanceConcern": "边界检查的 if 条件会导致控制流发散 (Control divergence)。但由于图像尺寸通常很大而滤波器较小，仅有边缘的少数线程会发散，这种影响对整体性能而言往往微乎其微。",
+        "commonMistake": "遗漏针对幽灵单元的边界保护逻辑，导致内核在边缘计算时越界读取非法的全局内存地址，引发程序崩溃或严重的输出结果污染。"
+      },
+      {
+        "concept": "光环单元与不对称分块 (Halo Cells & Tiling Asymmetry)",
+        "definition": "在共享内存分块处理 (Shared Memory Tiling) 中，计算当前分块边缘的输出元素所需的、物理上隶属于相邻输入分块的周围数据元素。",
+        "cudaRelevance": "光环单元导致输入块 (Input tile) 必须比输出块 (Output tile) 沿各个方向大出滤波器半径 (r) 的长度，引发了输入输出维度不对称的复杂线程映射挑战。",
+        "performanceConcern": "如果将 Block 尺寸设为等同于扩展后的输入块，在进入输出阶段时必须停用 (Deactivate) 外围线程。在高度优化的计算受限内核中，这种线程闲置会造成极高昂的算力浪费。",
+        "commonMistake": "为了将包含光环单元的庞大输入块完整塞入 32x32 的共享内存中，导致实际的输出块尺寸缩减为非 2 的幂次方 (如 28x28)。这引发了写回全局内存时严重的未对齐访存 (Misaligned memory accesses)，反噬性能。"
+      },
+      {
+        "concept": "利用缓存处理光环单元 (Caching for Halo Cells)",
+        "definition": "一种高级分块策略，在共享内存中仅加载输入块的内部核心元素（确保输入输出块尺寸完全一致），而边缘的光环单元直接通过全局内存地址访问。",
+        "cudaRelevance": "该策略依赖于现代 GPU 透明的 L2 缓存 (L2 Cache)。由于相邻的 Block 极大概率刚刚访问并缓存过这些互相重叠的光环数据，直接读取通常会产生高效的 L2 缓存命中。",
+        "performanceConcern": "该策略使得 Block 和 Tile 的维度可以保持为完美的 2 的幂次方，彻底避免了内存未对齐写入惩罚。同时，所有线程从头到尾保持活跃，消除了计算资源的浪费。",
+        "commonMistake": "认为进行内存优化就必须将所有运算所需的数据强制搬入共享内存 (Shared Memory)，而忽略了透明的硬件 L1/L2 缓存同样能在处理重叠的光环单元时发挥极高的效率。"
+      }
+    ]
+  }
+}

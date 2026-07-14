@@ -1,0 +1,164 @@
+{
+  "chapterId": "chapter-04-compute-architecture-and-scheduling",
+  "chapterTitle": "Compute Architecture And Scheduling",
+  "sourceId": "c4dee50c-ba72-41d3-819f-b65012626952",
+  "sourceTitle": "chapter-04-compute-architecture-and-scheduling.pdf",
+  "artifactType": "slide-deck",
+  "artifactLabel": "Slide Deck",
+  "generatedAt": "2026-07-13T13:25:56.407040Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "幻灯片大纲：计算架构与调度 (Chapter 4: Compute Architecture and Scheduling)",
+    "summary": "本幻灯片组提炼了现代 GPU 的底层计算架构、Warp 调度机制、SIMT 模型及控制发散问题。旨在帮助开发者理解硬件如何执行 CUDA 代码，并掌握延迟容忍 (Latency tolerance) 与占用率 (Occupancy) 的性能推理方法。",
+    "sections": [
+      {
+        "heading": "使用建议 (Usage Tips)",
+        "points": [
+          "前4页侧重于宏观架构与 Block 级别的调度机制，强调透明可扩展性与同步陷阱。",
+          "中段（5-8页）深入微观，剖析 Warp 划分、SIMT 模型、控制发散 (Control divergence) 及独立线程调度引发的隐患。",
+          "尾段（9-12页）聚焦性能推理，揭示 GPU 隐藏延迟的零开销调度机制，以及导致“性能悬崖”的资源占用率 (Occupancy) 限制。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "slideNumber": 1,
+        "title": "现代 GPU 计算架构概览 (Architecture of a Modern GPU)",
+        "bullets": [
+          "流式多处理器 (SM, Streaming Multiprocessors)：GPU 的核心执行单元，包含多个流处理器 (Streaming processors/CUDA cores)。",
+          "资源共享：每个 SM 内部的计算单元共享控制逻辑和片上内存资源 (On-chip memory)。",
+          "GPU 处理集群 (GPC)：自 Hopper 架构起，SM 被进一步分组为 GPC 结构，以支持更大规模的并发。"
+        ],
+        "speakerNotes": "现代 GPU 不仅仅是成千上万个核心的简单堆砌，它们被精心组织成了 SM 的阵列。SM 是 CUDA 硬件调度的核心基地。理解 SM 内部的资源分布，是进行性能调优的第一步。",
+        "visualSuggestion": "展示包含多个 GPC 的 GPU 架构宏观图，放大其中一个 GPC 以显示其内部的多个 SM 模块及内存控制器。"
+      },
+      {
+        "slideNumber": 2,
+        "title": "线程块调度 (Thread Block Scheduling)",
+        "bullets": [
+          "整体分配：CUDA 运行时将线程块 (Thread Block) 作为一个不可分割的整体分配给 SM。",
+          "近距离协作：确保同块线程同时在同一 SM 运行，以实现低延迟的共享内存访问与屏障同步。",
+          "线程块集群 (Thread block cluster)：Hopper 架构新特性，允许将多个 Block 共同调度到同一 GPC，支持跨块的分布式共享内存协作。"
+        ],
+        "speakerNotes": "为什么 CUDA 要求我们把线程划分为 Block？因为硬件是以 Block 为单位进行分发的。同一个 Block 的线程就像是同一个项目组的成员，它们被安排在同一个 SM 这个“办公室”里，方便随时交流和同步。",
+        "visualSuggestion": "展示一个队列中的线程块 (Block 0, Block 1...) 被分配到不同 SM (SM0, SM1) 的流程图，并标注 Hopper 架构的 Cluster 协同分配。"
+      },
+      {
+        "slideNumber": 3,
+        "title": "屏障同步与死锁陷阱 (Synchronization & Deadlocks)",
+        "bullets": [
+          "同步原语：使用内置函数 `__syncthreads()` 实现 Block 级别的屏障同步，保证“不让任何线程掉队”。",
+          "执行约束：如果在代码中包含该语句，则该 Block 中的所有线程都必须执行到它。",
+          "实现缺陷 (死锁)：在导致线程发散的分支 (如 if-else) 中错误地调用同步。若部分线程进入另一个分支，整个 Block 将无限期挂起等待。"
+        ],
+        "speakerNotes": "同步操作就像团队集合。如果在发散的 if-else 分支里使用了 __syncthreads，就像是让一半的人去 A 门集合，另一半人去 B 门，结果谁也等不齐所有人，导致整个程序死锁。必须把同步指令放在所有线程必定经过的主干道上。",
+        "visualSuggestion": "代码对比图：左侧展示红色的错误示例（`__syncthreads()` 在 `if(threadIdx.x % 2 == 0)` 内）；右侧展示绿色正确示例。"
+      },
+      {
+        "slideNumber": 4,
+        "title": "透明可扩展性与尾部效应 (Transparent Scalability & Tail Effect)",
+        "bullets": [
+          "透明可扩展性：Block 之间无隐式执行顺序依赖。硬件可根据自身 SM 数量，以任意顺序并发调度 Block，实现代码在不同代际 GPU 上的自动适配。",
+          "Wave 调度：同时执行的一组 Block 称为一个 Wave。",
+          "尾部效应 (Tail effect)：当 Grid 中的总 Block 数量无法被硬件并发容量整除时，最后一波 (Wave) 调度的块极少，导致计算资源严重闲置。"
+        ],
+        "speakerNotes": "CUDA 最伟大的设计之一就是透明可扩展性。不管你把代码跑在入门级显卡还是顶级加速卡上，它都能自动适应。但是要注意尾部效应：如果你的数据切分不合理，导致最后一波执行的 Block 填不满 GPU，就会造成极大的算力浪费。",
+        "visualSuggestion": "展示相同的 8 个 Block 任务，在拥有 2 个 SM 的设备上需要 4 波 (Waves) 跑完，而在拥有 4 个 SM 的设备上只需 2 波。旁边配有尾部效应的残缺方块示意图。"
+      },
+      {
+        "slideNumber": 5,
+        "title": "Warp 划分与线性化 (Warps & Linearization)",
+        "bullets": [
+          "最小调度单元：Block 被分配到 SM 后，硬件会将其进一步切分为包含 32 个线程的 Warp。",
+          "连续分配：线程 0-31 属于 Warp 0，32-63 属于 Warp 1。不足 32 的部分将用非活跃线程填充。",
+          "多维线性化：对于 2D/3D Block，硬件采用行主序 (Row-major) 布局展平线程。即优先增加最内层维度 (`threadIdx.x`)。"
+        ],
+        "speakerNotes": "在硬件看来，没有二维和三维的线程，只有一维的 Warp。记住，2D 和 3D 的 Block 会被按照行主序“拍扁”。如果你的数据映射和硬件的这种线性化方式冲突，就会导致糟糕的内存访问性能。",
+        "visualSuggestion": "一张 2D Block (x, y) 转换为 1D Warp 的图解，高亮显示同一行的线程如何被打包成连续的 Warp 单元。"
+      },
+      {
+        "slideNumber": 6,
+        "title": "SIMT 执行模型 (SIMT Execution Model)",
+        "bullets": [
+          "单指令多线程 (SIMT)：SM 向一个 Warp 内的所有 32 个线程广播同一条指令。",
+          "执行原理：各线程执行完全相同的操作，但利用自身寄存器中的不同数据 (Multiple Data) 产生不同结果。",
+          "优势：大幅摊薄了指令获取与调度的硬件成本 (Control Unit)，让 GPU 能把绝大部分晶体管用于浮点运算。"
+        ],
+        "speakerNotes": "相比于 CPU 那种需要复杂 API 的 SIMD，CUDA 采用了更易用的 SIMT 模型。开发者就像写单线程代码一样编程，硬件在底层自动把 32 个线程打包成一组执行。这用极低的控制成本换取了极高的吞吐量。",
+        "visualSuggestion": "修改版的冯·诺依曼架构图：一个指令寄存器 (IR) 同时发出箭头控制多个执行 ALU，但每个 ALU 连接着各自不同的寄存器文件。"
+      },
+      {
+        "slideNumber": 7,
+        "title": "控制发散的代价 (The Cost of Control Divergence)",
+        "bullets": [
+          "现象：当同一 Warp 内的线程在分支结构 (如 if-else) 中走向不同路径时，即发生控制发散。",
+          "执行代价：SIMD 硬件只能分多遍 (Multi-pass) 串行执行每个分支。执行分支 A 时，属于分支 B 的线程强制休眠 (非活跃)，导致算力浪费。",
+          "性能推理：用于处理边界条件的 if (如 `i < n`) 虽有发散，但在处理上万数据时影响不到整体 Warp 的 1%，过度优化得不偿失。"
+        ],
+        "speakerNotes": "遇到 if-else，如果 Warp 里有人向左走，有人向右走，硬件没法把他们劈成两半，只能先带着左边的人走一遍（右边人干等），再带着右边的人走一遍。这就是发散的代价。但是别紧张，处理数组边界的那一点点发散，对整体性能的影响几乎可以忽略不计。",
+        "visualSuggestion": "展示一个包含 32 个线程的 Warp 遇到 if-else 的情况：上层绿色框中部分线程执行 A（其余线程变灰），下层蓝色框中反转活跃状态执行 B。"
+      },
+      {
+        "slideNumber": 8,
+        "title": "隐患：独立线程调度 (Independent Thread Scheduling)",
+        "bullets": [
+          "历史行为：在旧架构中，发散的 Warp 在分支结束后通常会自动隐式重新收敛 (Reconverge)。",
+          "Volta 架构及以后：引入独立线程调度，允许交错执行不同分支，不再保证硬件级的自动收敛。",
+          "实现缺陷：如果在发散结束后立刻依赖同一 Warp 内其他线程的结果，极易产生错误。必须显式调用 Warp 级同步原语 (如 `__syncwarp()`)。"
+        ],
+        "speakerNotes": "从 Volta 架构开始，硬件变得更加灵活，它不再强制保证发散的线程在分支结束后立刻排齐。所以，永远不要在代码中假设“因为我们在同一个 Warp 里，所以我们总是一起行动的”。需要同步时，老老实实写同步指令。",
+        "visualSuggestion": "对比图：旧架构（发散 -> 串行执行 -> 自动合流） vs 新架构 Volta+（发散 -> 交错执行 -> 不规则退出分支，需手动屏障合流）。"
+      },
+      {
+        "slideNumber": 9,
+        "title": "延迟容忍机制 (Latency Tolerance)",
+        "bullets": [
+          "核心挑战：全局内存访问等操作需要成百上千个时钟周期。",
+          "解决策略：GPU 采用过载分配 (Oversubscription) 策略，分配给 SM 的线程数远超其当前能并发执行的数量。",
+          "细粒度多线程 (Fine-grained multithreading)：当当前 Warp 等待数据时，调度器瞬间切换到另一个就绪的 Warp 执行，从而隐藏等待延迟。"
+        ],
+        "speakerNotes": "GPU 为什么没有 CPU 那么大的 L3 缓存？因为它的哲学是“用忙碌掩盖等待”。当一个 Warp 去拿内存数据时，GPU 不会傻等，它会立刻切换到另外几百个准备好的 Warp 继续算。这就是延迟容忍的魔法。",
+        "visualSuggestion": "邮局服务台比喻图：邮局职员 (硬件单元) 在客户A (Warp A) 填写漫长表单 (长延迟操作) 时，立刻为旁边已经准备好的客户B (Warp B) 提供服务。"
+      },
+      {
+        "slideNumber": 10,
+        "title": "零开销上下文切换 (Zero-overhead Scheduling)",
+        "bullets": [
+          "CPU 的痛点：线程切换需要将寄存器状态保存到内存，再加载新线程状态，开销巨大 (Idle cycles)。",
+          "GPU 的魔法：SM 拥有海量的硬件物理寄存器，所有分配的 Warp 上下文状态始终驻留在芯片硬件上。",
+          "结果：Warp 之间的切换是瞬间完成的，即零开销上下文切换。这是实现极高计算吞吐量的前提。"
+        ],
+        "speakerNotes": "实现延迟隐藏的前提是切换必须要快！CPU 切换线程要存取内存，代价很高。但 GPU 非常“土豪”，它给每个线程都配备了专属的物理寄存器。切换 Warp 只是切一下指针，零开销，一气呵成。",
+        "visualSuggestion": "对比天平：CPU 巨大的上下文切换包袱 (Save/Restore memory) vs GPU 轻盈的硬件常驻状态 (Hardware resident registers)。"
+      },
+      {
+        "slideNumber": 11,
+        "title": "占用率与性能悬崖 (Occupancy & Performance Cliff)",
+        "bullets": [
+          "占用率 (Occupancy)：SM 实际分配的 Warp 数 / SM 最大支持的 Warp 数。",
+          "动态限制：占用率受限于线程槽、Block槽、共享内存和每个线程使用的寄存器 (Registers) 数量的动态划分。",
+          "性能悬崖：若内核稍微增加局部变量导致寄存器用量跨越阈值，SM 可容纳的 Block 总数可能锐减 (如 100% 暴跌至 75%)，导致并行度断崖式下跌。"
+        ],
+        "speakerNotes": "千万小心“性能悬崖”。有时候你只是在内核里多加了一个局部变量，单线程的寄存器超标了，结果导致整个 SM 能够同时驻留的 Block 数量减少了一个。你的占用率就会从 100% 瞬间跌落，程序执行变慢。优化时必须紧盯资源边界。",
+        "visualSuggestion": "折线图展示“性能悬崖”：X轴是单线程寄存器使用量，Y轴是 Occupancy 占用率。在寄存器用量达到某个临界点时，曲线呈现阶梯式的断崖下跌。"
+      },
+      {
+        "slideNumber": 12,
+        "title": "动态查询设备属性 (Querying Device Properties)",
+        "bullets": [
+          "运行时适配：优秀的 CUDA 程序会根据底层硬件资源动态调整执行配置 (Execution Configuration)。",
+          "查询 API：调用 `cudaGetDeviceProperties()` 获取 `cudaDeviceProp` 结构体。",
+          "关键字段：`maxThreadsPerBlock` (Block 线程上限)，`multiProcessorCount` (SM 总数)，`regsPerBlock` (每 Block 可用寄存器数)。",
+          "工具辅助：利用 Nsight Compute 的 Occupancy Calculator 准确预判资源分配。"
+        ],
+        "speakerNotes": "写死了 Block 大小的代码是不健壮的。我们应该在程序启动时，通过 CUDA API 查询当前显卡的 SM 数量、寄存器限制和最高线程数。利用这些数据动态计算出最完美的网格尺寸，才能让代码在不同硬件上都达到性能巅峰。",
+        "visualSuggestion": "代码片段高亮展示 `cudaGetDeviceProperties(&devProp, i);` 及其对 `devProp.maxThreadsPerBlock` 字段的读取。"
+      }
+    ]
+  }
+}

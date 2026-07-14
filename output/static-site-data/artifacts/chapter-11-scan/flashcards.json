@@ -1,0 +1,157 @@
+{
+  "chapterId": "chapter-11-scan",
+  "chapterTitle": "Scan",
+  "sourceId": "9cc447c1-78a3-4adb-9800-672372e26c29",
+  "sourceTitle": "chapter-11-scan.pdf",
+  "artifactType": "flashcards",
+  "artifactLabel": "Flashcards",
+  "generatedAt": "2026-07-13T14:06:39.576921Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "闪卡：扫描 (Chapter 11: Scan)",
+    "summary": "包含 21 张精选闪卡，用于快速复习《大规模并行处理器编程》第十一章关于并行扫描 (Parallel Scan/Prefix-Sum) 的核心概念。内容涵盖 Kogge-Stone 算法的优缺点、双缓冲与假依赖消除、工作效率评估、线程粗化技巧、以及单向同步等高级多 Block 协同技术。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Tips)",
+        "points": [
+          "利用简单 (Easy) 难度卡片掌握扫描的基本复杂度和内存受限特性。",
+          "通过中等 (Medium) 难度卡片深入理解 Kogge-Stone 算法、双缓冲 (Double-buffering) 及“扫描-扫描-相加”分解模式。",
+          "挑战困难 (Hard) 难度卡片，死磕线程粗化的合并访存细节、单向同步 (Unidirectional synchronization) 中的内存顺序语义 (Acquire/Release)，以及 Brent-Kung 与 Kogge-Stone 在 SIMD 模型下的底层博弈。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "front": "简单的顺序扫描 (Sequential scan) 算法的工作复杂度 (Work complexity) 是多少？",
+        "back": "O(N)。对于 N 个输入元素，顺序算法只需要执行 N-1 次累加操作。",
+        "difficulty": "easy",
+        "sourceHint": "11.1 Background"
+      },
+      {
+        "front": "为什么分配 N 个线程，让每个线程独立顺序计算其对应输出元素的“朴素并行扫描”是一个糟糕的方案？",
+        "back": "因为它的跨度 (Span) 依然是 O(N)，且总工作复杂度 (Work complexity) 高达 O(N^2)。在资源受限的情况下，它不仅不能加速，还会因为巨大的额外工作量而比顺序扫描慢得多。",
+        "difficulty": "medium",
+        "sourceHint": "11.2 Parallel scan with the Kogge-Stone algorithm"
+      },
+      {
+        "front": "Kogge-Stone 并行扫描算法的理论工作复杂度 (Work complexity) 和跨度 (Span) 分别是多少？",
+        "back": "工作复杂度为 O(N log N)，跨度为 O(log N)。它虽然跨度短，但因为执行了冗余的加法操作，所以不具备工作效率 (Not work-efficient)。",
+        "difficulty": "medium",
+        "sourceHint": "11.2 Parallel scan with the Kogge-Stone algorithm / 11.5 Work efficiency considerations"
+      },
+      {
+        "front": "在评估并行算法时，“工作效率 (Work efficiency)”的严格定义是什么？",
+        "back": "如果一个并行算法执行的总工作量（操作数）接近完成该计算所需的最小工作量（通常由最优的顺序算法定义，例如扫描的 O(N)），则称其为工作效率高。",
+        "difficulty": "easy",
+        "sourceHint": "11.5 Work efficiency considerations"
+      },
+      {
+        "front": "在原位的 Kogge-Stone 扫描内核中，为什么每一次 for 循环迭代必须调用两次 `__syncthreads()`？",
+        "back": "第一次调用用于防止读后写 (Read-After-Write) 竞态；第二次调用用于防止写后读 (Write-After-Read) 假依赖竞态，即必须确保所有线程都读完了旧值，才能允许线程写入覆盖旧值。",
+        "difficulty": "hard",
+        "sourceHint": "11.2 Parallel scan with the Kogge-Stone algorithm"
+      },
+      {
+        "front": "双缓冲技术 (Double-buffering) 是如何优化 Kogge-Stone 扫描内核的？",
+        "back": "它通过交替使用两个共享内存数组（分别作为 input 和 output），使得线程可以将新值写入 output 而不会覆盖 input 中的旧值。这彻底消除了写后读的假依赖，从而省去了循环中的第二个 `__syncthreads()`。",
+        "difficulty": "medium",
+        "sourceHint": "11.3 Double-buffering to reduce synchronization"
+      },
+      {
+        "front": "什么是并行扫描的“扫描-扫描-相加 (Scan-scan-add)”分解模式？",
+        "back": "一种将扫描任务分阶段的方法：1) 对分段独立进行扫描；2) 收集每段的总和，对这些总和进行扫描；3) 将前序分段的扫描总和“相加”到当前段的每个元素上。",
+        "difficulty": "hard",
+        "sourceHint": "11.4 Warp-level primitives to reduce synchronization"
+      },
+      {
+        "front": "使用 Warp 级原语 (如 `__shfl_up_sync`) 对 Warp 内部的扫描操作有何性能贡献？",
+        "back": "它允许同一个 Warp 内的线程直接通过硬件寄存器进行数据交换，从而完全避免了对共享内存的访问以及耗时的块级同步屏障 `__syncthreads()`。",
+        "difficulty": "medium",
+        "sourceHint": "11.4 Warp-level primitives to reduce synchronization"
+      },
+      {
+        "front": "线程粗化 (Thread coarsening) 是如何提升 Kogge-Stone 算法的工作效率 (Work efficiency) 的？",
+        "back": "通过让每个线程先在本地顺序扫描多个元素 (具有 O(N) 工作效率)，减少了参与低效并行扫描 (O(N log N)) 的计算比例。这摊薄了并行同步开销，使整体算法复杂度大幅逼近 O(N)。",
+        "difficulty": "hard",
+        "sourceHint": "11.6 Coarsening to improve work-efficiency"
+      },
+      {
+        "front": "在实施线程粗化 (Thread coarsening) 时，为什么不能让单个线程直接从全局内存读取其负责的连续子段？",
+        "back": "如果每个线程读取连续子段，同一个 Warp 中的相邻线程读取的内存地址将会跨度极大，严重破坏硬件的合并访存 (Coalesced accesses)。必须先以交错分块 (Interleaved chunk) 的方式加载到共享内存。",
+        "difficulty": "hard",
+        "sourceHint": "11.6 Coarsening to improve work-efficiency"
+      },
+      {
+        "front": "在为扫描内核实施寄存器分块 (Register tiling) 时，为什么通常仍保留共享内存 (Shared memory) 作为中间媒介？",
+        "back": "因为直接从全局内存向寄存器分块加载数据会导致非合并访存。共享内存被用作“转角 (Corner turning)”媒介，仅仅是为了确保全局内存的读写能够实现 100% 的合并访存。",
+        "difficulty": "medium",
+        "sourceHint": "11.7 Register tiling to avoid shared memory access latency"
+      },
+      {
+        "front": "从算术强度 (Arithmetic intensity) 的角度来看，扫描 (Scan) 属于计算受限还是内存受限的内核？",
+        "back": "极其严重的内存受限 (Memory-bound)。它每处理一个浮点数需要 8 字节访存但仅包含 1 次操作，算术强度约为 1/8 OP/B，峰值性能完全由全局内存带宽上限决定。",
+        "difficulty": "easy",
+        "sourceHint": "11.8 Memory bandwidth considerations"
+      },
+      {
+        "front": "在执行多 Kernel 的跨块全局扫描时，为什么“归约-扫描-扫描 (Reduce-scan-scan)”模式通常比“扫描-扫描-相加”带宽高？",
+        "back": "因为第一阶段的归约 (Reduce) Kernel 只需要向全局内存写出 Block 级别的总和，而“扫描-扫描-相加”的第一阶段必须将所有扫描中间结果写回全局内存，前者极大地节省了 DRAM 的写入带宽。",
+        "difficulty": "medium",
+        "sourceHint": "11.9 Consolidating block segments for a global scan"
+      },
+      {
+        "front": "要想使用“归约-扫描-扫描 (Reduce-scan-scan)”模式替代“扫描-扫描-相加”，扫描算子除了结合律外，还必须具备什么数学属性？",
+        "back": "交换律 (Commutativity)。因为前序的归约 (Reduce) 操作在某些高度优化的实现中可能会打乱操作数的实际相加顺序。",
+        "difficulty": "hard",
+        "sourceHint": "11.9 Consolidating block segments for a global scan"
+      },
+      {
+        "front": "什么是实现单 Kernel 跨块全局扫描的“单向同步 (Unidirectional synchronization)”技术？",
+        "back": "它不要求所有 Block 同时到达全局屏障，而是依靠后期 Block 对前期 Block 标志位的原子轮询 (Atomic polling) 来建立依赖，前提是必须通过动态分配 Block ID 来保证前期 Block 被优先调度。",
+        "difficulty": "hard",
+        "sourceHint": "11.9 Consolidating block segments for a global scan"
+      },
+      {
+        "front": "在单向同步的原子轮询中，为什么读取前一个 Block 的标志位时必须使用 `cuda::memory_order_acquire`？",
+        "back": "为了强制应用获取语义 (Acquire semantics)。它确保硬件和编译器不会将轮询成功后的“读取前序分段总和”的内存操作提前重排到读取标志位之前，防止读取到旧数据。",
+        "difficulty": "hard",
+        "sourceHint": "11.9 Consolidating block segments for a global scan"
+      },
+      {
+        "front": "在单向同步中，为什么当前 Block 更新自身“计算完成”标志位时必须使用 `cuda::memory_order_release`？",
+        "back": "为了强制应用释放语义 (Release semantics)。它确保在标志位被设为“完成”之前，当前 Block 所有的局部扫描结果都已经实实在在地写回到了内存，防止下一个 Block 看到完成标志却读到脏数据。",
+        "difficulty": "hard",
+        "sourceHint": "11.9 Consolidating block segments for a global scan"
+      },
+      {
+        "front": "在单 Kernel 全局扫描中，“单回溯 (Single lookback)”策略的具体做法是什么？",
+        "back": "每个 Block 只向前一个 Block 轮询。如果前一个 Block 的总和就绪，它就把该总和加到自己内部，然后再传递给下一个 Block，形成一条串行的依赖链。",
+        "difficulty": "medium",
+        "sourceHint": "11.9 Consolidating block segments for a global scan"
+      },
+      {
+        "front": "单回溯 (Single lookback) 方法的最大性能痛点是什么？“解耦回溯 (Decoupled lookback)”是如何解决的？",
+        "back": "单回溯会创建一条极长的串行等待关键路径，导致严重的延迟。解耦回溯允许 Block 在前一个邻居未完全就绪时，继续向前追溯更早的 Block 并累加它们的局部和，通过增加少许计算量来打破等待链。",
+        "difficulty": "hard",
+        "sourceHint": "11.9 Consolidating block segments for a global scan"
+      },
+      {
+        "front": "Brent-Kung 扫描算法相比 Kogge-Stone 有何理论上的优劣？",
+        "back": "优势是工作复杂度达到最优的 O(N)，具备极高的工作效率 (Work-efficient)；劣势是它的跨度 (Span) 即计算步骤显著多于 Kogge-Stone。",
+        "difficulty": "medium",
+        "sourceHint": "11.10 Parallel scan with the Brent-Kung algorithm"
+      },
+      {
+        "front": "为什么理论工作效率更优的 Brent-Kung 算法在实际的 Warp 内执行时，往往跑不过 Kogge-Stone？",
+        "back": "因为 GPU 采用 SIMD 锁步执行。Brent-Kung 节省下来的多余计算在 Warp 内部被转化为“不活跃线程”，而这些线程依然会随 Warp 消耗执行周期。Kogge-Stone 虽然做了冗余加法，但它步数更少，反而能更快完赛。",
+        "difficulty": "hard",
+        "sourceHint": "11.10 Parallel scan with the Brent-Kung algorithm"
+      }
+    ]
+  }
+}

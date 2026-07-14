@@ -1,0 +1,62 @@
+{
+  "chapterId": "chapter-16-dynamic-programming-and-wavefront-parallelism",
+  "chapterTitle": "Dynamic Programming And Wavefront Parallelism",
+  "sourceId": "53d954fd-2c4e-4132-a9e4-fa18b0c18262",
+  "sourceTitle": "chapter-16-dynamic-programming-and-wavefront-parallelism.pdf",
+  "artifactType": "briefing",
+  "artifactLabel": "Briefing",
+  "generatedAt": "2026-07-13T14:35:25.708899Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "简报：动态规划与波前并行 (Chapter 16: Dynamic Programming And Wavefront Parallelism)",
+    "summary": "本简报概述了在 GPU 上实现动态规划 (Dynamic Programming) 的波前并行 (Wavefront Parallelism) 技术。重点探讨了为何应摒弃自顶向下递归，转而采用自底向上迭代策略，并通过 Floyd-Warshall 与 Smith-Waterman 算法展示了块级分块 (Block-level tiling)、超平面变换 (Hyperplane transformation) 及跨块同步 (Inter-block synchronization) 等核心架构优化机制。",
+    "sections": [
+      {
+        "heading": "执行摘要 (Executive Summary)",
+        "points": [
+          "动态规划适用于具有最佳子结构和重叠子问题特征的算法。在求解时，相互独立、可并行的中间子问题集合被称为波前 (Wavefront)。",
+          "GPU 架构极度不适合自顶向下 (Top-down) 的递归实现。采用自底向上 (Bottom-up) 的迭代建表 (Tabulation) 能够自然地暴露出波前并行度，极大地发挥 GPU 的计算吞吐优势。"
+        ]
+      },
+      {
+        "heading": "核心主张 (Core Claims)",
+        "points": [
+          "摒弃顶向下的性能陷阱：深层递归调用无法被编译器无限内联，产生严重开销；且对哈希表等记忆化结构的访问会导致极其严重的 Warp 内非合并访存 (Uncoalesced memory accesses)。",
+          "波前模式的多样性：波前的规模可以是恒定的（如 Floyd-Warshall 算法在 3D 空间中的 2D 平面迭代），也可以是动态伸缩的（如 Smith-Waterman 基因比对算法的抗角线迭代）。",
+          "块级分块 (Block-level tiling) 优化局部性：通过利用共享内存 (Shared memory) 和 `__syncthreads()` 实现局部波前同步，将昂贵的全局同步降至最低，并通过块内合并重组，确保写回全局内存时实现合并访存 (Coalesced storing)。",
+          "超平面变换解决 Warp 闲置 (Hyperplane transformation for underutilization)：传统的矩形分块会导致处理抗角线波前时活跃线程数先增后减，大量 Warp 处于闲置状态。通过剪切变换 (Shear transformation) 构造平行四边形超分块 (Hypertiles)，可确保每次迭代中活跃线程数恒定，使每个 Block 的平均工作效率翻倍。",
+          "跨块同步 (Inter-block synchronization)：利用全局标志位 (Flags) 结合持久化线程块 (Persistent thread blocks) 取代频繁的内核终止与重启，大幅减少 SM (Streaming Multiprocessor) 的空闲等待周期与调度开销。"
+        ]
+      },
+      {
+        "heading": "本章重要性 (Why This Chapter Matters)",
+        "points": [
+          "本章揭示了如何将具有严密空间/时间数据依赖关系的复杂串行算法，安全、高效地映射到并行 GPU 上。这代表了超越简单数据并行 (Data parallelism) 的高级计算实战。",
+          "生动展示了底层数据布局的几何变换（如超平面变换）如何直接改善微架构级别的资源利用率（提升 Warp 活跃度、保护 L2 缓存局部性）。"
+        ]
+      },
+      {
+        "heading": "先决条件 (Prerequisites)",
+        "points": [
+          "熟悉基本的 CUDA 内存层次结构（特别是全局内存与共享内存的差异），以及合并访存 (Memory coalescing) 的触发规则。",
+          "理解 Bank 冲突 (Bank conflicts) 的形成机制及 Padding 解决策略。",
+          "深刻理解线程块内部同步栅栏 (`__syncthreads()`) 与基于内核重启的全局网格级同步在性能代价上的巨大差异。"
+        ]
+      },
+      {
+        "heading": "实现启示与常见错误 (Implementation Implications)",
+        "points": [
+          "垃圾值读取陷阱：在使用超分块 (Hypertiles) 时，为了维持恒定的并行度，所有线程在全部迭代中均保持活跃。部分负责越界区域的线程可能会读取到共享内存中的垃圾数据，导致错误或异常。必须实现专门的 `initialize_tile` 函数将共享内存主动归零。",
+          "隐蔽的 Bank 冲突：超分块由于采用行主序存储且发生倾斜，其有效宽度极易成为 Bank 数量的倍数从而引发严重的共享内存 Bank 冲突。必须应用 Padding 技术 (例如基于宏 `x + (x >> LOG_NUM_BANKS)`) 错开物理地址映射。",
+          "滥用多内核启动的开销：针对块间波前依赖，依靠 `for` 循环在主机端频繁终止和重启 Kernel 会引入巨大的启动延迟。在极限优化场景中，应采用基于标志位的跨块单向同步模式，或利用新架构 (如 Hopper) 提供的硬件原生 DPX 指令提升性能。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

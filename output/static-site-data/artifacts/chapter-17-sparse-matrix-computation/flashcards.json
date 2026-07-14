@@ -1,0 +1,139 @@
+{
+  "chapterId": "chapter-17-sparse-matrix-computation",
+  "chapterTitle": "Sparse Matrix Computation",
+  "sourceId": "d5283765-beee-4146-bd22-3fe27fe6e978",
+  "sourceTitle": "chapter-17-sparse-matrix-computation.pdf",
+  "artifactType": "flashcards",
+  "artifactLabel": "Flashcards",
+  "generatedAt": "2026-07-13T14:43:40.049642Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "闪卡：稀疏矩阵计算 (Chapter 17: Sparse Matrix Computation)",
+    "summary": "包含 18 张精选闪卡，用于快速复习第十七章中 GPU 稀疏矩阵计算 (SpMV) 的核心知识。覆盖了 COO、CSR、ELL、混合 ELL-COO、JDS 以及 CSC 等存储格式的架构特征，重点剖析了合并访存 (Memory coalescing)、控制流发散 (Control divergence) 和原子操作 (Atomic operations) 之间的极致权衡。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Tips)",
+        "points": [
+          "利用简单 (Easy) 难度卡片掌握各种稀疏矩阵格式的基础结构 (如 COO 的三数组、CSR 的行指针)。",
+          "通过中等 (Medium) 难度卡片理解不同格式在 SpMV 计算中的线程映射策略 (Thread mapping)，以及 ELL 格式如何通过列主序 (Column-major) 恢复合并访存。",
+          "挑战困难 (Hard) 难度卡片，深入分析不规则性 (Irregularity) 对底层微架构的惩罚，例如 CSR 的非合并访存、原子操作对数值稳定性的破坏，以及 JDS 如何通过排序消灭控制流发散。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "front": "为什么稀疏矩阵计算在 GPU 上的浮点吞吐量 (FLOPS rating) 通常远低于密集矩阵？",
+        "back": "因为消除零元素引入了严重的不规则性 (Irregularity)，导致内存带宽利用率不足 (非合并访存)、Warp 内控制流发散 (Control flow divergence) 以及严重的负载不均衡。",
+        "difficulty": "medium",
+        "sourceHint": "17.1 Background"
+      },
+      {
+        "front": "COO (Coordinate) 格式是如何存储稀疏矩阵的？",
+        "back": "COO 使用三个等长的一维数组来存储所有非零元素：`value` 数组存数值，`colIdx` 数组存列索引，`rowIdx` 数组存行索引。",
+        "difficulty": "easy",
+        "sourceHint": "17.2 A simple SpMV kernel with the COO format"
+      },
+      {
+        "front": "在 SpMV/COO 内核中，线程是如何映射到数据的？这种映射在访存和负载均衡上有什么优势？",
+        "back": "映射策略是“单线程单非零元素 (One thread per non-zero)”。由于连续线程访问连续的数组位置，天然实现了合并访存 (Coalesced memory accesses)，并且所有线程的工作量绝对相等 (完美负载均衡)。",
+        "difficulty": "medium",
+        "sourceHint": "17.2 A simple SpMV kernel with the COO format"
+      },
+      {
+        "front": "SpMV/COO 最大的性能与数值稳定性致命缺陷是什么？",
+        "back": "因为分配到同一行不同非零元素的线程会尝试并发更新同一个输出向量元素，必须使用高延迟的原子操作 (Atomic operations)。这不仅拖慢速度，非确定性的累加顺序还会导致浮点数舍入误差累积，破坏数值稳定性。",
+        "difficulty": "hard",
+        "sourceHint": "17.2 A simple SpMV kernel with the COO format"
+      },
+      {
+        "front": "CSR (Compressed Sparse Row) 格式是如何比 COO 格式更节省内存空间的？",
+        "back": "CSR 格式去掉了与非零元素等长的 `rowIdx` 数组，替换为一个长度仅为“行数 + 1”的 `rowPtrs` 数组，用于记录每一行非零元素在 `value` 和 `colIdx` 数组中的起始偏移量。",
+        "difficulty": "easy",
+        "sourceHint": "17.3 Grouping row non-zeros with the CSR format"
+      },
+      {
+        "front": "在 SpMV/CSR 内核中，线程映射策略是什么？它解决了 COO 格式的什么痛点？",
+        "back": "映射策略是“单线程单行 (One thread per row)”。因为单个线程包揽了整行的内积计算与累加，每个线程唯一地写入其负责的输出元素，从而彻底消除了对原子操作 (Atomic operations) 的依赖。",
+        "difficulty": "medium",
+        "sourceHint": "17.3 Grouping row non-zeros with the CSR format"
+      },
+      {
+        "front": "为什么 SpMV/CSR 内核会遭受极度严重的非合并访存 (Uncoalesced accesses) 惩罚？",
+        "back": "因为同一 Warp 内相邻的线程负责相邻的行。当它们在第一次循环迭代中读取矩阵数据时，访问的是各自行在 `value` 数组中的第一个元素。由于各行长度累加，这些元素的物理地址相距甚远，彻底破坏了硬件的合并访存机制。",
+        "difficulty": "hard",
+        "sourceHint": "17.3 Grouping row non-zeros with the CSR format"
+      },
+      {
+        "front": "SpMV/CSR 内核在微架构层面为何会产生严重的控制流发散 (Control flow divergence)？",
+        "back": "因为矩阵中各行的非零元素数量通常是不等的，而单个线程负责一行的循环。这导致同一 Warp 内的不同线程需要执行不同次数的循环迭代，大量较早结束的线程只能闲置等待最慢的线程。",
+        "difficulty": "hard",
+        "sourceHint": "17.3 Grouping row non-zeros with the CSR format"
+      },
+      {
+        "front": "ELL 格式是如何通过内存布局重组，彻底解决 CSR 的非合并访存问题的？",
+        "back": "ELL 首先将所有行填充 (Padding) 至与最长行相等的长度，使矩阵变为规则的矩形，然后将其转置为列主序 (Column-major order) 存储。这样一来，相邻线程在同一次迭代中访问的就是物理连续的内存地址。",
+        "difficulty": "hard",
+        "sourceHint": "17.4 Improving memory coalescing with the ELL format"
+      },
+      {
+        "front": "纯 ELL 格式在面对长尾分布 (Long-tail distribution) 稀疏矩阵时，有什么致命缺点？",
+        "back": "如果矩阵中只有极少数几行包含了海量的非零元素，ELL 为了对齐最长行，会给其他所有正常行加入天量的无效填充元素 (Padding)，导致显存空间效率 (Space efficiency) 极度恶化。",
+        "difficulty": "medium",
+        "sourceHint": "17.4 Improving memory coalescing with the ELL format"
+      },
+      {
+        "front": "混合 ELL-COO 格式 (Hybrid ELL-COO) 是如何运用正则化 (Regularization) 思想解决 ELL 的填充浪费的？",
+        "back": "设定一个合理的行长阈值，将绝大部分数据用 ELL 格式高效存储（享受合并访存）；而对于少数超长行，将其超出阈值的部分剥离，转存入灵活的 COO 格式作为“兜底”，从而砍掉了庞大的无意义填充。",
+        "difficulty": "hard",
+        "sourceHint": "17.5 Regulating padding with the hybrid ELL-COO format"
+      },
+      {
+        "front": "为什么混合 ELL-COO 格式不仅节省了空间，还能同时减轻 SpMV/ELL 内核的控制流发散？",
+        "back": "因为剥离了超长行的长尾部分后，ELL 矩阵的最大宽度显著缩小。这意味着 ELL 内核中所有线程被迫陪跑的最大循环迭代次数大幅降低，直接减少了 Warp 内部的闲置等待周期。",
+        "difficulty": "hard",
+        "sourceHint": "17.5 Regulating padding with the hybrid ELL-COO format"
+      },
+      {
+        "front": "JDS (Jagged Diagonal Storage) 锯齿对角线格式相比于 ELL 格式，其预处理的核心区别是什么？",
+        "back": "JDS 不使用大规模的零元素填充。相反，它在转为列主序压缩之前，先根据每行的非零元素数量，对矩阵的所有行进行降序排序 (Sorting)。",
+        "difficulty": "medium",
+        "sourceHint": "17.6 Reducing control divergence with the JDS format"
+      },
+      {
+        "front": "JDS 格式是如何在不引入填充 (Padding) 的情况下，极致解决控制流发散 (Control flow divergence) 问题的？",
+        "back": "通过对行长度进行预排序，JDS 确保了被分配到同一个 Warp 中的相邻线程，其负责的行长度（工作量）极为相似。这使得 Warp 内的线程几乎会同时结束循环，极大消除了发散。",
+        "difficulty": "hard",
+        "sourceHint": "17.6 Reducing control divergence with the JDS format"
+      },
+      {
+        "front": "对于需要频繁动态添加非零元素的图计算或仿真应用，为什么极其不推荐使用 JDS 格式？",
+        "back": "因为 JDS 严重依赖于按行长度的全局排序。任意一个新元素的加入都可能改变行的长度排名，从而引发昂贵的全局重新排序与内存重组，灵活性极差。",
+        "difficulty": "medium",
+        "sourceHint": "17.6 Reducing control divergence with the JDS format"
+      },
+      {
+        "front": "CSC (Compressed Sparse Column) 格式的数据结构是什么？它相当于哪种格式的镜像？",
+        "back": "CSC 相当于 CSR 的转置镜像。它按列压缩非零元素，使用 `value` 数组、`rowIdx` 数组（记录元素所在行），以及 `colPtrs` 数组（记录每列在 value 数组中的起始偏移）。",
+        "difficulty": "easy",
+        "sourceHint": "17.7 Column-wise accessibility with the CSC format"
+      },
+      {
+        "front": "为什么将 CSC 格式用于标准的 SpMV (稀疏矩阵乘密集向量) 被认为是灾难性的设计？",
+        "back": "因为若给每列分配一个线程，CSC 会同时集齐三大惩罚：非合并访存 (跨列跳跃访问矩阵)、严重的控制流发散 (列长不一)，以及必须使用原子操作 (不同列的线程会并发更新同一个输出向量元素)。",
+        "difficulty": "hard",
+        "sourceHint": "17.7 Column-wise accessibility with the CSC format"
+      },
+      {
+        "front": "既然 CSC 不适合常规的 SpMV，那它在什么特定的计算场景下具有不可替代的优势？",
+        "back": "CSC 非常适合 SpMSpV (稀疏矩阵乘稀疏向量) 等需要按列遍历的场景。因为输入向量也是稀疏的，当遇到输入向量中值为零的元素时，CSC 可以直接跳过对应的一整列矩阵数据，避免无用功。",
+        "difficulty": "medium",
+        "sourceHint": "17.7 Column-wise accessibility with the CSC format"
+      }
+    ]
+  }
+}

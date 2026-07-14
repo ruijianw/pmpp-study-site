@@ -1,0 +1,69 @@
+{
+  "chapterId": "chapter-07-convolution",
+  "chapterTitle": "Convolution",
+  "sourceId": "b9b94d1a-3608-4143-8559-d3a3037ac123",
+  "sourceTitle": "chapter-07-convolution.pdf",
+  "artifactType": "study-guide",
+  "artifactLabel": "Study Guide",
+  "generatedAt": "2026-07-13T13:40:13.724143Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "学习指南：卷积 (Chapter 7: Convolution)",
+    "summary": "本章探讨了在 GPU 上实现并行卷积运算的核心优化策略。重点解析了卷积的算术强度与内存带宽限制、常量内存 (Constant Memory) 的应用机制，以及在处理光环单元 (Halo Cells) 与幽灵单元 (Ghost Cells) 时，不同共享内存分块 (Shared Memory Tiling) 策略的性能权衡。",
+    "sections": [
+      {
+        "heading": "学习目标 (Learning Objectives)",
+        "points": [
+          "1. 理解卷积计算的算术强度 (Arithmetic Intensity) 与滤波器尺寸的关系，能够依据 FLOP/B 判断内核是内存受限还是计算受限。",
+          "2. 掌握使用常量内存 (Constant Memory) 和常量缓存 (Constant Cache) 存储只读滤波器权重的方法与硬件原理。",
+          "3. 区分并处理图像/信号物理边界上的幽灵单元 (Ghost cells) 与分块计算带来的逻辑边界上的光环单元 (Halo cells)。",
+          "4. 掌握带光环单元的分块卷积 (Tiled convolution with halo cells) 策略，解决输入块 (Input tile) 尺寸大于输出块 (Output tile) 导致的线程映射复杂性。",
+          "5. 评估各种分块策略的效率，理解如何利用 L2 缓存来处理光环单元 (Caching for halo cells) 以消除未对齐访存与计算资源浪费。"
+        ]
+      },
+      {
+        "heading": "章节结构映射 (Section-by-Section Chapter Map)",
+        "points": [
+          "7.1 背景 (Background): 介绍 1D/2D 卷积的数学定义，探讨不同应用中对边界幽灵单元 (Ghost cells) 默认值的处理方式。",
+          "7.2 并行卷积基础内核 (Parallel convolution - a basic kernel): 演示将 2D 网格映射到输出元素的直观策略，分析边界控制流发散 (Control divergence) 的影响。",
+          "7.3 内存带宽考量 (Memory bandwidth considerations): 推导理想算术强度公式 (1/4 * m^2 FLOP/B)，揭示基础内核严重浪费内存带宽的问题。",
+          "7.4 常量内存与缓存 (Constant memory and caching): 使用 __constant__ 和 cudaMemcpyToSymbol 彻底消除滤波器权重带来的 DRAM 访问瓶颈。",
+          "7.5 包含光环单元的分块 (Tiled convolution with halo cells): 详述将比输出块更大的输入块加载至共享内存的协同操作，并剖析非 2 的幂次方尺寸带来的内存未对齐问题。",
+          "7.6 利用缓存处理光环单元的分块 (Tiled convolution using caches for halo cells): 提出仅将分块内部元素加载至共享内存，而依赖 L2 缓存直接命中光环单元的高级解法。"
+        ]
+      },
+      {
+        "heading": "关键概念精解 (Key Concepts)",
+        "points": [
+          "幽灵单元 (Ghost Cells): 在处理图像或信号边界时，卷积公式需要访问但实际不存在的输入元素。通常通过逻辑判断填充默认值 (如 0)。",
+          "光环单元 (Halo Cells): 在实施分块 (Tiling) 优化时，计算位于当前分块边缘的输出元素所需的、物理上隶属于相邻分块的输入数据。",
+          "常量内存 (Constant Memory): 容量极小 (如 64KB) 但极快的一种专用 DRAM 区域，配合硬件级的常量缓存 (Constant cache) 使用。当同一 Warp 中的所有线程同时请求相同的常量内存地址时，硬件能够完美广播数据，实现极致带宽。",
+          "算术强度动态性 (Dynamic Arithmetic Intensity): 卷积的算术强度与滤波器尺寸的平方成正比。小尺寸滤波器 (如 3x3) 是绝对的内存受限 (Memory-bound)，而大尺寸滤波器 (如 11x11) 则转变为计算受限 (Compute-bound)。",
+          "输入块与输出块差异 (Input vs. Output Tile Size): 基础分块加载策略中，为保证边界计算，输入块的每条边必须比输出块大出 2 倍滤波器半径 (2r)。这引发了线程与数据的不对称映射。"
+        ]
+      },
+      {
+        "heading": "常见误区与实现缺陷 (Common Misunderstandings & Implementation Mistakes)",
+        "points": [
+          "误区：认为只需将所有数据搬入共享内存就能提升性能。真相：如果为了将大尺寸的输入块完整搬入共享内存，而导致输出块的尺寸变成非 2 的幂次方 (如 28x28)，在将结果写回全局内存时会产生未对齐访存 (Misaligned memory accesses)，反而损害带宽效率。",
+          "实现缺陷：在使用“包含光环单元的分块 (Section 7.5)”策略时，由于输入块大于输出块，必须让一部分线程在执行完数据加载后，在计算阶段处于非活跃 (Deactivated) 状态。这种计算资源的浪费对于高度优化的计算受限 (Compute-bound) 内核是致命的。",
+          "常量内存调用错误：错误地尝试将声明为 __constant__ 的变量作为指针参数传递给 CUDA 内核。真相：常量内存变量应在文件作用域声明，在内核中作为全局变量直接访问，且必须通过主机端调用 cudaMemcpyToSymbol() 进行初始化。"
+        ]
+      },
+      {
+        "heading": "三阶段实践计划 (3-Session Practice Plan)",
+        "points": [
+          "Session 1: 算术强度推理与常量内存。手算 7x7 滤波器卷积的理想算术强度。修改基础 2D 卷积代码，将全局内存滤波器替换为 __constant__ 声明，并验证性能变化及主机端 cudaMemcpyToSymbol 的用法。",
+          "Session 2: 掌握不对称的共享内存分块。实现 7.5 节中包含光环单元的分块内核。重点推演代码中 threadIdx、输入块偏移与输出块偏移的关系。在纸上画出 8x8 线程块处理 6x6 输出块时的失活边缘线程 (Deactivated threads)。",
+          "Session 3: 实现基于 L2 缓存的高级光环分块。重构上一阶段的代码，使 Block 尺寸、共享内存输入块尺寸、输出块尺寸三者完全一致。利用边界检查仅将内部核心元素加载至共享内存，体会如何巧妙依赖 L2 缓存 (Caches) 解决边缘光环读取问题。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

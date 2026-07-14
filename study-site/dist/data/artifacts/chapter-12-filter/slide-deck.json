@@ -1,0 +1,176 @@
+{
+  "chapterId": "chapter-12-filter",
+  "chapterTitle": "Filter",
+  "sourceId": "b72b13d3-d8d2-405c-ba31-db66494d85be",
+  "sourceTitle": "chapter-12-filter.pdf",
+  "artifactType": "slide-deck",
+  "artifactLabel": "Slide Deck",
+  "generatedAt": "2026-07-13T14:17:27.527710Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "幻灯片大纲：过滤与 Warp 投票 (Chapter 12: Filter)",
+    "summary": "本幻灯片组深入解析 GPU 上并行过滤 (Parallel Filter) 算法的底层设计。涵盖不稳定过滤中的全局原子竞争瓶颈及合并原子操作、私有化优化策略；稳定过滤中的排他扫描机制与合并访存修复；以及原位 (In-place) 计算模式下的跨 Block 内存依赖与单向同步规则。",
+    "sections": [
+      {
+        "heading": "使用建议 (Usage Tips)",
+        "points": [
+          "第 1-2 页介绍并行过滤的背景与不稳定过滤中的全局原子操作竞争 (Contention) 瓶颈。",
+          "第 3-5 页深入讲解 Warp 投票 (Warp voting) 机制，对比使用底层内置函数与协作组 (Cooperative Groups) 实现合并原子操作的代码抽象。",
+          "第 6-7 页讲解共享内存分块私有化 (Block-level privatization) 如何实现全局竞争降维与合并访存 (Memory coalescing)。",
+          "第 8-10 页转向稳定过滤 (Stable filter)，解析基于排他扫描 (Exclusive scan) 的保序机制，以及利用共享内存与线程粗化 (Thread coarsening) 解决访存碎片的策略。",
+          "第 11-13 页探讨高级原位计算 (In-place filter)，重点剖析“读后写 (Read-before-Write)”跨 Block 依赖图，以及数据扩张时的逆向同步陷阱。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "slideNumber": 1,
+        "title": "并行过滤基础 (Parallel Filter Background)",
+        "bullets": [
+          "**核心概念**：移除列表中不符合特定标准的元素，并将剩余元素压缩为紧凑的数组，相当于合并 (Merge) 的逆操作。",
+          "**内存复用 (In-place vs. Out-of-place)**：异位过滤会生成新数组；原位过滤将输出直接覆盖原始内存，节省显存但面临读写依赖风险。",
+          "**保序性 (Stable vs. Unstable)**：稳定过滤 (Stable) 严格保留被过滤元素的相对原始顺序；不稳定过滤 (Unstable) 不保证顺序。"
+        ],
+        "speakerNotes": "过滤操作在垃圾回收、数据检索中极为常见。在 GPU 庞大的数据规模下，如果采用异位过滤，显存开销可能会翻倍，这就引出了原位过滤的需求。此外，业务逻辑是否要求保持数据原有先后顺序，直接决定了我们能采取何种底层并行策略。",
+        "visualSuggestion": "展示图 12.1，对比 Unstable filter（元素乱序填入）与 Stable filter（元素保持原始先后顺序填入）的映射箭头。"
+      },
+      {
+        "slideNumber": 2,
+        "title": "基础不稳定过滤与竞争瓶颈 (Unstable Filter & Contention)",
+        "bullets": [
+          "**实现思路**：不考虑保序，所有满足条件的活跃线程通过 `atomicAdd` 更新同一个全局计数器 `outputSize`，获取输出索引。",
+          "**串行化灾难 (Serialization)**：同一时间如果有数以万计的线程争抢更新同一内存地址，硬件会被迫将这些原子操作串行化。",
+          "**Warp 内部最烈**：同一 Warp 内的多个活跃线程在同一个时钟周期内发起对相同地址的原子请求，必然导致最严重的冲突。"
+        ],
+        "speakerNotes": "最直接的写代码方式往往是性能最差的。当我们让 GPU 上所有线程都用 atomicAdd 去抢全局内存里的一个计数器时，并行计算就退化成了串行排队。特别是同一个 Warp 里的兄弟线程，它们步调完全一致，硬抢的结果就是极高的延迟。",
+        "visualSuggestion": "展示多条线程执行 `atomicAdd` 汇聚到一个 Global Memory 计数器上的图示，并打上醒目的“串行化瓶颈 (Serialization Bottleneck)”警告。"
+      },
+      {
+        "slideNumber": 3,
+        "title": "合并原子操作 (Coalescing Atomic Operations)",
+        "bullets": [
+          "**Warp 投票 (Warp voting)**：与其让 32 个线程各自执行一次原子操作，不如推选出一个代表统一去申请空间。",
+          "**选举 Leader**：识别 Warp 内活跃线程，选出位号最小的活跃线程作为 Leader。",
+          "**批量申请与分配**：Leader 统计本 Warp 总活跃人数，执行 1 次原子累加获取基底偏移，然后广播给全组，各线程再计算局部偏移。"
+        ],
+        "speakerNotes": "为了解决 Warp 内部的自相残杀，我们引入合并原子操作。这就像团购，大家先把需求汇总，推选出一个团长去跟全局内存申请一整块连续的空间，拿回来之后组内再瓜分。这样一次最多可能发生 32 次的冲突就降低成了 1 次。",
+        "visualSuggestion": "流程图：Warp 内多个活跃线程 -> 选举 1 个 Leader -> Leader 执行 1 次 Global Atomic -> Leader 将基准 Offset 广播回各线程 -> 各线程加上 Local Offset 写入数据。"
+      },
+      {
+        "slideNumber": 4,
+        "title": "Warp 级原语的底层实现 (Warp-Level Primitives)",
+        "bullets": [
+          "**活跃掩码**：`__activemask()` 返回 32 位掩码，标明当前通过过滤条件的线程。",
+          "**推选与统计**：`__ffs(mask) - 1` 找到最低位活跃线程作 Leader；`__popc(mask)` 统计总活跃线程数。",
+          "**局部偏移 (Local Offset)**：线程 i 通过位运算 `2^i - 1` 生成前缀掩码，并与活跃掩码按位与，再用 `__popc()` 算出排在自己前面的活跃线程数。"
+        ],
+        "speakerNotes": "如果我们用最底层的 CUDA 内置函数来手写，需要非常熟悉位运算。用 activemask 拿到全组的状态，用 popc 数 1 的个数。计算自己应该排第几的时候，就是做一个二进制的位掩码前缀和。虽然高效，但非常容易写错。",
+        "visualSuggestion": "代码高亮片段：展示 `__activemask()`, `__ffs()`, `__popc()`，并通过二进制位图解释 `(1 << laneId) - 1` 的掩码截断原理。"
+      },
+      {
+        "slideNumber": 5,
+        "title": "协作组简化实现 (Cooperative Groups API)",
+        "bullets": [
+          "**合并组对象**：调用 `coalesced_threads()` 获取代表当前 Warp 活跃线程的 `coalesced_group` 对象。",
+          "**优雅的 API 替代**：使用 `.size()` 替代 `__popc()`；使用 `.thread_rank()` 直接获取局部偏移，替代易错的位掩码前缀和。",
+          "**安全与一致**：屏蔽了底层架构更迭导致的掩码行为差异，让编译器能够更安全地管理活跃线程集合。"
+        ],
+        "speakerNotes": "幸运的是，CUDA 提供了 Cooperative Groups API，为我们封装了那些复杂的位操作。coalesced_threads 直接就代表了那些存活下来的线程。我们要算总数，直接调用 size()；想知道自己排老几，直接调用 thread_rank()，一行代码解决所有复杂的局部偏移计算。",
+        "visualSuggestion": "代码对比 (Fig 12.3 vs Fig 12.4)：左侧是密密麻麻的位运算，右侧是简洁的 `activeThreads.thread_rank()` 调用，用绿色箭头指向右侧表示推荐写法。"
+      },
+      {
+        "slideNumber": 6,
+        "title": "共享内存：分块私有化 (Block-Level Privatization)",
+        "bullets": [
+          "**降维打击竞争**：在 `__shared__` 中为每个 Block 创建私有输出列表和私有计数器。",
+          "**局部无锁/低锁填充**：线程首先将过滤后的数据写入共享内存，仅在共享内存的私有计数器上发生极低延迟的竞争。",
+          "**全局统一提交**：Block 处理完一整批后，由单线程对全局内存执行 1 次原子提交，再将整块共享内存转储过去。"
+        ],
+        "speakerNotes": "除了合并原子操作，我们还有更彻底的解决方案：私有化。每个 Block 先把存活的数据缓存到自己的共享内存里，这是离计算单元最近、最快的地方。攒够一批后，只对全局内存做一次原子操作申请大空间。这把全局几万个线程的竞争，降维成了 Block 内部的局部竞争。",
+        "visualSuggestion": "架构图：多个 Thread (散乱数据) -> 极速写入 Shared Memory (排列连续) -> Leader 申请空间 -> 整体搬运至 Global Memory。"
+      },
+      {
+        "slideNumber": 7,
+        "title": "私有化的同步陷阱与合并访存红利 (Sync Traps & Coalesced Accesses)",
+        "bullets": [
+          "**双刃剑同步**：在全局提交与转储之前，必须调用 `__syncthreads()`。防止执行快的线程提前全局转储，导致读后写 (RAW) 数据丢失。",
+          "**恢复合并访存**：在共享内存中存活数据已被连续紧凑排列，向全局内存转储时，Warp 内相邻线程必定写入连续地址。",
+          "**带宽极效**：彻底消除了由于部分线程被过滤导致的非合并全局访存 (Uncoalesced global accesses)。"
+        ],
+        "speakerNotes": "私有化有两大注意点：首先，转储前绝对不能忘了 syncthreads() 屏障，否则全局内存里肯定会丢数据；其次，它带来的巨大红利是恢复了完美的合并访存！原本那些零零散散活下来的数据，在共享内存里排队站好后，一起写入全局内存就能完全榨干总线带宽。",
+        "visualSuggestion": "带有警告标志的 `__syncthreads()` 代码块，以及下方展现连续的物理内存块被整齐划一写入的“100% Coalesced”图标。"
+      },
+      {
+        "slideNumber": 8,
+        "title": "稳定过滤：排他扫描 (Stable Filter & Exclusive Scan)",
+        "bullets": [
+          "**保序难题**：不稳定过滤的原子操作由于其不可预测性，会完全打乱原始顺序。稳定过滤绝不能使用原子分配。",
+          "**标志生成 (Flag Generation)**：线程评估过滤条件，生成布尔值标志数组 (保留=1，丢弃=0)。",
+          "**排他扫描 (Exclusive Scan)**：对标志数组执行网格级的排他扫描，所得结果即为每个保留元素在输出数组中绝对保序的偏移量。"
+        ],
+        "speakerNotes": "一旦业务要求保持原本的顺序，原子操作就彻底失效了。我们怎么知道一个存活的数据该放哪呢？只要数一数它前面有多少个存活的数据就行了。把存活标记为 1，然后跑一遍第 11 章讲过的排他扫描，算出来的前缀和就是它准确且保序的全局偏移。",
+        "visualSuggestion": "展示图 12.7 的过程：输入 k0-k7 -> 生成标志数组 [1,0,1,...] -> 执行 Exclusive Scan -> 得到偏移量 [0,1,1,2,...] -> 精准填入输出。"
+      },
+      {
+        "slideNumber": 9,
+        "title": "修复稳定过滤的访存碎片 (Fixing Memory Fragmentation)",
+        "bullets": [
+          "**直接写入的灾难**：若线程算得偏移量后直接向全局内存散列写入 (Scattered writes)，Warp 内部巨大的物理地址间隙将严重破坏合并访存。",
+          "**共享内存聚合 (Gathering)**：同样利用共享内存作为跳板。先把本 Block 内的存活元素聚集到共享内存中形成紧凑连续的排列。",
+          "**整体连续输出**：再利用连续的活跃线程将这些已打包的数据一次性块状写入 DRAM。"
+        ],
+        "speakerNotes": "稳定过滤虽然算准了位置，但如果你直接往全局内存写，性能会惨不忍睹。因为活下来的线程是东一个西一个的，往全局写就会产生大量的碎片事务。解决方案依然是共享内存聚合。不管多散乱，先进共享内存排好队，再由连续的线程统一搬去全局内存。",
+        "visualSuggestion": "对比图解：上方是存活线程直接向 Global Memory 射出的稀疏、交叉箭头 (Uncoalesced)；下方是先在 Shared Memory 对齐，再发出密集、平行的连续箭头 (Coalesced)。"
+      },
+      {
+        "slideNumber": 10,
+        "title": "线程粗化摊薄开销 (Thread Coarsening in Filter)",
+        "bullets": [
+          "**分块代价**：颗粒度越细的并行，意味着共享内存只能拼接出零碎的小连续块，限制了合并访存的规模。",
+          "**粗化收益**：让每个线程负责更多元素，使得共享内存中汇聚出的连续块显著变大，增加内存总线利用率。",
+          "**底层联动**：更关键的是，粗化极大地提升了底层依赖的排他扫描 (Scan) 操作的工作效率 (Work efficiency)，一举多得。"
+        ],
+        "speakerNotes": "为了让写出去的数据块尽可能大，我们需要线程粗化。让每个 Block 处理更多的数据。这不仅能让我们在共享内存里攒出更大的连续块去喂饱内存总线，同时还能摊薄底层排他扫描的并行开销，让整个过滤算法的性能成倍提升。",
+        "visualSuggestion": "图 12.10 (Thread Coarsening 示意图)，展示单线程处理更多数据块如何减少跨 Block 的交接并生成更大片的连续内存写入。"
+      },
+      {
+        "slideNumber": 11,
+        "title": "原位计算与前向依赖 (In-Place Filter & Read-before-Write)",
+        "bullets": [
+          "**突破显存极限**：直接将输出覆盖到原始输入数组，不再分配独立空间。",
+          "**内存覆写危机**：若调度失序，后序 Block (如 Block j) 的输出可能会写入并摧毁前序 Block (如 Block i) 还未读取的区域。",
+          "**严格读后写依赖 (Read-before-Write)**：对于任何 $j > i$，必须保障 Block i 的读取行为，严格发生于 Block j 的写入之前。"
+        ],
+        "speakerNotes": "当数据量大到连 GPU 显存都塞不下的时候，我们就需要原位过滤。把过滤后的结果直接盖在原来的内存上。但是危险来了：如果不加控制，跑得快的线程可能会把新数据写到别人还没来得及读取的地方，导致数据永久损毁。我们必须建立严密的读后写依赖保障。",
+        "visualSuggestion": "依赖危机图解：一个指向前方的红色弯曲箭头，表示后序数据的输出试图覆盖前序尚未读取的输入数据，并打上“危险 (Hazard)”标志。"
+      },
+      {
+        "slideNumber": 12,
+        "title": "单次扫描的天然单向同步 (Single-Pass Unidirectional Sync)",
+        "bullets": [
+          "**天然的防御链条**：基于单次传递扫描 (Single-pass scan) 构建的稳定过滤，其内部已包含强制的时序约束。",
+          "**因果推导**：`Block i` 的读取必早于其扫描；`Block j` 的扫描因等待前缀和，必晚于 `Block i` 的扫描；`Block j` 的写入必晚于其扫描完成。",
+          "**绝对安全**：依赖链 (Read i -> Scan i -> Scan j -> Write j) 自然确保了原位覆盖绝对不会冲刷掉未读的旧数据。"
+        ],
+        "speakerNotes": "幸运的是，如果我们用单次传递扫描来做原位过滤，我们什么锁都不用加！因为扫描算法里，后面的 Block 必须等前面的 Block 把前缀和传过来才能继续。这个天生的等待链，恰好保证了前面的 Block 一定早就读完了数据，完美防范了覆写风险。",
+        "visualSuggestion": "展示图 12.11 的依赖图 (Dependence diagram)，用箭头清晰串联起“Read input -> Scan -> Write output”的跨 Block 时序关系。"
+      },
+      {
+        "slideNumber": 13,
+        "title": "数据扩张模式与逆向同步 (Expansion & Reverse Synchronization)",
+        "bullets": [
+          "**向外扩张 (Expansion)**：如矩阵新增行，此时输出数据长度变大，前序 Block 的输出会侵占后序 Block 的物理地址。",
+          "**依赖反转**：此时威胁变为了“前序覆盖后序”。原先的单向同步会立刻导致数据灾难。",
+          "**逆向同步 (Reverse Synchronization)**：必须要求前序 Block 阻塞，直到确认后序 Block 已完成读取。同步方向变为从末尾向头部逆向传递。"
+        ],
+        "speakerNotes": "最后提醒大家，如果业务从“过滤变短”变成了“插入变长”（比如增加矩阵行），原位操作的内存侵占方向就完全反过来了！前面处理的数据会把后面的内存挤占掉。这时候，我们必须把同步方向完全反转，从最后一个 Block 往前同步，否则数据必毁无疑。",
+        "visualSuggestion": "扩张模式时序图：红色的箭头从前方指向后方的内存区。配上文字“逆向同步要求：Block N-1 先读，Block 0 才能写”。"
+      }
+    ]
+  }
+}

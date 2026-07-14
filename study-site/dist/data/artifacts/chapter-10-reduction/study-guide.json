@@ -1,0 +1,72 @@
+{
+  "chapterId": "chapter-10-reduction",
+  "chapterTitle": "Reduction",
+  "sourceId": "32ca4118-c499-4bbc-bd3d-3f5200036719",
+  "sourceTitle": "chapter-10-reduction.pdf",
+  "artifactType": "study-guide",
+  "artifactLabel": "Study Guide",
+  "generatedAt": "2026-07-13T13:56:26.220788Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "学习指南：归约 (Chapter 10: Reduction)",
+    "summary": "本章深入探讨了 GPU 上的并行归约 (Parallel Reduction) 算法。通过逐步优化基础归约树，重点解析了如何消除控制流发散 (Control Divergence) 和非合并访存 (Uncoalesced Memory Accesses)。进一步引入共享内存 (Shared Memory)、Warp 级原语 (Warp-level primitives) 以及线程粗化 (Thread Coarsening) 等高级技巧，以最大限度地降低同步开销并提升硬件利用率。",
+    "sections": [
+      {
+        "heading": "学习目标 (Learning Objectives)",
+        "points": [
+          "1. 理解归约树 (Reduction trees) 的基本原理，并认识其对运算符结合律 (Associativity) 和交换律 (Commutativity) 的依赖。",
+          "2. 评估并行归约的工作量 (Work) 与跨度 (Span)，理解在多步迭代中不断递减的并行度。 ",
+          "3. 掌握重排线程工作分配的技巧，将活跃线程集中在连续的 Warp 中，以大幅消除控制流发散 (Control Divergence)。",
+          "4. 识别并修复基础归约内核中的非合并访存 (Uncoalesced memory accesses)，提升全局内存带宽利用率。",
+          "5. 运用共享内存 (Shared Memory) 暂存归约中间结果，消除全局内存的高昂读写延迟。",
+          "6. 利用 Warp 级原语 (Warp-level primitives) 替代共享内存和块级同步屏障，实现极致的 Warp 内归约 (Warp-wide reduction)。",
+          "7. 结合原子操作 (Atomic operations) 处理任意长度输入，并应用线程粗化 (Thread coarsening) 摊薄并行化开销。"
+        ]
+      },
+      {
+        "heading": "章节结构映射 (Section-by-Section Chapter Map)",
+        "points": [
+          "10.1-10.2 背景与归约树 (Background & Reduction trees): 阐述归约概念、推导算法的工作量 O(N) 与跨度 O(log N)，指明硬件利用率在迭代中递减的现象。",
+          "10.3 基础归约内核 (A simple reduction kernel): 实现基于步长倍增 (Stride doubled) 的初始版本，暴露出严重的控制流及访存效率缺陷。",
+          "10.4-10.5 减少发散 (Reducing control & memory divergence): 优化线程映射方案，改用步长递减 (Stride halved) 策略，使活跃线程连续，实现合并访存并减少分支发散。",
+          "10.6 减少全局访存 (Reducing global memory accesses): 引入 __shared__ 数组，将迭代过程中的中间结果保存在片上内存。",
+          "10.7-10.8 Warp 级原语 (Warp-level primitives): 在归约最后阶段 (活跃线程少于 32 时) 使用 __shfl_down_sync，彻底移除同步与共享内存读写。",
+          "10.9 任意长度输入 (Arbitrary length inputs): 采用多 Block 并行切分数据，借助原子操作 (Atomic Add) 安全汇总各 Block 结果。",
+          "10.10 线程粗化 (Thread coarsening): 引入单线程串行处理多个输入元素 (COARSE_FACTOR)，从根本上减少 Block 数量，摊薄同步与空转开销。"
+        ]
+      },
+      {
+        "heading": "关键概念精解 (Key Concepts)",
+        "points": [
+          "归约树 (Reduction Tree): 改变了操作执行顺序的并行算法模型。它通过多轮并发的成对操作，在 log N 步内将 N 个元素归约为单一结果。",
+          "工作量与跨度 (Work and Span): 工作量指执行的算术操作总数 (顺序和并行归约皆为 O(N))；跨度指在无限资源下的最少串行执行步数 (并行归约为 O(log N))。",
+          "步长递减映射 (Stride Halved Mapping): 通过让线程读取跨度为活跃线程总数的数据 (如步长从 blockDim.x/2 递减至 1)，保证每次活跃的线程始终是连续的。这既消除了 Warp 内发散，又实现了全局内存的合并访存 (Coalesced accesses)。",
+          "Warp 洗牌原语 (Warp Shuffle Functions): 如 __shfl_down_sync，允许同一 Warp 内的线程直接通过硬件寄存器快速交换数据，无需通过共享内存且无需调用 __syncthreads()。",
+          "线程粗化 (Thread Coarsening): 将一部分并行工作转换为串行工作（如单线程先循环累加 4 个元素）。这确保了最初的计算阶段 100% 占满执行资源，减少了归约树尾部空转导致的硬件利用不足 (Hardware underutilization)。"
+        ]
+      },
+      {
+        "heading": "常见误区与实现缺陷 (Common Misunderstandings & Implementation Mistakes)",
+        "points": [
+          "误区：任何二元运算符都可以直接用于并行归约。真相：并行归约首先需要运算符满足结合律 (Associativity)。如果要应用减少发散的优化 (重排操作数) 以及多 Block 的原子累加，该运算符还必须满足交换律 (Commutativity) (例如浮点数加法在实际应用中常被近似视为满足这些定律)。",
+          "误区：归约内核在整个执行周期内都高度并行。真相：随着归约步长迭代，一半的活跃线程会持续退出。在最后的几次迭代中，一个 Warp 里只有极少数线程在工作，导致资源严重浪费。这种现象必须通过线程粗化 (Thread Coarsening) 来缓解。",
+          "实现缺陷：在调用 __shfl_down_sync 之后仍然调用 __syncthreads()。真相：Warp 级原语本身已经内置了 Warp 内部的硬件级同步语义，如果在仅有单 Warp 活跃的阶段使用块级同步，会带来完全不必要的开销。"
+        ]
+      },
+      {
+        "heading": "三阶段实践计划 (3-Session Practice Plan)",
+        "points": [
+          "Session 1: 发散问题分析。编写 10.3 节的递增步长基础内核，然后重构为 10.4 节的连续活跃线程内核。利用 Nsight Compute 分析后者的执行效率 (Execution resource utilization efficiency) 如何从约 30% 跃升，以及访存事务 (Memory transactions) 数量的下降。",
+          "Session 2: 共享内存与 Warp 原语。在上一阶段成果上，分配 __shared__ 数组暂存中间结果以降低全局带宽消耗。随后，改写步长小于 32 的循环体，使用 __shfl_down_sync 完成最后 5 步归约，对比内核延迟变化。",
+          "Session 3: 泛化与粗化。为支持超大规模数组，引入 blockIdx 并在内核末尾用 atomicAdd 提交结果。最后，加入 COARSE_FACTOR 循环，让每个线程负责预先串行累加多个元素。测量在不同粗化系数下，内核吞吐量的峰值。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

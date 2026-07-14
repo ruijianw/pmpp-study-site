@@ -1,0 +1,61 @@
+{
+  "chapterId": "chapter-03-multidimensional-grids-and-data",
+  "chapterTitle": "Multidimensional Grids And Data",
+  "sourceId": "398d28d9-3e81-4b0c-a2c0-69eefc525f0f",
+  "sourceTitle": "chapter-03-multidimensional-grids-and-data.pdf",
+  "artifactType": "briefing",
+  "artifactLabel": "Briefing",
+  "generatedAt": "2026-07-13T13:17:02.221804Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "简报：多维网格与数据 (Chapter 3: Multidimensional Grids and Data)",
+    "summary": "本章将一维并发模型扩展至多维，详细解析了如何使用多维网格(Grid)和线程块(Block)来处理图像和矩阵等二维/三维数据结构。重点讲解了动态数组的行主序线性化(Row-major linearization)、复杂的线程到数据映射机制，以及在计算图像补丁(Patch)时极其关键的边界检查(Boundary Checking)技巧。",
+    "sections": [
+      {
+        "heading": "执行摘要 (Executive Summary)",
+        "points": [
+          "CUDA 支持将并发线程与线程块组织为最多三维的结构 (使用 dim3 向量类型)，以自然契合现实世界中多维数据（如像素网格、二维矩阵）的物理拓扑。",
+          "通过引入彩色图像转灰度、图像模糊 (Image blur) 与矩阵乘法 (Matrix multiplication) 三个实例，展示了从简单的元素级一对一数据映射，到涉及空间邻域计算的多对一复杂映射的演进。",
+          "由于 C++ 对动态分配数组在编译期的维度限制，异构并行程序必须手动将多维数据展平 (Flatten) 为一维连续内存空间进行寻址与计算。"
+        ]
+      },
+      {
+        "heading": "核心主张 (Core Claims)",
+        "points": [
+          "硬件维度与限制：单个线程块 (Block) 的总线程数上限为 1024。网格 (Grid) 与线程块的维度不强制保持一致（如 Grid 可以是 2D，而 Block 是 3D），但其划分应尽量贴合数据的自然维度。",
+          "行主序线性化 (Row-major Linearization)：C/C++ 编译器默认采用行主序布局。动态分配的 2D 矩阵必须显式转换为一维偏移量，获取第 j 行第 i 列元素的通用公式为 `j * Width + i`。",
+          "多维坐标的逆向约定：在 CUDA 中配置执行参数时，dim3(x, y, z) 按照列(宽)、行(高)、深度的低维到高维顺序声明；而 C/C++ 传统多维数组索引 [z][y][x] 是高维到低维排列，这种反向对应关系在建立数据映射时需要高度关注。"
+        ]
+      },
+      {
+        "heading": "本章重要性 (Why This Chapter Matters)",
+        "points": [
+          "桥接基础与现实计算：从简单的 1D 向量跨越到真实的 2D 图像与矩阵处理，这是掌握高级并行模式、底层 BLAS 库、计算机视觉算法以及深度学习 (CNNs/LLMs) 底层运算的基础。",
+          "构筑防御性编程思维 (Defensive Programming)：在处理涉及局部邻域 (如模糊半径) 的复杂数据模式时，本章提供了一套应对冗余线程与非规则数据边界的系统性检查方法论。"
+        ]
+      },
+      {
+        "heading": "先决条件 (Prerequisites)",
+        "points": [
+          "理解基础的一维 CUDA 执行模型（包括 Grid、Block 层次结构及 threadIdx 等内置硬件坐标变量）。",
+          "理解计算机“平坦”内存空间 (Flat memory space) 的概念，以及 C/C++ 中指针与动态内存分配的原理。",
+          "掌握基础的线性代数概念，特别是矩阵点积 (Dot product) 的计算方法（用于矩阵乘法内核）。"
+        ]
+      },
+      {
+        "heading": "实现启示与常见错误 (Implementation Implications)",
+        "points": [
+          "基础边界缺陷 (Boundary Mistake)：使用 `ceil` 向上取整除法配置网格规模时，必然会在数据边缘产生多余的冗余线程。内核中如果缺少最外层的 `if (col < width && row < height)`，会直接导致越界访存。",
+          "邻域补丁 (Patch) 边界遗漏：在执行图像模糊等卷积操作时，不仅要验证目标中心像素不越界，其周边参与计算的相邻坐标 (curRow, curCol) 也必须受到严格的负值 (<0) 及超限 (>=width/height) 拦截，否则处理图像四个角或边缘时会混入垃圾内存或引发崩溃。",
+          "错误的动态数组解引用：初学者常试图在设备端直接使用多维下标语法（如 `M[row][col]`）访问动态分配的线性数组。由于编译期缺失列宽信息，这将导致编译错误，必须强制转为 1D 的 `row * Width + col` 偏移量计算逻辑。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

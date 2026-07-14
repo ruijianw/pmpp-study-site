@@ -1,0 +1,139 @@
+{
+  "chapterId": "chapter-01-introduction",
+  "chapterTitle": "Introduction",
+  "sourceId": "36d65c10-46f4-41a0-8d73-eea6b485aea1",
+  "sourceTitle": "chapter-01-introduction.pdf",
+  "artifactType": "flashcards",
+  "artifactLabel": "Flashcards",
+  "generatedAt": "2026-07-13T12:08:32.250984Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "闪卡：引言 (Chapter 1: Introduction)",
+    "summary": "包含 18 张精选闪卡，用于快速复习《大规模并行处理器编程》第一章的核心概念，涵盖 CPU/GPU 架构对比、Amdahl定律、并行编程四大挑战以及计算思维基础。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Tips)",
+        "points": [
+          "利用简单 (Easy) 难度卡片巩固 CPU 与 GPU 的核心架构差异。",
+          "通过中等 (Medium) 难度卡片加深对并行计算常见瓶颈（如内存受限、同步开销）的理解。",
+          "挑战困难 (Hard) 难度卡片，掌握量化性能推理 (如Amdahl定律计算) 和底层硬件演进逻辑。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "front": "什么是 CPU 的延迟导向设计 (Latency-oriented design)？",
+        "back": "CPU 投入大量芯片面积用于大容量片上缓存 (Caches) 和复杂的分支预测与控制逻辑，以最小化单线程内算术运算和内存访问的延迟。",
+        "difficulty": "easy",
+        "sourceHint": "1.1 Heterogeneous parallel computing"
+      },
+      {
+        "front": "什么是 GPU 的吞吐量导向设计 (Throughput-oriented design)？",
+        "back": "GPU 牺牲单线程的低延迟，将大量芯片面积用于海量的简单计算单元 (ALUs) 和内存通道，旨在最大化并发执行的整体数据吞吐量。",
+        "difficulty": "easy",
+        "sourceHint": "1.1 Heterogeneous parallel computing"
+      },
+      {
+        "front": "GPU 硬件如何隐藏长内存访问和算术运算的延迟 (Latency hiding)？",
+        "back": "通过维护数十万个并发线程 (Concurrent threads)。当一部分线程因内存读取或运算阻塞时，硬件会瞬间切换到其他就绪的线程继续执行，从而隐藏等待时间。",
+        "difficulty": "medium",
+        "sourceHint": "1.1 Heterogeneous parallel computing"
+      },
+      {
+        "front": "Amdahl定律 (Amdahl's Law) 的核心推论是什么？",
+        "back": "应用程序的整体最大理论加速比 (Speedup) 严格受限于代码中无法被并行化的串行部分 (Sequential portion) 的时间占比。",
+        "difficulty": "medium",
+        "sourceHint": "1.3 Speeding up real applications"
+      },
+      {
+        "front": "根据 Amdahl 定律，如果一个程序有 30% 的串行代码，即使将并行部分加速到无限大，整体最大理论加速比是多少？",
+        "back": "约 1.43 倍 (计算公式：1 / 0.30)。这意味着绝大部分代码必须被并行化，才能获得显著的性能提升。",
+        "difficulty": "hard",
+        "sourceHint": "1.3 Speeding up real applications"
+      },
+      {
+        "front": "在说明异构系统分工的“桃子模型 (Peach model)”中，“桃核 (Pit)”代表什么？应该由谁执行？",
+        "back": "“桃核”代表应用中具有高度顺序依赖、极难并行化的串行代码部分；它最适合由具有延迟导向设计优势的 CPU 来执行。",
+        "difficulty": "easy",
+        "sourceHint": "1.3 Speeding up real applications"
+      },
+      {
+        "front": "什么是内存受限 (Memory-bound) 应用程序？",
+        "back": "该类应用程序的执行速度瓶颈在于数据从系统主存 (DRAM) 传输到处理器的速率 (即内存带宽)，而不是受限于处理器的算术运算速度。",
+        "difficulty": "medium",
+        "sourceHint": "1.4 Challenges in parallel programming"
+      },
+      {
+        "front": "简单地将应用并行化后，为何通常最多只能获得大约 10 倍的加速？",
+        "back": "因为这种直接的并行化会迅速饱和系统的内存主存带宽 (DRAM Bandwidth)，使得多余的计算核心陷入等待数据的状态，必须利用片上存储 (On-chip memory) 优化数据访问才能突破此瓶颈。",
+        "difficulty": "hard",
+        "sourceHint": "1.3 Speeding up real applications"
+      },
+      {
+        "front": "在芯片设计中，为何提升计算吞吐量的成本远低于降低单次操作延迟的成本？",
+        "back": "因为翻倍吞吐量只需复制一倍的计算单元（两倍面积和功耗）；而将单次操作延迟减半可能需要增加更多复杂的电路逻辑，消耗两倍以上的面积并增加四倍功耗。",
+        "difficulty": "hard",
+        "sourceHint": "1.1 Heterogeneous parallel computing"
+      },
+      {
+        "front": "并行编程中的“工作效率 (Work Efficiency)”概念指的是什么？",
+        "back": "衡量并行算法相比最优串行算法在总执行工作量（如计算步骤数）上的效率。若并行算法执行了过多冗余工作 (Redundant work)，反而会导致面对大规模数据时速度变慢。",
+        "difficulty": "hard",
+        "sourceHint": "1.4 Challenges in parallel programming"
+      },
+      {
+        "front": "为什么数据特征 (Data characteristics) 突变会导致并行代码性能急剧下降？",
+        "back": "不规则的数据分布或不可预测的数据大小会导致大量线程被分配的工作量极度不均衡，产生严重的等待，破坏并行执行的负载均衡。",
+        "difficulty": "medium",
+        "sourceHint": "1.4 Challenges in parallel programming"
+      },
+      {
+        "front": "什么是“尴尬并行 (Embarrassingly parallel)”应用？",
+        "back": "指那些极易被分割成完全独立的子任务的应用程序，执行过程中各个线程几乎不需要相互协作和同步。",
+        "difficulty": "easy",
+        "sourceHint": "1.4 Challenges in parallel programming"
+      },
+      {
+        "front": "在需要线程协作 (Collaboration) 时，主要会导致性能下降的机制是什么？",
+        "back": "同步开销 (Synchronization overhead)。过度使用全局屏障 (Barriers) 或原子操作 (Atomic operations) 会使得大量线程处于闲置等待状态，破坏吞吐量。",
+        "difficulty": "medium",
+        "sourceHint": "1.4 Challenges in parallel programming"
+      },
+      {
+        "front": "GPGPU 时代（2007年 CUDA 发布前），在 GPU 上执行通用计算最大的技术痛点是什么？",
+        "back": "当时缺乏通用的硬件接口，开发者必须使用图形API (如 OpenGL/Direct3D)，将通用计算任务极其困难地“伪装”成渲染像素的图形操作。",
+        "difficulty": "medium",
+        "sourceHint": "1.1 Heterogeneous parallel computing"
+      },
+      {
+        "front": "CUDA 带来的最关键创新（相较于 GPGPU）是什么？",
+        "back": "在硅片上增加了专用的通用计算接口和调度硬件，彻底绕过了图形渲染管线，并允许开发者使用原生 C/C++ 来显式控制多线程与数据传递。",
+        "difficulty": "medium",
+        "sourceHint": "1.1 Heterogeneous parallel computing"
+      },
+      {
+        "front": "为什么早期的并行计算机（如超级计算机集群）未能像现在的 GPU 一样催生庞大的开发者社区？",
+        "back": "因为早期集群设备极其昂贵且安装基数 (Installed base) 极小，无法提供足够的市场规模和经济效益来支撑大量商业应用软件的开发成本。",
+        "difficulty": "medium",
+        "sourceHint": "1.1 Heterogeneous parallel computing"
+      },
+      {
+        "front": "为什么现代 GPU 能提供比 CPU 高出约 10 倍的内存带宽？",
+        "back": "视频游戏等图形应用天生需要每帧传输海量数据，且能接受相对宽松的内存一致性模型；而 CPU 必须满足旧有操作系统和 I/O 设备极其严苛的细粒度内存访问规范，这极大地限制了其带宽设计的灵活性。",
+        "difficulty": "hard",
+        "sourceHint": "1.1 Heterogeneous parallel computing"
+      },
+      {
+        "front": "在这本书的语境中，什么是计算思维 (Computational Thinking)？",
+        "back": "开发人员能够深入思考特定领域的实际问题，并将其转化为适合在大规模并行处理器 (Massively parallel processors) 上高效执行的逻辑结构的能力。",
+        "difficulty": "medium",
+        "sourceHint": "1.6 Overarching goals"
+      }
+    ]
+  }
+}

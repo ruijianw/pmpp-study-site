@@ -1,0 +1,61 @@
+{
+  "chapterId": "chapter-05-memory-architecture-and-data-locality",
+  "chapterTitle": "Memory Architecture And Data Locality",
+  "sourceId": "bde6b4cd-9cdf-4782-a570-a72e79387d7d",
+  "sourceTitle": "chapter-05-memory-architecture-and-data-locality.pdf",
+  "artifactType": "briefing",
+  "artifactLabel": "Briefing",
+  "generatedAt": "2026-07-13T13:27:52.242919Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "简报：内存架构与数据局部性 (Chapter 5: Memory Architecture and Data Locality)",
+    "summary": "本章探讨了现代 GPU 的内存层级架构，解析了计算访存比 (FLOP/B) 与 Roofline 模型。核心介绍了如何利用数据局部性 (Data Locality)，通过共享内存 (Shared Memory) 与分块 (Tiling) 技术，将全局内存的冗余访问转化为高速的片上内存访问，从而突破内存带宽瓶颈并提升整体计算吞吐量。",
+    "sections": [
+      {
+        "heading": "执行摘要 (Executive Summary)",
+        "points": [
+          "GPU 包含多种物理性质和访问速度截然不同的内存层级：寄存器 (Registers)、共享内存 (Shared memory)、本地内存 (Local memory)、全局内存 (Global memory) 和常量内存 (Constant memory)。",
+          "基础的 CUDA 内核（如简单的矩阵乘法）通常是内存受限 (Memory-bound) 的，执行速度远低于 GPU 的峰值计算算力，因为大量的时钟周期被耗费在等待全局内存数据的传输上。",
+          "通过分块 (Tiling) 技术，让同一 Block 内的线程协同将高频重用的数据块加载到极速的片上共享内存中，能够成倍削减全局内存流量，是 GPU 性能优化的核心范式。"
+        ]
+      },
+      {
+        "heading": "核心主张 (Core Claims)",
+        "points": [
+          "计算访存比 (Compute-to-global-memory-access ratio): 衡量内核性能瓶颈的核心指标（FLOP/B）。当该比例低于硬件阈值时为内存受限，高于阈值时为计算受限 (Compute-bound)。",
+          "Roofline 模型应用: 提供了一种光速性能分析 (Speed-of-light analysis) 方法，通过比对内核当前的计算强度与硬件的峰值内存带宽/计算吞吐量，来评估优化效率和潜力。",
+          "资源的动态制约 (Occupancy limits): 共享内存虽然极快，但其容量在 SM 中是极其有限的。为每个 Block 分配过大的共享内存块 (Tile) 会限制 SM 可并发驻留的 Block 数量，导致占用率 (Occupancy) 降低，影响延迟容忍 (Latency tolerance)。"
+        ]
+      },
+      {
+        "heading": "本章重要性 (Why This Chapter Matters)",
+        "points": [
+          "打破算力闲置的窘境：教会开发者识别性能瓶颈，明白仅仅增加线程并发数量并不能掩盖严重的内存带宽拥塞。",
+          "建立内存感知的编程思维：为后续理解高级优化库 (如 cuBLAS, CUTLASS) 的底层逻辑、张量核心 (Tensor Cores) 的数据编排以及复杂应用的内存复用奠定了不可或缺的理论基础。"
+        ]
+      },
+      {
+        "heading": "先决条件 (Prerequisites)",
+        "points": [
+          "熟练掌握基础的异构计算模型，理解 Grid、Block 和 Thread 的层级组织，以及它们是如何被调度到 SM 上执行的。",
+          "理解基础矩阵乘法的算法逻辑，并熟悉多维数组在 C/C++ 扁平线性内存中的行主序 (Row-major layout) 坐标映射公式。"
+        ]
+      },
+      {
+        "heading": "实现启示与常见错误 (Implementation Implications)",
+        "points": [
+          "同步屏障遗漏缺陷：在使用共享内存进行分块协同计算时，必须插入 `__syncthreads()`。遗漏它会导致读后写 (Read-after-write) 数据损坏（读取了未加载完的垃圾值），或写后读 (Write-after-read) 冲突（下一阶段加载的数据覆盖了当前正在使用的数据）。",
+          "边界检查 (Boundary checks) 陷阱：处理非整除尺寸的矩阵时，越界线程会读取非法内存空间引发崩溃或污染结果。必须为每一个全局内存加载操作加入行列边界测试，并在越界时向共享内存填入安全的占位值（如 `0.0f`）。",
+          "动态共享内存分配：硬编码共享内存大小 (如 `__shared__ float Mds[1];`) 会降低代码灵活性。最佳实践是使用 `extern __shared__` 并在主机端根据 `cudaGetDeviceProperties` 动态计算并在内核启动配置中传入共享内存字节数。",
+          "自动数组分配误区：初学者常以为内核中声明的自动数组 (Automatic array variables) 像标量一样存放在寄存器中。实际上，它们通常被放入本地内存 (Local memory)，物理上位于高延迟的全局 DRAM 中，除非索引完全是编译期常量。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

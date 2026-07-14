@@ -1,0 +1,72 @@
+{
+  "chapterId": "chapter-16-dynamic-programming-and-wavefront-parallelism",
+  "chapterTitle": "Dynamic Programming And Wavefront Parallelism",
+  "sourceId": "53d954fd-2c4e-4132-a9e4-fa18b0c18262",
+  "sourceTitle": "chapter-16-dynamic-programming-and-wavefront-parallelism.pdf",
+  "artifactType": "study-guide",
+  "artifactLabel": "Study Guide",
+  "generatedAt": "2026-07-13T14:34:39.073089Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "学习指南：动态规划与波前并行 (Chapter 16: Dynamic Programming And Wavefront Parallelism)",
+    "summary": "本章探讨了如何在 GPU 上高效并行化具有数据依赖关系的动态规划 (Dynamic Programming) 算法。通过分析自底向上的计算依赖，引入波前并行 (Wavefront parallelism) 概念，并以 Floyd-Warshall 和 Smith-Waterman 算法为例，深入讲解了块级分块 (Block-level tiling)、超平面变换 (Hyperplane transformation/Hypertiling) 解决 Warp 利用率不足的方法，以及跨块同步 (Inter-block synchronization) 等高级性能优化技术。",
+    "sections": [
+      {
+        "heading": "学习目标 (Learning Objectives)",
+        "points": [
+          "1. 区分动态规划与分治法，理解重叠子问题与最佳子结构，并掌握波前 (Wavefront) 的定义及其在 GPU 并行中的意义。",
+          "2. 对比自顶向下 (Top-down) 与自底向上 (Bottom-up) 实现，解释为何 GPU 更适合采用自底向上的迭代策略。",
+          "3. 掌握恒定波前模式 (如 Floyd-Warshall 算法) 的 CUDA 内核设计，理解多 Kernel 启动实现全局同步 (Global synchronization) 的机制。",
+          "4. 分析动态变化波前模式 (如 Smith-Waterman 算法) 的抗角线 (Anti-diagonal) 数据依赖及并行化挑战。",
+          "5. 应用块级分块 (Block-level tiling) 和共享内存 (Shared memory) 优化波前并行，并将非合并访存转化为合并写回 (Coalesced storing)。",
+          "6. 识别矩形分块 (Square/Rectangular tiles) 导致的 Warp 利用率不足与局部性丢失，掌握利用超平面变换 (Hyperplane transformation) 构造超分块 (Hypertiles) 来解决这些缺陷。",
+          "7. 运用共享内存填充 (Padding) 技术，消除超分块在 Shared Memory 中引发的 Bank 冲突 (Bank conflicts)。",
+          "8. 比较内核终止 (Kernel termination)、协作组 (Cooperative groups) 与跨块同步 (Inter-block synchronization) 在波前依赖中的性能权衡。"
+        ]
+      },
+      {
+        "heading": "章节结构映射 (Section-by-Section Chapter Map)",
+        "points": [
+          "16.1-16.2 动态规划与实现方法: 介绍子问题重叠与波前概念。对比 Top-down (深层递归/哈希表，引发非合并访存，不适合 GPU) 与 Bottom-up (迭代/制表，适合 GPU 波前并行)。",
+          "16.3-16.4 波前模式与 Floyd-Warshall 算法: 讲解恒定规模波前。实现多源最短路径，通过 Host 端控制 Kernel 反复启动以实现全局同步，利用 O(N^2) 空间优化 O(N^3) 状态。",
+          "16.5-16.6 基因比对与 Smith-Waterman 算法分块: 讲解规模动态生缩的波前。引入块级分块 (Block-level tiling)，在 Shared memory 内使用 __syncthreads() 局部同步抗角线，最后合并写回 (Coalesced storing)。",
+          "16.7 超平面变换 (Hyperplane transformation): 解决矩形分块的 Warp 闲置和 L2 缓存局部性丢失。通过剪切变换 (Shear transformation) 将矩形分块转化为平行四边形超分块 (Hypertiles)，使活跃线程数保持恒定，工作效率翻倍。",
+          "16.8 更多优化 (More optimizations): 探讨消除 Kernel 重复启动的开销，引入单向标志位跨块同步 (Inter-block synchronization)；简述适用于短序列的单 Warp 实现，以及利用硬件 DPX 指令 (如 __vimax3_s32_relu) 加速动态规划。"
+        ]
+      },
+      {
+        "heading": "关键概念精解 (Key Concepts)",
+        "points": [
+          "波前 (Wavefront): 一组没有相互依赖关系、可以被完全并行计算的中间子问题集合。相邻波前之间存在严格的数据依赖，必须通过屏障或标志位进行同步隔离。",
+          "自底向上策略 (Bottom-up approach): 通过迭代从最小子问题开始逐步填表 (Tabulation) 的方法。避免了 GPU 难以高效支持的深层函数递归调用，并消除了对哈希表等引发非合并访存数据结构的依赖。",
+          "块级分块 (Block-level tiling): 将庞大的动态规划矩阵划分为多个子块。块内抗角线波前通过轻量级的 __syncthreads() 在共享内存中同步，仅在块间波前边界使用重量级同步。",
+          "超平面变换 (Hyperplane transformation): 通过剪切 (Shear) 操作进行仿射变换，将矩形分块转化为平行四边形的超分块 (Hypertiles)。使原矩阵的列与抗角线对齐，保证单次迭代中每个线程始终活跃，从而解决 Warp 利用率不足 (Underutilization) 的问题。",
+          "跨块同步 (Inter-block synchronization): 替代低效的“内核终止与重启”机制。通过在全局内存中维护一组标志位 (Flags)，配合持久化线程块 (Persistent thread blocks)，使得一个线程块仅需等待其直接依赖的邻居块完成即可开始计算，大幅减少闲置周期。"
+        ]
+      },
+      {
+        "heading": "常见误区与实现缺陷 (Common Misunderstandings & Implementation Mistakes)",
+        "points": [
+          "误区：在 GPU 上可以直接移植 CPU 上的自顶向下 (Top-down) 递归代码。真相：GPU 不支持深层内联的递归调用，且对哈希表等关联数组的访存通常会导致严重的 Warp 内非合并访存 (Uncoalesced memory accesses)，必须改用自底向上迭代法。",
+          "误区：矩形块级分块 (Square tiling) 是最高效的抗角线波前切分方式。真相：矩形分块在处理抗角线时，活跃线程数会先增后减，导致 Warp 产生大量空闲线程；且相邻块间的数据局部性易在 L2 缓存中丢失。使用超分块 (Hypertiles) 的效率是矩形分块的两倍。",
+          "实现缺陷：超分块 (Hypertiles) 可直接存入共享内存而无需额外处理。真相：由于其行主序的平行四边形存储方式，若超分块的宽度是 Bank 数量的倍数或约数，极易引发严重的 Shared memory Bank 冲突。必须使用 Padding 技术 (如 `x + (x >> LOG_NUM_BANKS)`) 打乱地址映射。",
+          "实现缺陷：忽略了超平面变换引入的边界外内存读取风险。真相：由于形状变换，所有线程在迭代中始终活跃，部分线程可能会在共享内存中越界读取垃圾值用于计算。必须引入专门的 shared memory 初始化函数将其归零，以防止非法指令异常。"
+        ]
+      },
+      {
+        "heading": "三阶段实践计划 (3-Session Practice Plan)",
+        "points": [
+          "Session 1: 基础恒定波前并行与全局同步。实现基于 Floyd-Warshall 算法的内核。重点验证外层 k 循环在 CPU 上控制 Kernel 启动的全局同步逻辑，理解为何当图中路径无负权时，可以安全地在原地更新 distance 数组而无竞态条件。",
+          "Session 2: 动态波前与矩形分块。在 Smith-Waterman 算法中应用矩形块级分块 (Block-level tiling)。实现 Shared memory 局部抗角线迭代和 __syncthreads() 块内同步，并利用共享内存重组向全局内存发出合并写回 (Coalesced storing)。",
+          "Session 3: 超平面变换与高级同步。将矩形分块重构为平行四边形超分块 (Hypertiles)，应用 Shear 变换推导全局内存索引，并添加 Padding 消除 Bank 冲突。尝试引入基于标志位的跨块同步 (Inter-block synchronization)，使用 Nsight Compute 观察 SM 活跃周期的提升。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

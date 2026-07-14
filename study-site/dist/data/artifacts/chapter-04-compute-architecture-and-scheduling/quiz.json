@@ -1,0 +1,158 @@
+{
+  "chapterId": "chapter-04-compute-architecture-and-scheduling",
+  "chapterTitle": "Compute Architecture And Scheduling",
+  "sourceId": "c4dee50c-ba72-41d3-819f-b65012626952",
+  "sourceTitle": "chapter-04-compute-architecture-and-scheduling.pdf",
+  "artifactType": "quiz",
+  "artifactLabel": "Quiz",
+  "generatedAt": "2026-07-13T13:24:59.799101Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "测试题：计算架构与调度 (Chapter 4: Compute Architecture and Scheduling)",
+    "summary": "本测试题旨在检验对现代 GPU 核心底层架构及 CUDA 调度机制的掌握情况，重点覆盖流式多处理器 (SM)、Warp 执行与 SIMT 模型、控制发散、延迟容忍策略以及占用率限制等性能推理核心概念。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Advice)",
+        "points": [
+          "1. 理解硬件映射：牢记 CUDA 线程的软件层级是如何映射到物理硬件的（Block 映射到 SM，并进一步拆分为 Warp）。",
+          "2. 警惕同步死锁：绝不能在可能产生分支发散 (Control Divergence) 的控制流内部调用 `__syncthreads()`，这会导致严重的死锁问题。",
+          "3. 洞悉延迟隐藏机制：GPU 放弃了大缓存而选择“过载分配 (Oversubscription)”，利用细粒度多线程和零开销调度来掩盖内存延迟。",
+          "4. 关注资源限制：占用率 (Occupancy) 受到寄存器、线程槽、共享内存等多种资源动态划分的严格限制，局部变量的微小增加可能引发“性能悬崖”。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "type": "multiple-choice",
+        "question": "在 CUDA 的调度机制中，线程被分配给流式多处理器 (SM) 的基本单位是什么？",
+        "options": [
+          "A. 线程 (Thread) 逐个分配",
+          "B. Warp 逐个分配",
+          "C. 线程块 (Thread Block) 作为一个整体分配",
+          "D. 网格 (Grid) 作为一个整体分配"
+        ],
+        "answer": "C",
+        "explanation": "在 CUDA 中，线程是以线程块 (Block) 为基础单位分配给 SM 的。这意味着同一个 Block 内的所有线程会同时被分配到同一个 SM 上执行，从而允许它们利用共享内存和块级屏障进行同步。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "如果在导致不同线程走向不同执行路径的 if-else 语句块（发生控制发散）内部错误地调用了 `__syncthreads()`，会导致什么结果？",
+        "options": [
+          "A. 编译器会自动优化并将其移动到条件分支外部",
+          "B. 导致死锁 (Deadlock) 或未定义的执行行为",
+          "C. 硬件会自动拆分 Warp 并安全地分别执行",
+          "D. 只有执行 then-path 的线程会被挂起，其他线程正常执行"
+        ],
+        "answer": "B",
+        "explanation": "屏障同步 `__syncthreads()` 要求其作用域内的所有线程必须共同到达该点。如果它被放置在发散的分支中，部分线程将永远无法到达该屏障，从而导致整个 Block 永久挂起（死锁）。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在现代 GPU 中，多维的线程块 (如 2D Block) 会采用何种方式被线性化 (Linearized) 拆分为 32 线程的 Warp？",
+        "options": [
+          "A. 随机打乱布局",
+          "B. 列主序 (Column-major layout) 布局",
+          "C. Z-order 曲线布局",
+          "D. 行主序 (Row-major layout) 布局"
+        ],
+        "answer": "D",
+        "explanation": "多维块在划分 Warp 时采用行主序。例如在 2D 块中，硬件会优先把 `threadIdx.y` 相同的线程按 `threadIdx.x` 的递增顺序连续排列，然后再递增 `threadIdx.y`。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "当同一个 Warp 内的线程在 if-else 条件分支中发生控制发散 (Control divergence) 时，SIMD 硬件是如何处理的？",
+        "options": [
+          "A. 硬件会抛出异常并终止该 Warp",
+          "B. 分多遍 (Multi-pass) 串行执行每个分支路径，执行某路径时其余线程被置为非活跃状态",
+          "C. 将不同分支的线程动态重新组合为新的 Warp 并发执行",
+          "D. 将复杂的控制流任务卸载回 CPU 执行"
+        ],
+        "answer": "B",
+        "explanation": "硬件会在同一指令下采取多遍执行策略，分别执行 then 路径和 else 路径。在每遍执行中，只有选择了对应路径的线程是活跃的，这维持了 SIMD 的硬件简单性，但会造成执行资源的闲置。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "现代 GPU 架构主要依靠什么机制来实现长耗时操作（如全局内存访问）的延迟容忍 (Latency tolerance)？",
+        "options": [
+          "A. 极其复杂的指令分支预测逻辑",
+          "B. 容量巨大的末级缓存 (L3 Cache)",
+          "C. 过载分配 (Oversubscription) 线程和零开销的细粒度上下文切换 (Zero-overhead scheduling)",
+          "D. 提升流处理器的时钟频率 (Clock frequency)"
+        ],
+        "answer": "C",
+        "explanation": "GPU 故意向 SM 分配远超其物理执行单元数量的线程 (Oversubscription)。当某个 Warp 等待内存时，硬件能以零开销瞬间切换到其他就绪的 Warp 执行，以此来隐藏延迟。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "什么是 CUDA 内核优化中被称为“性能悬崖 (Performance cliff)”的现象？",
+        "options": [
+          "A. GPU 温度过高导致的强制降频",
+          "B. 局部变量微小增加导致单线程寄存器超限，使得 SM 可驻留的 Block 数量骤减，占用率 (Occupancy) 断崖式暴跌",
+          "C. 浮点数计算精度从单精度切换到双精度导致的延迟增加",
+          "D. 多个线程块同时写入同一内存地址导致的带宽饱和"
+        ],
+        "answer": "B",
+        "explanation": "因为寄存器是 SM 中动态划分的硬性资源，如果内核增加了一两个变量使得所需寄存器跨越了硬件整数倍划分的阈值，SM 能并发容纳的 Block 数量可能会急剧减少，导致资源利用率暴跌。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "自 Volta 架构引入独立线程调度 (Independent thread scheduling) 后，对于产生分支发散的 Warp，开发者在分支结束处必须注意什么？",
+        "options": [
+          "A. 硬件一定会在分支结束时自动隐式重新收敛 (Reconverge) 线程",
+          "B. 必须将代码移回主机 (Host) 进行同步",
+          "C. 不能假设发散的线程会自动重新收敛，必须显式调用如 `__syncwarp()` 这样的 Warp 级原语来确保同步",
+          "D. 必须调用 `cudaDeviceSynchronize()`"
+        ],
+        "answer": "C",
+        "explanation": "独立线程调度意味着每个线程可以维持自己的执行进度，发散的分支在结束后不再保证硬件级别的自动对齐。若逻辑上需要它们对齐，必须由程序员显式同步。"
+      },
+      {
+        "type": "multiple-choice",
+        "question": "在 GPU 架构中，能够让同一套 CUDA 代码在具有不同 SM 数量的硬件上自动扩展并高效运行的核心概念是什么？",
+        "options": [
+          "A. 统一内存 (Unified Memory)",
+          "B. 透明可扩展性 (Transparent scalability)，因为硬件可以按任意相对顺序执行独立的线程块",
+          "C. 即时编译 (JIT Compilation)",
+          "D. 动态并行 (Dynamic Parallelism)"
+        ],
+        "answer": "B",
+        "explanation": "透明可扩展性是 CUDA 设计的基石。因为 CUDA 强制规定不同的 Block 之间不能进行隐式的执行依赖或同步，硬件调度器才能毫无负担地根据当前可用资源任意并发调度这些 Block。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在处理大规模数组时，内核中常常需要加入诸如 `if (i < n)` 的边界检查。为什么通常不需要为了消除这处控制发散而大幅增加代码的复杂性？",
+        "expectedAnswer": "因为当处理的数据量足够大（例如向量长度数万）时，边界检查仅仅会导致网格边缘极少数（例如不到 1%）的 Warp 发生控制发散。这种微小比例的多遍执行对整体执行时间的性能影响微乎其微。",
+        "explanation": "这属于典型的性能推理 (Performance reasoning)。开发者应当把精力集中在优化主循环内所有 Warp 都会触发的性能瓶颈，而不是为了极小概率的边缘发散过度优化。"
+      },
+      {
+        "type": "short-answer",
+        "question": "与传统的 CPU SIMD 指令（如 AVX）相比，GPU 的 SIMT (Single Instruction, Multiple Thread) 执行模型为开发者带来了什么显著的编程优势？",
+        "expectedAnswer": "SIMT 允许程序员编写面向标量线程 (Scalar threads) 的串行逻辑代码。底层硬件会自动将这些线程隐式分组为 Warp，并自动利用 SIMD 硬件广播指令。这免除了程序员手动调用复杂向量指令 API 的编程负担。",
+        "explanation": "SIMT 是 CUDA 降低并行编程门槛的杀手锏，它在保持了 SIMD 硬件极高执行效率（共用取指/解码单元）的同时，赋予了开发者编写独立线程代码的灵活性。"
+      },
+      {
+        "type": "short-answer",
+        "question": "在线程块调度中，什么是“尾部效应 (Tail effect)”？在设定网格配置时如何尽量避免它？",
+        "expectedAnswer": "当网格中的总线程块数量不是系统可用 SM 并发容量的整数倍时，最后一次调度周期（最后一波 Wave）分配的块数会很少，导致部分硬件资源闲置，这就是尾部效应。建议尽量将网格尺寸配置为能被硬件并发能力整除的规模。",
+        "explanation": "充分理解尾部效应，对于小规模数据或者需要在极限吞吐量下微调网格配置 (Grid sizing) 的应用至关重要。"
+      },
+      {
+        "type": "short-answer",
+        "question": "为什么 GPU 能够实现“零开销上下文切换 (Zero-overhead scheduling)”，而传统的 CPU 线程切换却代价高昂？",
+        "expectedAnswer": "CPU 在切换线程时，需要将当前线程的上下文（如寄存器状态）保存至较慢的主存中，并载入新线程的状态。而 GPU 的 SM 拥有海量的物理硬件寄存器，所有分配给它的 Warp 的执行状态都直接驻留在硬件上，因此能在时钟周期级别无缝切换，实现零开销。",
+        "explanation": "这是 GPU 架构设计为了实现“延迟容忍 (Latency Tolerance)”所做出的核心硬件取舍，用海量寄存器换取极速的上下文切换。"
+      },
+      {
+        "type": "short-answer",
+        "question": "从 Hopper 架构开始引入的“线程块集群 (Thread block cluster)”机制，主要提供了什么突破原本 Block 隔离限制的新能力？",
+        "expectedAnswer": "线程块集群将一组 Block 协同调度到同一个 GPC 上。这允许同集群内的不同 Block 之间进行屏障同步，并且使得它们能够互相访问彼此的分布式共享内存 (Distributed shared memory)。",
+        "explanation": "这使得原本只局限于单个 Block 内的局部数据协作范围，得以扩展到更大的硬件集群中，对大规模张量运算等高级算法的优化意义重大。"
+      }
+    ]
+  }
+}

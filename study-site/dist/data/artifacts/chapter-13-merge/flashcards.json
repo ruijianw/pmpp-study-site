@@ -1,0 +1,127 @@
+{
+  "chapterId": "chapter-13-merge",
+  "chapterTitle": "Merge",
+  "sourceId": "fe2cbf02-e8a0-4d31-8236-d29aa0d0b96c",
+  "sourceTitle": "chapter-13-merge.pdf",
+  "artifactType": "flashcards",
+  "artifactLabel": "Flashcards",
+  "generatedAt": "2026-07-13T14:20:31.910730Z",
+  "generator": {
+    "tool": "nlm",
+    "mode": "query",
+    "notebook": "pmpp",
+    "language": "zh"
+  },
+  "content": {
+    "title": "闪卡：归并 (Chapter 13: Merge)",
+    "summary": "包含 16 张精选闪卡，用于快速复习《大规模并行处理器编程》第十三章关于并行有序归并 (Ordered Merge) 的核心概念。内容涵盖协同秩 (Co-rank) 解决动态数据划分、共享内存分块优化、循环缓冲区 (Circular-buffer) 提升带宽利用率，以及线程粗化 (Thread coarsening) 摊薄开销等高级技巧。",
+    "sections": [
+      {
+        "heading": "复习建议 (Review Tips)",
+        "points": [
+          "利用简单 (Easy) 难度卡片掌握归并算法的复杂度和稳定性定义。",
+          "通过中等 (Medium) 难度卡片深入理解 Co-rank 函数、非合并访存陷阱以及线程粗化的必要性。",
+          "挑战困难 (Hard) 难度卡片，吃透 Co-rank 的边界判定条件、共享内存带宽浪费的成因，以及循环缓冲区的接口抽象设计。"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "front": "什么是并行归并操作中的稳定性 (Stability)？",
+        "back": "稳定性要求当输入数组 A 和 B 存在相等键值的元素时，必须严格保留它们在输出数组中的相对顺序（通常 A 中的元素排在 B 之前），以防止破坏前序操作的排序成果。",
+        "difficulty": "easy",
+        "sourceHint": "13.1 Background"
+      },
+      {
+        "front": "顺序归并算法 (Sequential merge algorithm) 的时间复杂度是多少？",
+        "back": "O(m+n)，其中 m 和 n 分别是两个输入数组的长度。该算法需要线性遍历所有输入元素。",
+        "difficulty": "easy",
+        "sourceHint": "13.2 A sequential merge algorithm"
+      },
+      {
+        "front": "为什么不能用简单的静态索引计算（如矩阵乘法）来划分并行归并中各线程的输入数据范围？",
+        "back": "因为归并操作存在“动态输入数据识别 (Dynamic input data identification)”问题。每个线程所需的输入数据边界完全取决于数组中元素的实际数据值，而非静态的物理位置索引。",
+        "difficulty": "medium",
+        "sourceHint": "13.3 A parallelization approach"
+      },
+      {
+        "front": "什么是协同秩 (Co-rank) 函数？它在并行归并中起什么核心作用？",
+        "back": "Co-rank 是一种反向推导机制。已知目标输出数组的排名 (Rank) k，它能找到满足 i + j = k 的输入边界 i 和 j。这使各个 GPU 线程能够无冲突地确定其负责的独立输入子段。",
+        "difficulty": "medium",
+        "sourceHint": "13.3 A parallelization approach"
+      },
+      {
+        "front": "协同秩 (Co-rank) 函数通常使用哪种算法实现？其时间复杂度是多少？",
+        "back": "使用二分查找 (Binary search) 实现，时间复杂度为 O(log N)（N 为输入数组的最大长度）。",
+        "difficulty": "easy",
+        "sourceHint": "13.4 Co-rank function implementation"
+      },
+      {
+        "front": "在 Co-rank 的二分查找中，判断边界 i 和 j 是否正确的两个核心条件是什么？",
+        "back": "必须满足 `A[i-1] <= B[j]` 以及 `B[j-1] < A[i]`。这确保了前一个输出子段包含的 A 元素都不大于后一个子段包含的 B 元素，同时满足稳定性 (Stability) 要求。",
+        "difficulty": "hard",
+        "sourceHint": "13.4 Co-rank function implementation"
+      },
+      {
+        "front": "在基础的并行归并内核 (Basic parallel merge kernel) 中，最严重的性能缺陷是什么？",
+        "back": "极其严重的非合并访存 (Uncoalesced memory accesses)。由于动态数据依赖性，Warp 内相邻线程在全局内存中所需的输入起始地址极大概率是不连续的，导致 DRAM 带宽利用率急剧恶化。",
+        "difficulty": "medium",
+        "sourceHint": "13.5 A basic parallel merge kernel"
+      },
+      {
+        "front": "在引入共享内存的分块归并内核 (Tiled merge kernel) 中，是如何解决全局非合并访存 (Uncoalesced accesses) 问题的？",
+        "back": "整个 Thread Block 协作调用一次 Block 级别的 Co-rank，圈定一大块连续的输入数据，并以合并的方式预取到共享内存 (Shared memory) 中，将散乱的全局访存转化为极速的片上连续访存。",
+        "difficulty": "medium",
+        "sourceHint": "13.6 A tiled merge kernel to improve coalescing"
+      },
+      {
+        "front": "为什么基础的共享内存分块内核 (Tiled merge kernel) 依然会浪费大约 50% 的全局内存带宽？",
+        "back": "因为每次迭代都会从 A 和 B 加载满两个 Tile 的数据，但实际消耗的 A 和 B 元素总数仅等于一个 Tile 的大小。未消耗的数据在下一次迭代中会被当作新数据重复从全局内存加载，造成直接的带宽浪费。",
+        "difficulty": "hard",
+        "sourceHint": "13.6 A tiled merge kernel to improve coalescing"
+      },
+      {
+        "front": "为了彻底解决分块归并内核中的内存带宽浪费，引入了哪种高级数据结构？",
+        "back": "循环缓冲区 (Circular-buffer)。它通过共享内存复用未消耗的数据，每次迭代仅从全局内存补充已被消耗掉的对应数量的元素，实现了 100% 的带宽利用率。",
+        "difficulty": "medium",
+        "sourceHint": "13.7 A circular-buffer merge kernel"
+      },
+      {
+        "front": "在实现循环缓冲区 (Circular-buffer) 时，为什么不建议将模运算 (Modulo, `%`) 回绕逻辑直接硬编码进 Co-rank 的二分查找循环中？",
+        "back": "这会使底层的搜索逻辑变得极其复杂且容易出错，并增加寄存器压力。正确的做法是提供简化的连续内存抽象模型 (Simplified model)，仅在最终访问数据的瞬间应用模运算以保持代码可读性。",
+        "difficulty": "hard",
+        "sourceHint": "13.7 A circular-buffer merge kernel"
+      },
+      {
+        "front": "为什么在并行归并中，完全不进行“线程粗化 (Thread coarsening)”（即一个线程只负责一个输出元素）会导致性能灾难？",
+        "back": "因为每个线程都必须进行一次 O(log N) 的 Co-rank 二分查找。如果不进行粗化，昂贵的搜索开销将完全淹没合并元素的计算周期，使 GPU 的吞吐量甚至发生倒退（低于单核 CPU）。",
+        "difficulty": "hard",
+        "sourceHint": "13.8 Thread coarsening for merge"
+      },
+      {
+        "front": "线程粗化 (Thread coarsening) 是如何提升归并内核的整体工作效率 (Work efficiency) 的？",
+        "back": "通过让每个 GPU 线程负责连续处理多个输出元素，用极其廉价的顺序归并操作替代了本需多次执行的高昂并行二分查找 (O(log N))，大幅摊薄了计算与控制开销。",
+        "difficulty": "medium",
+        "sourceHint": "13.8 Thread coarsening for merge"
+      },
+      {
+        "front": "在 Co-rank 函数的初始化中，如果当前的输出索引 k 大于数组 B 的长度 n，那么搜索 A 数组的下界 `i_low` 必须初始化为什么？",
+        "back": "必须初始化为 `k - n`。因为即使输出元素全部来自 B，最多也只有 n 个，剩下的必定来自 A，所以 A 数组的使用量绝不可能小于 `k - n`，这能有效缩减二分查找的初始区间。",
+        "difficulty": "hard",
+        "sourceHint": "13.4 Co-rank function implementation"
+      },
+      {
+        "front": "有序归并 (Ordered Merge) 内核是计算受限 (Compute-bound) 还是内存带宽受限 (Memory bandwidth bound) 的？",
+        "back": "高度内存带宽受限 (Memory bandwidth bound)。归并操作算术强度极低（每加载多个字节的数据仅包含轻量级的比较和赋值），其性能瓶颈几乎完全在于 DRAM 接口的吞吐能力。",
+        "difficulty": "easy",
+        "sourceHint": "13.7 A circular-buffer merge kernel"
+      },
+      {
+        "front": "在循环缓冲区归并内核 (Circular-buffer merge kernel) 中，控制共享内存复用的两个关键状态变量是什么？",
+        "back": "`A_S_start` 和 `B_S_start`。它们记录了当前有效数据在环形共享内存缓冲区的起始物理偏移位置，并在每次迭代后加上本轮消耗量再取模以完成指针更新。",
+        "difficulty": "medium",
+        "sourceHint": "13.7 A circular-buffer merge kernel"
+      }
+    ]
+  }
+}
