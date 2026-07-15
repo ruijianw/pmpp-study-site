@@ -1,3 +1,5 @@
+import { createFlashcardSession, createQuizSession, optionLabel } from "./interactiveArtifacts.js";
+
 const state = {
   chapters: [],
   artifactTypes: [],
@@ -249,18 +251,18 @@ function renderArtifact(artifact, cacheStatus) {
   els.artifactContent.className = "artifact-content";
   els.artifactContent.replaceChildren();
 
-  if (content.summary) {
-    const summary = document.createElement("div");
-    summary.className = "summary-box";
-    if (content.title) {
-      const heading = document.createElement("h4");
-      heading.textContent = content.title;
-      summary.append(heading);
-    }
-    const paragraph = document.createElement("p");
-    paragraph.textContent = content.summary;
-    summary.append(paragraph);
-    els.artifactContent.append(summary);
+  appendArtifactSummary(content);
+
+  if (artifact.artifactType === "flashcards") {
+    appendSectionCards(content.sections);
+    els.artifactContent.append(renderFlashcardDeck(content));
+    return;
+  }
+
+  if (artifact.artifactType === "quiz") {
+    els.artifactContent.append(renderQuiz(content));
+    appendSectionCards(content.sections);
+    return;
   }
 
   for (const [key, value] of Object.entries(content)) {
@@ -269,12 +271,7 @@ function renderArtifact(artifact, cacheStatus) {
   }
 
   if (Array.isArray(content.sections) && content.sections.length > 0) {
-    const grid = document.createElement("div");
-    grid.className = "section-grid";
-    for (const section of content.sections) {
-      grid.append(renderValue(section.heading || section.title || "Section", section));
-    }
-    els.artifactContent.append(grid);
+    appendSectionCards(content.sections);
   }
 
   if (Array.isArray(content.items) && content.items.length > 0) {
@@ -289,6 +286,205 @@ function renderArtifact(artifact, cacheStatus) {
   if (els.artifactContent.children.length === 0) {
     els.artifactContent.append(renderValue(content.title || "Artifact", content));
   }
+}
+
+function appendArtifactSummary(content) {
+  if (!content.summary) return;
+  const summary = document.createElement("div");
+  summary.className = "summary-box";
+  if (content.title) {
+    const heading = document.createElement("h4");
+    heading.textContent = content.title;
+    summary.append(heading);
+  }
+  const paragraph = document.createElement("p");
+  paragraph.textContent = content.summary;
+  summary.append(paragraph);
+  els.artifactContent.append(summary);
+}
+
+function appendSectionCards(sections) {
+  if (!Array.isArray(sections) || sections.length === 0) return;
+  const grid = document.createElement("div");
+  grid.className = "section-grid";
+  for (const section of sections) {
+    grid.append(renderValue(section.heading || section.title || "Section", section));
+  }
+  els.artifactContent.append(grid);
+}
+
+function renderFlashcardDeck(content) {
+  const session = createFlashcardSession(content);
+  const shell = document.createElement("section");
+  shell.className = "flashcard-study";
+
+  if (session.count === 0) {
+    shell.classList.add("empty-state");
+    shell.textContent = "No flashcards are available for this chapter.";
+    return shell;
+  }
+
+  const toolbar = document.createElement("div");
+  toolbar.className = "study-toolbar";
+  const progress = document.createElement("strong");
+  const meta = document.createElement("span");
+  toolbar.append(progress, meta);
+
+  const card = document.createElement("button");
+  card.type = "button";
+  card.className = "flashcard-card";
+
+  const face = document.createElement("span");
+  face.className = "flashcard-face";
+  const prompt = document.createElement("span");
+  prompt.className = "flashcard-prompt";
+  const hint = document.createElement("span");
+  hint.className = "flashcard-hint";
+  card.append(face, prompt, hint);
+
+  const controls = document.createElement("div");
+  controls.className = "study-controls";
+  const previous = controlButton("Previous");
+  const flip = controlButton("Flip");
+  const next = controlButton("Next");
+  controls.append(previous, flip, next);
+
+  function update() {
+    const current = session.current;
+    progress.textContent = `Card ${session.currentIndex + 1} / ${session.count}`;
+    meta.textContent = [current.difficulty, current.sourceHint].filter(Boolean).join(" · ");
+    face.textContent = session.flipped ? "Answer" : "Prompt";
+    prompt.textContent = session.flipped ? current.back : current.front;
+    hint.textContent = session.flipped ? "Click to return to the prompt" : "Click to reveal the answer";
+    card.classList.toggle("flipped", session.flipped);
+    card.setAttribute("aria-pressed", String(session.flipped));
+    card.setAttribute("aria-label", session.flipped ? "Show flashcard prompt" : "Show flashcard answer");
+    previous.disabled = session.currentIndex === 0;
+    next.disabled = session.currentIndex === session.count - 1;
+  }
+
+  card.addEventListener("click", () => {
+    session.flip();
+    update();
+  });
+  flip.addEventListener("click", () => {
+    session.flip();
+    update();
+  });
+  previous.addEventListener("click", () => {
+    session.previous();
+    update();
+  });
+  next.addEventListener("click", () => {
+    session.next();
+    update();
+  });
+
+  shell.append(toolbar, card, controls);
+  update();
+  return shell;
+}
+
+function renderQuiz(content) {
+  const session = createQuizSession(content);
+  const shell = document.createElement("section");
+  shell.className = "quiz-study";
+
+  if (session.questions.length === 0) {
+    shell.classList.add("empty-state");
+    shell.textContent = "No quiz questions are available for this chapter.";
+    return shell;
+  }
+
+  const toolbar = document.createElement("div");
+  toolbar.className = "study-toolbar";
+  const title = document.createElement("strong");
+  title.textContent = `${session.questions.length} questions`;
+  const score = document.createElement("span");
+  toolbar.append(title, score);
+  shell.append(toolbar);
+
+  function updateScore() {
+    const currentScore = session.score;
+    score.textContent = `${currentScore.correct} correct · ${currentScore.answered} / ${currentScore.total} multiple-choice answered`;
+  }
+
+  session.questions.forEach((question, displayIndex) => {
+    const card = document.createElement("article");
+    card.className = `quiz-question ${question.type}`;
+
+    const kicker = document.createElement("small");
+    kicker.textContent = `Question ${displayIndex + 1} · ${titleCase(question.type)}`;
+    const heading = document.createElement("h4");
+    heading.textContent = question.question;
+    card.append(kicker, heading);
+
+    if (question.type === "multiple-choice") {
+      const optionList = document.createElement("div");
+      optionList.className = "quiz-options";
+      const feedback = feedbackBox();
+      const buttons = question.options.map((option, optionIndex) => {
+        const label = optionLabel(option, optionIndex);
+        const button = controlButton(option);
+        button.className = "quiz-option";
+        button.addEventListener("click", () => {
+          const result = session.answerMultipleChoice(question.index, label);
+          for (const optionButton of buttons) {
+            const optionButtonLabel = optionButton.dataset.optionLabel;
+            optionButton.disabled = true;
+            optionButton.classList.toggle("selected", optionButtonLabel === result.selectedAnswer);
+            optionButton.classList.toggle("correct", optionButtonLabel === result.correctAnswer);
+            optionButton.classList.toggle(
+              "incorrect",
+              optionButtonLabel === result.selectedAnswer && !result.correct,
+            );
+          }
+          feedback.hidden = false;
+          feedback.className = `quiz-feedback ${result.correct ? "correct" : "incorrect"}`;
+          feedback.textContent = result.correct
+            ? `Correct. ${result.explanation}`
+            : `Not quite. Correct answer: ${result.correctAnswer}. ${result.explanation}`;
+          updateScore();
+        });
+        button.dataset.optionLabel = label;
+        optionList.append(button);
+        return button;
+      });
+      card.append(optionList, feedback);
+    } else {
+      const reveal = controlButton("Show answer");
+      reveal.className = "show-answer-button";
+      const feedback = feedbackBox();
+      reveal.addEventListener("click", () => {
+        const result = session.revealShortAnswer(question.index);
+        reveal.disabled = true;
+        feedback.hidden = false;
+        feedback.className = "quiz-feedback revealed";
+        feedback.textContent = `${result.expectedAnswer} ${result.explanation}`;
+      });
+      card.append(reveal, feedback);
+    }
+
+    shell.append(card);
+  });
+
+  updateScore();
+  return shell;
+}
+
+function controlButton(label) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = label;
+  return button;
+}
+
+function feedbackBox() {
+  const feedback = document.createElement("p");
+  feedback.className = "quiz-feedback";
+  feedback.hidden = true;
+  feedback.setAttribute("aria-live", "polite");
+  return feedback;
 }
 
 function renderValue(title, value) {
