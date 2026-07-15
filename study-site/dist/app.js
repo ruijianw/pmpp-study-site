@@ -257,6 +257,12 @@ function renderArtifact(artifact, cacheStatus) {
   els.artifactContent.className = "artifact-content";
   els.artifactContent.replaceChildren();
 
+  if (artifact.artifactType === "blog-post") {
+    els.artifactContent.classList.add("blog-post-content");
+    els.artifactContent.append(renderBlogPost(content));
+    return;
+  }
+
   appendArtifactSummary(content);
 
   if (artifact.artifactType === "flashcards") {
@@ -558,6 +564,86 @@ function renderSlideDeck(content) {
   update();
   focusStudyShell(shell);
   return shell;
+}
+
+function renderBlogPost(content) {
+  const article = document.createElement("article");
+  article.className = "blog-post";
+
+  const blocks = Array.isArray(content.blocks) ? content.blocks : [];
+  if (blocks.length === 0) {
+    if (content.summary) {
+      const paragraph = document.createElement("p");
+      paragraph.textContent = content.summary;
+      article.append(paragraph);
+    }
+    return article;
+  }
+
+  for (const block of blocks) {
+    const element = renderBlogBlock(block);
+    if (element) article.append(element);
+  }
+
+  return article;
+}
+
+function renderBlogBlock(block) {
+  if (!block || typeof block !== "object") return null;
+
+  if (block.type === "heading") {
+    const sourceLevel = Number(block.level || 2);
+    const level = sourceLevel <= 1 ? 3 : sourceLevel === 2 ? 4 : 5;
+    const heading = document.createElement(`h${level}`);
+    heading.textContent = block.text || "";
+    return heading;
+  }
+
+  if (block.type === "paragraph") {
+    const paragraph = document.createElement("p");
+    paragraph.textContent = block.text || "";
+    return paragraph;
+  }
+
+  if (block.type === "list" && Array.isArray(block.items)) {
+    return renderArray(block.items);
+  }
+
+  if (block.type === "table") {
+    return renderBlogTable(block);
+  }
+
+  if (block.type === "separator") {
+    return document.createElement("hr");
+  }
+
+  return null;
+}
+
+function renderBlogTable(block) {
+  const table = document.createElement("table");
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  for (const header of block.headers || []) {
+    const th = document.createElement("th");
+    th.textContent = header;
+    headerRow.append(th);
+  }
+  thead.append(headerRow);
+  table.append(thead);
+
+  const tbody = document.createElement("tbody");
+  for (const row of block.rows || []) {
+    const tr = document.createElement("tr");
+    for (const cell of row) {
+      const td = document.createElement("td");
+      td.textContent = cell;
+      tr.append(td);
+    }
+    tbody.append(tr);
+  }
+  table.append(tbody);
+  return table;
 }
 
 function attachLinearKeyboardNavigation(shell, session, update) {

@@ -80,6 +80,17 @@ ARTIFACT_TYPES: list[dict[str, str]] = [
 - speakerNotes
 - visualSuggestion""",
     },
+    {
+        "id": "blog-post",
+        "label": "Blog Post",
+        "description": "A readable NotebookLM-style article with technical takeaways.",
+        "prompt": """Create a polished technical blog post with:
+- a clear headline
+- an engaging introduction
+- 4-6 explanatory sections
+- concrete CUDA/GPU performance takeaways
+- a concise closing reflection""",
+    },
 ]
 
 ARTIFACT_BY_ID = {artifact["id"]: artifact for artifact in ARTIFACT_TYPES}

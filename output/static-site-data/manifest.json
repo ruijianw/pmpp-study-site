@@ -1,10 +1,10 @@
 {
   "mode": "static",
-  "generatedAt": "2026-07-13T15:29:12.582682Z",
+  "generatedAt": "2026-07-15T13:39:35.776Z",
   "notebook": "pmpp",
   "generator": {
-    "tool": "nlm",
-    "mode": "query",
+    "tool": "notebooklm-mcp",
+    "mode": "studio-and-query",
     "sourceScope": "chapter source ids"
   },
   "artifactTypes": [
@@ -12,37 +12,43 @@
       "id": "study-guide",
       "label": "Study Guide",
       "description": "Learning objectives, key concepts, pitfalls, and a practice plan.",
-      "prompt": "Create a compact study guide with:\n- 5-8 learning objectives\n- a section-by-section chapter map\n- key concepts with concise explanations\n- common misunderstandings\n- a 3-session practice plan"
+      "prompt": "Create a study guide with:\n- learningObjectives: 5-8 concrete objectives\n- chapterMap: short section-by-section map\n- keyConcepts: concepts with concise explanations\n- pitfalls: common misunderstandings\n- practicePlan: 3 study sessions with tasks"
     },
     {
       "id": "briefing",
       "label": "Briefing",
       "description": "A concise briefing document for technical review.",
-      "prompt": "Create a briefing document with:\n- executive summary\n- core claims\n- why this chapter matters\n- prerequisites\n- implementation implications"
+      "prompt": "Create a briefing document with:\n- executiveSummary\n- coreClaims\n- whyItMatters\n- prerequisites\n- implementationImplications"
     },
     {
       "id": "data-table",
       "label": "Data Table",
       "description": "Structured concept table for comparison and review.",
-      "prompt": "Create a structured table. Put rows in items, each with:\n- concept\n- definition\n- cudaRelevance\n- performanceConcern\n- commonMistake"
+      "prompt": "Create a data table with rows containing:\n- concept\n- definition\n- cudaRelevance\n- performanceConcern\n- commonMistake"
     },
     {
       "id": "flashcards",
       "label": "Flashcards",
       "description": "Question-answer cards for spaced repetition.",
-      "prompt": "Create 16-24 flashcards. Put cards in items, each with:\n- front\n- back\n- difficulty: easy, medium, or hard\n- sourceHint"
+      "prompt": "Create 16-24 flashcards with:\n- front\n- back\n- difficulty: easy, medium, or hard\n- sourceHint: chapter topic or section"
     },
     {
       "id": "quiz",
       "label": "Quiz",
       "description": "Multiple-choice and short-answer questions with explanations.",
-      "prompt": "Create a quiz. Put questions in items:\n- 8 multiple-choice questions with four options, answer, and explanation\n- 5 short-answer questions with expectedAnswer and explanation\n- include a final reviewAdvice section"
+      "prompt": "Create a quiz with:\n- multipleChoice: 8 questions, 4 options each, answer index, explanation\n- shortAnswer: 5 questions, expected answer, explanation\n- reviewAdvice"
     },
     {
       "id": "slide-deck",
       "label": "Slide Deck",
       "description": "A presentation outline with speaker notes and visual suggestions.",
-      "prompt": "Create a slide deck outline with 10-14 slides. Put slides in items, each with:\n- slideNumber\n- title\n- bullets\n- speakerNotes\n- visualSuggestion"
+      "prompt": "Create a slide deck outline with 10-14 slides:\n- title\n- bullets\n- speakerNotes\n- visualSuggestion"
+    },
+    {
+      "id": "blog-post",
+      "label": "Blog Post",
+      "description": "A readable NotebookLM Studio article with technical takeaways.",
+      "prompt": "Create a polished technical blog post with:\n- a clear headline\n- an engaging introduction\n- 4-6 explanatory sections\n- concrete CUDA/GPU performance takeaways\n- a concise closing reflection"
     }
   ],
   "chapters": [
@@ -62,7 +68,8 @@
         "data-table": "artifacts/chapter-01-introduction/data-table.json",
         "flashcards": "artifacts/chapter-01-introduction/flashcards.json",
         "quiz": "artifacts/chapter-01-introduction/quiz.json",
-        "slide-deck": "artifacts/chapter-01-introduction/slide-deck.json"
+        "slide-deck": "artifacts/chapter-01-introduction/slide-deck.json",
+        "blog-post": "artifacts/chapter-01-introduction/blog-post.json"
       }
     },
     {
@@ -81,7 +88,8 @@
         "data-table": "artifacts/chapter-02-heterogeneous-data-parallel-computing/data-table.json",
         "flashcards": "artifacts/chapter-02-heterogeneous-data-parallel-computing/flashcards.json",
         "quiz": "artifacts/chapter-02-heterogeneous-data-parallel-computing/quiz.json",
-        "slide-deck": "artifacts/chapter-02-heterogeneous-data-parallel-computing/slide-deck.json"
+        "slide-deck": "artifacts/chapter-02-heterogeneous-data-parallel-computing/slide-deck.json",
+        "blog-post": "artifacts/chapter-02-heterogeneous-data-parallel-computing/blog-post.json"
       }
     },
     {
@@ -100,7 +108,8 @@
         "data-table": "artifacts/chapter-03-multidimensional-grids-and-data/data-table.json",
         "flashcards": "artifacts/chapter-03-multidimensional-grids-and-data/flashcards.json",
         "quiz": "artifacts/chapter-03-multidimensional-grids-and-data/quiz.json",
-        "slide-deck": "artifacts/chapter-03-multidimensional-grids-and-data/slide-deck.json"
+        "slide-deck": "artifacts/chapter-03-multidimensional-grids-and-data/slide-deck.json",
+        "blog-post": "artifacts/chapter-03-multidimensional-grids-and-data/blog-post.json"
       }
     },
     {
@@ -119,7 +128,8 @@
         "data-table": "artifacts/chapter-04-compute-architecture-and-scheduling/data-table.json",
         "flashcards": "artifacts/chapter-04-compute-architecture-and-scheduling/flashcards.json",
         "quiz": "artifacts/chapter-04-compute-architecture-and-scheduling/quiz.json",
-        "slide-deck": "artifacts/chapter-04-compute-architecture-and-scheduling/slide-deck.json"
+        "slide-deck": "artifacts/chapter-04-compute-architecture-and-scheduling/slide-deck.json",
+        "blog-post": "artifacts/chapter-04-compute-architecture-and-scheduling/blog-post.json"
       }
     },
     {
@@ -138,7 +148,8 @@
         "data-table": "artifacts/chapter-05-memory-architecture-and-data-locality/data-table.json",
         "flashcards": "artifacts/chapter-05-memory-architecture-and-data-locality/flashcards.json",
         "quiz": "artifacts/chapter-05-memory-architecture-and-data-locality/quiz.json",
-        "slide-deck": "artifacts/chapter-05-memory-architecture-and-data-locality/slide-deck.json"
+        "slide-deck": "artifacts/chapter-05-memory-architecture-and-data-locality/slide-deck.json",
+        "blog-post": "artifacts/chapter-05-memory-architecture-and-data-locality/blog-post.json"
       }
     },
     {
@@ -157,7 +168,8 @@
         "data-table": "artifacts/chapter-06-performance-considerations/data-table.json",
         "flashcards": "artifacts/chapter-06-performance-considerations/flashcards.json",
         "quiz": "artifacts/chapter-06-performance-considerations/quiz.json",
-        "slide-deck": "artifacts/chapter-06-performance-considerations/slide-deck.json"
+        "slide-deck": "artifacts/chapter-06-performance-considerations/slide-deck.json",
+        "blog-post": "artifacts/chapter-06-performance-considerations/blog-post.json"
       }
     },
     {
@@ -176,7 +188,8 @@
         "data-table": "artifacts/chapter-07-convolution/data-table.json",
         "flashcards": "artifacts/chapter-07-convolution/flashcards.json",
         "quiz": "artifacts/chapter-07-convolution/quiz.json",
-        "slide-deck": "artifacts/chapter-07-convolution/slide-deck.json"
+        "slide-deck": "artifacts/chapter-07-convolution/slide-deck.json",
+        "blog-post": "artifacts/chapter-07-convolution/blog-post.json"
       }
     },
     {
@@ -195,7 +208,8 @@
         "data-table": "artifacts/chapter-08-stencil-computation/data-table.json",
         "flashcards": "artifacts/chapter-08-stencil-computation/flashcards.json",
         "quiz": "artifacts/chapter-08-stencil-computation/quiz.json",
-        "slide-deck": "artifacts/chapter-08-stencil-computation/slide-deck.json"
+        "slide-deck": "artifacts/chapter-08-stencil-computation/slide-deck.json",
+        "blog-post": "artifacts/chapter-08-stencil-computation/blog-post.json"
       }
     },
     {
@@ -214,7 +228,8 @@
         "data-table": "artifacts/chapter-09-histogram/data-table.json",
         "flashcards": "artifacts/chapter-09-histogram/flashcards.json",
         "quiz": "artifacts/chapter-09-histogram/quiz.json",
-        "slide-deck": "artifacts/chapter-09-histogram/slide-deck.json"
+        "slide-deck": "artifacts/chapter-09-histogram/slide-deck.json",
+        "blog-post": "artifacts/chapter-09-histogram/blog-post.json"
       }
     },
     {
@@ -233,7 +248,8 @@
         "data-table": "artifacts/chapter-10-reduction/data-table.json",
         "flashcards": "artifacts/chapter-10-reduction/flashcards.json",
         "quiz": "artifacts/chapter-10-reduction/quiz.json",
-        "slide-deck": "artifacts/chapter-10-reduction/slide-deck.json"
+        "slide-deck": "artifacts/chapter-10-reduction/slide-deck.json",
+        "blog-post": "artifacts/chapter-10-reduction/blog-post.json"
       }
     },
     {
@@ -252,7 +268,8 @@
         "data-table": "artifacts/chapter-11-scan/data-table.json",
         "flashcards": "artifacts/chapter-11-scan/flashcards.json",
         "quiz": "artifacts/chapter-11-scan/quiz.json",
-        "slide-deck": "artifacts/chapter-11-scan/slide-deck.json"
+        "slide-deck": "artifacts/chapter-11-scan/slide-deck.json",
+        "blog-post": "artifacts/chapter-11-scan/blog-post.json"
       }
     },
     {
@@ -271,7 +288,8 @@
         "data-table": "artifacts/chapter-12-filter/data-table.json",
         "flashcards": "artifacts/chapter-12-filter/flashcards.json",
         "quiz": "artifacts/chapter-12-filter/quiz.json",
-        "slide-deck": "artifacts/chapter-12-filter/slide-deck.json"
+        "slide-deck": "artifacts/chapter-12-filter/slide-deck.json",
+        "blog-post": "artifacts/chapter-12-filter/blog-post.json"
       }
     },
     {
@@ -290,7 +308,8 @@
         "data-table": "artifacts/chapter-13-merge/data-table.json",
         "flashcards": "artifacts/chapter-13-merge/flashcards.json",
         "quiz": "artifacts/chapter-13-merge/quiz.json",
-        "slide-deck": "artifacts/chapter-13-merge/slide-deck.json"
+        "slide-deck": "artifacts/chapter-13-merge/slide-deck.json",
+        "blog-post": "artifacts/chapter-13-merge/blog-post.json"
       }
     },
     {
@@ -309,7 +328,8 @@
         "data-table": "artifacts/chapter-14-sorting/data-table.json",
         "flashcards": "artifacts/chapter-14-sorting/flashcards.json",
         "quiz": "artifacts/chapter-14-sorting/quiz.json",
-        "slide-deck": "artifacts/chapter-14-sorting/slide-deck.json"
+        "slide-deck": "artifacts/chapter-14-sorting/slide-deck.json",
+        "blog-post": "artifacts/chapter-14-sorting/blog-post.json"
       }
     },
     {
@@ -328,7 +348,8 @@
         "data-table": "artifacts/chapter-15-advanced-optimizations-for-matrix-multiplication/data-table.json",
         "flashcards": "artifacts/chapter-15-advanced-optimizations-for-matrix-multiplication/flashcards.json",
         "quiz": "artifacts/chapter-15-advanced-optimizations-for-matrix-multiplication/quiz.json",
-        "slide-deck": "artifacts/chapter-15-advanced-optimizations-for-matrix-multiplication/slide-deck.json"
+        "slide-deck": "artifacts/chapter-15-advanced-optimizations-for-matrix-multiplication/slide-deck.json",
+        "blog-post": "artifacts/chapter-15-advanced-optimizations-for-matrix-multiplication/blog-post.json"
       }
     },
     {
@@ -347,7 +368,8 @@
         "data-table": "artifacts/chapter-16-dynamic-programming-and-wavefront-parallelism/data-table.json",
         "flashcards": "artifacts/chapter-16-dynamic-programming-and-wavefront-parallelism/flashcards.json",
         "quiz": "artifacts/chapter-16-dynamic-programming-and-wavefront-parallelism/quiz.json",
-        "slide-deck": "artifacts/chapter-16-dynamic-programming-and-wavefront-parallelism/slide-deck.json"
+        "slide-deck": "artifacts/chapter-16-dynamic-programming-and-wavefront-parallelism/slide-deck.json",
+        "blog-post": "artifacts/chapter-16-dynamic-programming-and-wavefront-parallelism/blog-post.json"
       }
     },
     {
@@ -366,7 +388,8 @@
         "data-table": "artifacts/chapter-17-sparse-matrix-computation/data-table.json",
         "flashcards": "artifacts/chapter-17-sparse-matrix-computation/flashcards.json",
         "quiz": "artifacts/chapter-17-sparse-matrix-computation/quiz.json",
-        "slide-deck": "artifacts/chapter-17-sparse-matrix-computation/slide-deck.json"
+        "slide-deck": "artifacts/chapter-17-sparse-matrix-computation/slide-deck.json",
+        "blog-post": "artifacts/chapter-17-sparse-matrix-computation/blog-post.json"
       }
     },
     {
@@ -385,7 +408,8 @@
         "data-table": "artifacts/chapter-18-graph-traversal/data-table.json",
         "flashcards": "artifacts/chapter-18-graph-traversal/flashcards.json",
         "quiz": "artifacts/chapter-18-graph-traversal/quiz.json",
-        "slide-deck": "artifacts/chapter-18-graph-traversal/slide-deck.json"
+        "slide-deck": "artifacts/chapter-18-graph-traversal/slide-deck.json",
+        "blog-post": "artifacts/chapter-18-graph-traversal/blog-post.json"
       }
     },
     {
@@ -404,7 +428,8 @@
         "data-table": "artifacts/chapter-19-convolutional-neural-networks/data-table.json",
         "flashcards": "artifacts/chapter-19-convolutional-neural-networks/flashcards.json",
         "quiz": "artifacts/chapter-19-convolutional-neural-networks/quiz.json",
-        "slide-deck": "artifacts/chapter-19-convolutional-neural-networks/slide-deck.json"
+        "slide-deck": "artifacts/chapter-19-convolutional-neural-networks/slide-deck.json",
+        "blog-post": "artifacts/chapter-19-convolutional-neural-networks/blog-post.json"
       }
     },
     {
@@ -423,7 +448,8 @@
         "data-table": "artifacts/chapter-20-large-language-models/data-table.json",
         "flashcards": "artifacts/chapter-20-large-language-models/flashcards.json",
         "quiz": "artifacts/chapter-20-large-language-models/quiz.json",
-        "slide-deck": "artifacts/chapter-20-large-language-models/slide-deck.json"
+        "slide-deck": "artifacts/chapter-20-large-language-models/slide-deck.json",
+        "blog-post": "artifacts/chapter-20-large-language-models/blog-post.json"
       }
     },
     {
@@ -442,7 +468,8 @@
         "data-table": "artifacts/chapter-21-electrostatic-potential-map/data-table.json",
         "flashcards": "artifacts/chapter-21-electrostatic-potential-map/flashcards.json",
         "quiz": "artifacts/chapter-21-electrostatic-potential-map/quiz.json",
-        "slide-deck": "artifacts/chapter-21-electrostatic-potential-map/slide-deck.json"
+        "slide-deck": "artifacts/chapter-21-electrostatic-potential-map/slide-deck.json",
+        "blog-post": "artifacts/chapter-21-electrostatic-potential-map/blog-post.json"
       }
     },
     {
@@ -461,7 +488,8 @@
         "data-table": "artifacts/chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation/data-table.json",
         "flashcards": "artifacts/chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation/flashcards.json",
         "quiz": "artifacts/chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation/quiz.json",
-        "slide-deck": "artifacts/chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation/slide-deck.json"
+        "slide-deck": "artifacts/chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation/slide-deck.json",
+        "blog-post": "artifacts/chapter-22-algorithm-selection-problem-decomposition-and-problem-formulation/blog-post.json"
       }
     },
     {
@@ -480,7 +508,8 @@
         "data-table": "artifacts/chapter-23-multi-gpu-programming/data-table.json",
         "flashcards": "artifacts/chapter-23-multi-gpu-programming/flashcards.json",
         "quiz": "artifacts/chapter-23-multi-gpu-programming/quiz.json",
-        "slide-deck": "artifacts/chapter-23-multi-gpu-programming/slide-deck.json"
+        "slide-deck": "artifacts/chapter-23-multi-gpu-programming/slide-deck.json",
+        "blog-post": "artifacts/chapter-23-multi-gpu-programming/blog-post.json"
       }
     },
     {
@@ -499,7 +528,8 @@
         "data-table": "artifacts/chapter-24-conclusion-and-future-outlook/data-table.json",
         "flashcards": "artifacts/chapter-24-conclusion-and-future-outlook/flashcards.json",
         "quiz": "artifacts/chapter-24-conclusion-and-future-outlook/quiz.json",
-        "slide-deck": "artifacts/chapter-24-conclusion-and-future-outlook/slide-deck.json"
+        "slide-deck": "artifacts/chapter-24-conclusion-and-future-outlook/slide-deck.json",
+        "blog-post": "artifacts/chapter-24-conclusion-and-future-outlook/blog-post.json"
       }
     }
   ]

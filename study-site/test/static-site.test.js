@@ -63,6 +63,10 @@ test("keeps static artifact paths under the static data directory", () => {
     staticArtifactRelativePath("chapter-01-introduction", "quiz"),
     "artifacts/chapter-01-introduction/quiz.json",
   );
+  assert.equal(
+    staticArtifactRelativePath("chapter-01-introduction", "blog-post"),
+    "artifacts/chapter-01-introduction/blog-post.json",
+  );
   assert.match(
     staticArtifactPath("chapter-01-introduction", "quiz"),
     /output\/static-site-data\/artifacts\/chapter-01-introduction\/quiz\.json$/,

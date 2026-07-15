@@ -25,7 +25,7 @@ test("validates supported artifact types", () => {
   assert.equal(getArtifactType("unknown"), undefined);
   assert.deepEqual(
     artifactTypes.map((type) => type.id),
-    ["study-guide", "briefing", "data-table", "flashcards", "quiz", "slide-deck"],
+    ["study-guide", "briefing", "data-table", "flashcards", "quiz", "slide-deck", "blog-post"],
   );
 });
 

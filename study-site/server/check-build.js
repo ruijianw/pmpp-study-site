@@ -11,8 +11,8 @@ const manifest = await loadManifest();
 if (manifest.chapters.length !== 24) {
   throw new Error(`Expected 24 chapters, found ${manifest.chapters.length}`);
 }
-if (artifactTypes.length !== 6) {
-  throw new Error(`Expected 6 artifact types, found ${artifactTypes.length}`);
+if (artifactTypes.length !== 7) {
+  throw new Error(`Expected 7 artifact types, found ${artifactTypes.length}`);
 }
 for (const file of requiredPublicFiles) {
   await fs.access(path.join(PUBLIC_DIR, file));

@@ -1,0 +1,359 @@
+{
+  "chapterId": "chapter-12-filter",
+  "chapterTitle": "Filter",
+  "sourceId": "b72b13d3-d8d2-405c-ba31-db66494d85be",
+  "sourceTitle": "chapter-12-filter.pdf",
+  "artifactType": "blog-post",
+  "artifactLabel": "Blog Post",
+  "generatedAt": "2026-07-15T13:39:35.776Z",
+  "generator": {
+    "tool": "notebooklm-mcp",
+    "mode": "studio",
+    "studioArtifactType": "report",
+    "reportFormat": "Blog Post",
+    "notebook": "pmpp",
+    "notebookId": "0d5f1463-f72f-4085-b5a4-2da2242d4450",
+    "language": "zh-CN"
+  },
+  "content": {
+    "title": "GPU 并行算法之魂：深度解析 Filter（过滤）模式与性能优化",
+    "summary": "在高性能计算中，数据的组织形式往往直接决定了算法的吞吐上限。一个典型的场景是堆内存管理中的垃圾回收（Garbage Collection）：当系统释放了大量零散对象后，内存会变得碎片化。为了分配大型连续空间，系统必须执行“压缩”操作。",
+    "articleMarkdown": "# GPU 并行算法之魂：深度解析 Filter（过滤）模式与性能优化\n\n## 1. 引言：从垃圾回收看数据压缩的艺术\n\n在高性能计算中，数据的组织形式往往直接决定了算法的吞吐上限。一个典型的场景是堆内存管理中的**垃圾回收（Garbage Collection）**：当系统释放了大量零散对象后，内存会变得碎片化。为了分配大型连续空间，系统必须执行“压缩”操作。\n\n**过滤（Filter）操作的核心定义在于：根据特定准则删除元素，并压缩剩余元素以消除“孔洞”。** 这种操作不仅是**提高内存利用效率**的关键，更是后续并行阶段实现内存合并访问（Memory Coalescing）的先决条件。\n\n---\n\n## 2. 核心权衡：不稳定过滤 vs. 稳定过滤\n\n在架构设计中，选择哪种过滤模式取决于业务对“顺序”的敏感度。不稳定过滤追求极致的写入速度，而稳定过滤则为保持逻辑一致性牺牲了部分性能。\n\n| 特性 | 不稳定过滤 (Unstable Filter) | 稳定过滤 (Stable Filter) |\n| :--- | :--- | :--- |\n| **定义** | 不保证剩余元素保留原始相对顺序 | 严格保留元素在原始列表中的相对顺序 |\n| **应用场景** | 顺序无关的大规模数据清洗、碰撞检测 | 处理排序列表、数据库索引提取 |\n| **核心算法依赖** | 原子操作 (Atomic Operations) | 前缀和 (Scan) |\n\n---\n\n## 3. 瓶颈挑战：全局原子操作的性能鸿沟\n\n实现一个基础的不稳定过滤内核看似简单：每个线程检查元素，若符合条件，则对全局计数器执行 `atomicAdd`。然而，作为架构师，我们必须预见到这种设计在硬件层面的灾难：\n\n> “由于所有原子操作都作用于同一个计数器，硬件会对这些操作进行**串行化（Serialization）**。当数以万计的线程同时竞争同一 L2 缓存行或内存控制器地址时，严重的输出竞争（Contention）将导致内存带宽过早饱和。”\n\n这种竞争本质上将并行任务退化为了单线程执行，是必须跨越的性能鸿沟。\n\n---\n\n## 4. 突破瓶颈一：利用 Warp 投票实现原子操作合并\n\n为了消除串行化，我们引入**合并原子操作（Coalesced Atomic Operations）**。其核心逻辑是将一个 Warp 内所有线程的增量请求，合并为一次对全局内存的访问。\n\n具体的硬件级实现分为四个步骤：\n1. **选出 Leader 线程**：通过 `__ffs()` 寻找 Warp 掩码中第一个活跃位。\n2. **计算总增量**：利用 `__popc()` 统计当前 Warp 中符合条件的线程总数。\n3. **执行原子加法并广播**：由 Leader 线程执行单次 `atomicAdd` 获取基址，并利用 `__shfl_sync()` 将结果广播。\n4. **各线程计算偏移**：每个线程利用位运算确定自己在 Warp 内的排名。\n\n这里最精妙的位运算技巧在于计算**线程偏移（Thread Offset）**。为了知道有多少个符合条件的活跃线程排在自己前面，线程 `i` 会生成一个掩码 `(1 << i) - 1`，将其与活跃掩码进行“与”运算后再统计位数。\n\n关键硬件原语：\n*   `__activemask()`：获取当前活跃线程的 32 位掩码。\n*   `__ffs(mask)`：返回掩码中首个设置位的索引（需减 1 得到 0-based 索引）。\n*   `__popc(mask)`：高效计算掩码中 1 的个数。\n\n---\n\n## 5. 编程简化：Cooperative Groups API 的优雅实现\n\n虽然底层位运算高效，但 Cooperative Groups 提供的抽象更符合现代 C++ 风格。以下是传统位运算与协同组 API 的直观对比：\n\n**传统位运算方法 (Bitwise)**\n```cpp\nunsigned int mask = __activemask();\nint leader = __ffs(mask) - 1;\nint total = __popc(mask);\nint offset = __popc(mask & ((1 << laneid) - 1)); // 计算前序活跃线程数\n```\n\n**协同组方法 (Coalesced Groups)**\n```cpp\nauto g = coalesced_threads();\nint leader_rank = 0; \nint total = g.size();       // 直接获取组大小\nint offset = g.thread_rank(); // 自动计算组内排名\n```\n协同组 API 不仅降低了心智负担，还通过内部封装确保了在不同 GPU 架构下的兼容性。\n\n---\n\n## 6. 突破瓶颈二：私有化（Privatization）优化策略\n\n私有化是应对**内存竞争**的进阶武器。通过在 **共享内存（Shared Memory）** 中建立块级私有计数器和输出缓冲区，我们可以实现：\n\n*   **局部竞争消除**：原子操作的范围被限制在 `cuda::thread_scope_block`，避免了对全局内存控制器的频繁冲击。\n*   **物理内存合并（Memory Coalescing）**：该技术将原本随机、离散的全局写入（Random Global Writes）转化为连续的、突发式的合并写入（Contiguous Bursts）。因为数据在写回全局内存前已经在共享内存中排好了序，连续线程写入连续地址，极大地提升了总线利用率。\n\n---\n\n## 7. 深度进阶：基于 Scan 模式的稳定过滤\n\n当应用场景要求保持数据顺序时，原子操作因其随机性而失效。此时，**Scan 模式是稳定过滤的核心**。\n\n实现稳定过滤需三步走：\n1. **生成布尔标志位**：符合条件的元素标记为 1，否则为 0。\n2. **执行独占扫描（Exclusive Scan）**：计算每个元素前面的“1”的总数。\n3. **映射输出位置**：Scan 的结果即为该元素在最终压缩数组中的精确物理索引。\n\n---\n\n## 8. 极致性能优化：线程粗化与原地操作\n\n### 线程粗化（Thread Coarsening）\n通过让每个线程处理多个元素，我们不仅减少了网格启动和同步开销，更重要的是提升了 **Scan 操作的工作效率（Work Efficiency）**。粗化使得每个线程块能产生更大、更连续的写回块，是压榨显存带宽的常用手段。\n\n### 原地（In-place）过滤\n在内存受限（如处理接近显存上限的堆数据）时，必须执行原地过滤。\n*   **同步依赖链**：许多人担心原地操作会导致数据覆盖风险。但在稳定过滤中，**Scan 操作天然的依赖链（Dependency Chain）** 保证了逻辑正确性：由于 `Read(Block i) -> Scan(Block i) -> Scan(Block j) -> Write(Block j)` 的顺序存在，前面的块总是在后面的块写入之前完成读取。\n*   **矩阵行列增删**：\n    *   **向内压缩（Inward）**：删除行列，同步方向与数据流一致。\n    *   **向外扩展（Outward）**：增加行列（如为了内存对齐），此时会发生“写覆盖读”风险。必须采用**反向同步**策略，即从数组末尾开始向头部处理，或者通过单向同步确保后方线程块先读取原始数据。\n\n---\n\n## 9. 总结与行动指南\n\n作为架构师，理解 Filter 模式的“灵魂”远比调用 API 重要：\n\n1.  **性能分层**：如果不要求顺序，利用 Warp 投票合并原子操作是第一优先级；如果要求顺序，Scan 模式是唯一解。\n2.  **吞吐为王**：通过私有化和线程粗化，将随机访问模式重塑为合并访问模式，是性能翻倍的核心秘籍。\n3.  **工程实践**：虽然底层原理至关重要，但在生产环境中，应优先选用 **Thrust** 或 **CUB** 库。理解了本文的原理，你将能更精准地为不同负载选择合适的库函数。\n\n**核心结论：** 只有掌握了从 Warp 级的位运算到 Device 级的 Scan 依赖链，才能在处理海量碎片化数据时，构建出真正不被硬件串行化拖累的高性能算法。",
+    "blocks": [
+      {
+        "type": "heading",
+        "level": 1,
+        "text": "GPU 并行算法之魂：深度解析 Filter（过滤）模式与性能优化"
+      },
+      {
+        "type": "heading",
+        "level": 2,
+        "text": "1. 引言：从垃圾回收看数据压缩的艺术"
+      },
+      {
+        "type": "paragraph",
+        "text": "在高性能计算中，数据的组织形式往往直接决定了算法的吞吐上限。一个典型的场景是堆内存管理中的垃圾回收（Garbage Collection）：当系统释放了大量零散对象后，内存会变得碎片化。为了分配大型连续空间，系统必须执行“压缩”操作。"
+      },
+      {
+        "type": "paragraph",
+        "text": "过滤（Filter）操作的核心定义在于：根据特定准则删除元素，并压缩剩余元素以消除“孔洞”。 这种操作不仅是提高内存利用效率的关键，更是后续并行阶段实现内存合并访问（Memory Coalescing）的先决条件。"
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "heading",
+        "level": 2,
+        "text": "2. 核心权衡：不稳定过滤 vs. 稳定过滤"
+      },
+      {
+        "type": "paragraph",
+        "text": "在架构设计中，选择哪种过滤模式取决于业务对“顺序”的敏感度。不稳定过滤追求极致的写入速度，而稳定过滤则为保持逻辑一致性牺牲了部分性能。"
+      },
+      {
+        "type": "table",
+        "headers": [
+          "特性",
+          "不稳定过滤 (Unstable Filter)",
+          "稳定过滤 (Stable Filter)"
+        ],
+        "rows": [
+          [
+            "定义",
+            "不保证剩余元素保留原始相对顺序",
+            "严格保留元素在原始列表中的相对顺序"
+          ],
+          [
+            "应用场景",
+            "顺序无关的大规模数据清洗、碰撞检测",
+            "处理排序列表、数据库索引提取"
+          ],
+          [
+            "核心算法依赖",
+            "原子操作 (Atomic Operations)",
+            "前缀和 (Scan)"
+          ]
+        ]
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "heading",
+        "level": 2,
+        "text": "3. 瓶颈挑战：全局原子操作的性能鸿沟"
+      },
+      {
+        "type": "paragraph",
+        "text": "实现一个基础的不稳定过滤内核看似简单：每个线程检查元素，若符合条件，则对全局计数器执行 atomicAdd。然而，作为架构师，我们必须预见到这种设计在硬件层面的灾难："
+      },
+      {
+        "type": "paragraph",
+        "text": "> “由于所有原子操作都作用于同一个计数器，硬件会对这些操作进行串行化（Serialization）。当数以万计的线程同时竞争同一 L2 缓存行或内存控制器地址时，严重的输出竞争（Contention）将导致内存带宽过早饱和。”"
+      },
+      {
+        "type": "paragraph",
+        "text": "这种竞争本质上将并行任务退化为了单线程执行，是必须跨越的性能鸿沟。"
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "heading",
+        "level": 2,
+        "text": "4. 突破瓶颈一：利用 Warp 投票实现原子操作合并"
+      },
+      {
+        "type": "paragraph",
+        "text": "为了消除串行化，我们引入合并原子操作（Coalesced Atomic Operations）。其核心逻辑是将一个 Warp 内所有线程的增量请求，合并为一次对全局内存的访问。"
+      },
+      {
+        "type": "paragraph",
+        "text": "具体的硬件级实现分为四个步骤："
+      },
+      {
+        "type": "list",
+        "items": [
+          "选出 Leader 线程：通过 __ffs() 寻找 Warp 掩码中第一个活跃位。",
+          "计算总增量：利用 __popc() 统计当前 Warp 中符合条件的线程总数。",
+          "执行原子加法并广播：由 Leader 线程执行单次 atomicAdd 获取基址，并利用 _shflsync() 将结果广播。",
+          "各线程计算偏移：每个线程利用位运算确定自己在 Warp 内的排名。"
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "这里最精妙的位运算技巧在于计算线程偏移（Thread Offset）。为了知道有多少个符合条件的活跃线程排在自己前面，线程 i 会生成一个掩码 (1 << i) - 1，将其与活跃掩码进行“与”运算后再统计位数。"
+      },
+      {
+        "type": "paragraph",
+        "text": "关键硬件原语："
+      },
+      {
+        "type": "list",
+        "items": [
+          "__activemask()：获取当前活跃线程的 32 位掩码。",
+          "__ffs(mask)：返回掩码中首个设置位的索引（需减 1 得到 0-based 索引）。",
+          "__popc(mask)：高效计算掩码中 1 的个数。"
+        ]
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "heading",
+        "level": 2,
+        "text": "5. 编程简化：Cooperative Groups API 的优雅实现"
+      },
+      {
+        "type": "paragraph",
+        "text": "虽然底层位运算高效，但 Cooperative Groups 提供的抽象更符合现代 C++ 风格。以下是传统位运算与协同组 API 的直观对比："
+      },
+      {
+        "type": "paragraph",
+        "text": "传统位运算方法 (Bitwise) ``cpp unsigned int mask = activemask(); int leader = ffs(mask) - 1; int total = popc(mask); int offset = popc(mask & ((1 << laneid) - 1)); // 计算前序活跃线程数 ``"
+      },
+      {
+        "type": "paragraph",
+        "text": "协同组方法 (Coalesced Groups) ``cpp auto g = coalescedthreads(); int leaderrank = 0; int total = g.size(); // 直接获取组大小 int offset = g.thread_rank(); // 自动计算组内排名 `` 协同组 API 不仅降低了心智负担，还通过内部封装确保了在不同 GPU 架构下的兼容性。"
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "heading",
+        "level": 2,
+        "text": "6. 突破瓶颈二：私有化（Privatization）优化策略"
+      },
+      {
+        "type": "paragraph",
+        "text": "私有化是应对内存竞争的进阶武器。通过在 共享内存（Shared Memory） 中建立块级私有计数器和输出缓冲区，我们可以实现："
+      },
+      {
+        "type": "list",
+        "items": [
+          "局部竞争消除：原子操作的范围被限制在 cuda::threadscopeblock，避免了对全局内存控制器的频繁冲击。",
+          "物理内存合并（Memory Coalescing）：该技术将原本随机、离散的全局写入（Random Global Writes）转化为连续的、突发式的合并写入（Contiguous Bursts）。因为数据在写回全局内存前已经在共享内存中排好了序，连续线程写入连续地址，极大地提升了总线利用率。"
+        ]
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "heading",
+        "level": 2,
+        "text": "7. 深度进阶：基于 Scan 模式的稳定过滤"
+      },
+      {
+        "type": "paragraph",
+        "text": "当应用场景要求保持数据顺序时，原子操作因其随机性而失效。此时，Scan 模式是稳定过滤的核心。"
+      },
+      {
+        "type": "paragraph",
+        "text": "实现稳定过滤需三步走："
+      },
+      {
+        "type": "list",
+        "items": [
+          "生成布尔标志位：符合条件的元素标记为 1，否则为 0。",
+          "执行独占扫描（Exclusive Scan）：计算每个元素前面的“1”的总数。",
+          "映射输出位置：Scan 的结果即为该元素在最终压缩数组中的精确物理索引。"
+        ]
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "heading",
+        "level": 2,
+        "text": "8. 极致性能优化：线程粗化与原地操作"
+      },
+      {
+        "type": "heading",
+        "level": 3,
+        "text": "线程粗化（Thread Coarsening）"
+      },
+      {
+        "type": "paragraph",
+        "text": "通过让每个线程处理多个元素，我们不仅减少了网格启动和同步开销，更重要的是提升了 Scan 操作的工作效率（Work Efficiency）。粗化使得每个线程块能产生更大、更连续的写回块，是压榨显存带宽的常用手段。"
+      },
+      {
+        "type": "heading",
+        "level": 3,
+        "text": "原地（In-place）过滤"
+      },
+      {
+        "type": "paragraph",
+        "text": "在内存受限（如处理接近显存上限的堆数据）时，必须执行原地过滤。"
+      },
+      {
+        "type": "list",
+        "items": [
+          "同步依赖链：许多人担心原地操作会导致数据覆盖风险。但在稳定过滤中，Scan 操作天然的依赖链（Dependency Chain） 保证了逻辑正确性：由于 Read(Block i) -> Scan(Block i) -> Scan(Block j) -> Write(Block j) 的顺序存在，前面的块总是在后面的块写入之前完成读取。",
+          "矩阵行列增删：",
+          "向内压缩（Inward）：删除行列，同步方向与数据流一致。",
+          "向外扩展（Outward）：增加行列（如为了内存对齐），此时会发生“写覆盖读”风险。必须采用反向同步策略，即从数组末尾开始向头部处理，或者通过单向同步确保后方线程块先读取原始数据。"
+        ]
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "heading",
+        "level": 2,
+        "text": "9. 总结与行动指南"
+      },
+      {
+        "type": "paragraph",
+        "text": "作为架构师，理解 Filter 模式的“灵魂”远比调用 API 重要："
+      },
+      {
+        "type": "list",
+        "items": [
+          "性能分层：如果不要求顺序，利用 Warp 投票合并原子操作是第一优先级；如果要求顺序，Scan 模式是唯一解。",
+          "吞吐为王：通过私有化和线程粗化，将随机访问模式重塑为合并访问模式，是性能翻倍的核心秘籍。",
+          "工程实践：虽然底层原理至关重要，但在生产环境中，应优先选用 Thrust 或 CUB 库。理解了本文的原理，你将能更精准地为不同负载选择合适的库函数。"
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "核心结论： 只有掌握了从 Warp 级的位运算到 Device 级的 Scan 依赖链，才能在处理海量碎片化数据时，构建出真正不被硬件串行化拖累的高性能算法。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "1. 引言：从垃圾回收看数据压缩的艺术",
+        "points": [
+          "在高性能计算中，数据的组织形式往往直接决定了算法的吞吐上限。一个典型的场景是堆内存管理中的垃圾回收（Garbage Collection）：当系统释放了大量零散对象后，内存会变得碎片化。为了分配大型连续空间，系统必须执行“压缩”操作。",
+          "过滤（Filter）操作的核心定义在于：根据特定准则删除元素，并压缩剩余元素以消除“孔洞”。 这种操作不仅是提高内存利用效率的关键，更是后续并行阶段实现内存合并访问（Memory Coalescing）的先决条件。"
+        ]
+      },
+      {
+        "heading": "2. 核心权衡：不稳定过滤 vs. 稳定过滤",
+        "points": [
+          "在架构设计中，选择哪种过滤模式取决于业务对“顺序”的敏感度。不稳定过滤追求极致的写入速度，而稳定过滤则为保持逻辑一致性牺牲了部分性能。"
+        ]
+      },
+      {
+        "heading": "3. 瓶颈挑战：全局原子操作的性能鸿沟",
+        "points": [
+          "实现一个基础的不稳定过滤内核看似简单：每个线程检查元素，若符合条件，则对全局计数器执行 atomicAdd。然而，作为架构师，我们必须预见到这种设计在硬件层面的灾难：",
+          "> “由于所有原子操作都作用于同一个计数器，硬件会对这些操作进行串行化（Serialization）。当数以万计的线程同时竞争同一 L2 缓存行或内存控制器地址时，严重的输出竞争（Contention）将导致内存带宽过早饱和。”",
+          "这种竞争本质上将并行任务退化为了单线程执行，是必须跨越的性能鸿沟。"
+        ]
+      },
+      {
+        "heading": "4. 突破瓶颈一：利用 Warp 投票实现原子操作合并",
+        "points": [
+          "为了消除串行化，我们引入合并原子操作（Coalesced Atomic Operations）。其核心逻辑是将一个 Warp 内所有线程的增量请求，合并为一次对全局内存的访问。",
+          "具体的硬件级实现分为四个步骤：",
+          "选出 Leader 线程：通过 __ffs() 寻找 Warp 掩码中第一个活跃位。",
+          "计算总增量：利用 __popc() 统计当前 Warp 中符合条件的线程总数。",
+          "执行原子加法并广播：由 Leader 线程执行单次 atomicAdd 获取基址，并利用 _shflsync() 将结果广播。",
+          "各线程计算偏移：每个线程利用位运算确定自己在 Warp 内的排名。",
+          "这里最精妙的位运算技巧在于计算线程偏移（Thread Offset）。为了知道有多少个符合条件的活跃线程排在自己前面，线程 i 会生成一个掩码 (1 << i) - 1，将其与活跃掩码进行“与”运算后再统计位数。",
+          "关键硬件原语：",
+          "__activemask()：获取当前活跃线程的 32 位掩码。",
+          "__ffs(mask)：返回掩码中首个设置位的索引（需减 1 得到 0-based 索引）。",
+          "__popc(mask)：高效计算掩码中 1 的个数。"
+        ]
+      },
+      {
+        "heading": "5. 编程简化：Cooperative Groups API 的优雅实现",
+        "points": [
+          "虽然底层位运算高效，但 Cooperative Groups 提供的抽象更符合现代 C++ 风格。以下是传统位运算与协同组 API 的直观对比：",
+          "传统位运算方法 (Bitwise) ``cpp unsigned int mask = activemask(); int leader = ffs(mask) - 1; int total = popc(mask); int offset = popc(mask & ((1 << laneid) - 1)); // 计算前序活跃线程数 ``",
+          "协同组方法 (Coalesced Groups) ``cpp auto g = coalescedthreads(); int leaderrank = 0; int total = g.size(); // 直接获取组大小 int offset = g.thread_rank(); // 自动计算组内排名 `` 协同组 API 不仅降低了心智负担，还通过内部封装确保了在不同 GPU 架构下的兼容性。"
+        ]
+      },
+      {
+        "heading": "6. 突破瓶颈二：私有化（Privatization）优化策略",
+        "points": [
+          "私有化是应对内存竞争的进阶武器。通过在 共享内存（Shared Memory） 中建立块级私有计数器和输出缓冲区，我们可以实现：",
+          "局部竞争消除：原子操作的范围被限制在 cuda::threadscopeblock，避免了对全局内存控制器的频繁冲击。",
+          "物理内存合并（Memory Coalescing）：该技术将原本随机、离散的全局写入（Random Global Writes）转化为连续的、突发式的合并写入（Contiguous Bursts）。因为数据在写回全局内存前已经在共享内存中排好了序，连续线程写入连续地址，极大地提升了总线利用率。"
+        ]
+      },
+      {
+        "heading": "7. 深度进阶：基于 Scan 模式的稳定过滤",
+        "points": [
+          "当应用场景要求保持数据顺序时，原子操作因其随机性而失效。此时，Scan 模式是稳定过滤的核心。",
+          "实现稳定过滤需三步走：",
+          "生成布尔标志位：符合条件的元素标记为 1，否则为 0。",
+          "执行独占扫描（Exclusive Scan）：计算每个元素前面的“1”的总数。",
+          "映射输出位置：Scan 的结果即为该元素在最终压缩数组中的精确物理索引。"
+        ]
+      },
+      {
+        "heading": "8. 极致性能优化：线程粗化与原地操作",
+        "points": []
+      },
+      {
+        "heading": "线程粗化（Thread Coarsening）",
+        "points": [
+          "通过让每个线程处理多个元素，我们不仅减少了网格启动和同步开销，更重要的是提升了 Scan 操作的工作效率（Work Efficiency）。粗化使得每个线程块能产生更大、更连续的写回块，是压榨显存带宽的常用手段。"
+        ]
+      },
+      {
+        "heading": "原地（In-place）过滤",
+        "points": [
+          "在内存受限（如处理接近显存上限的堆数据）时，必须执行原地过滤。",
+          "同步依赖链：许多人担心原地操作会导致数据覆盖风险。但在稳定过滤中，Scan 操作天然的依赖链（Dependency Chain） 保证了逻辑正确性：由于 Read(Block i) -> Scan(Block i) -> Scan(Block j) -> Write(Block j) 的顺序存在，前面的块总是在后面的块写入之前完成读取。",
+          "矩阵行列增删：",
+          "向内压缩（Inward）：删除行列，同步方向与数据流一致。",
+          "向外扩展（Outward）：增加行列（如为了内存对齐），此时会发生“写覆盖读”风险。必须采用反向同步策略，即从数组末尾开始向头部处理，或者通过单向同步确保后方线程块先读取原始数据。"
+        ]
+      },
+      {
+        "heading": "9. 总结与行动指南",
+        "points": [
+          "作为架构师，理解 Filter 模式的“灵魂”远比调用 API 重要：",
+          "性能分层：如果不要求顺序，利用 Warp 投票合并原子操作是第一优先级；如果要求顺序，Scan 模式是唯一解。",
+          "吞吐为王：通过私有化和线程粗化，将随机访问模式重塑为合并访问模式，是性能翻倍的核心秘籍。",
+          "工程实践：虽然底层原理至关重要，但在生产环境中，应优先选用 Thrust 或 CUB 库。理解了本文的原理，你将能更精准地为不同负载选择合适的库函数。",
+          "核心结论： 只有掌握了从 Warp 级的位运算到 Device 级的 Scan 依赖链，才能在处理海量碎片化数据时，构建出真正不被硬件串行化拖累的高性能算法。"
+        ]
+      }
+    ],
+    "items": []
+  }
+}

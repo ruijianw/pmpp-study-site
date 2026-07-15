@@ -7,5 +7,6 @@ study-site/.env*
 
 output/.DS_Store
 output/pdf/
+output/studio-blog-posts/
 output/site-data/chapters/*.txt
 output/site-data/generated/

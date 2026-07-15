@@ -38,6 +38,13 @@ Open `http://127.0.0.1:5175`.
 
 Static data is written to `../output/static-site-data/` and copied into `dist/data/` during `npm run build`.
 
+Blog Post artifacts are generated with NotebookLM Studio through MCP as `report` artifacts with `report_format="Blog Post"`. Download the Studio reports as Markdown files under `../output/studio-blog-posts/<chapter-id>.md`, then convert them into static site JSON:
+
+```bash
+node ../scripts/convert_studio_blog_posts.mjs --notebook-id 0d5f1463-f72f-4085-b5a4-2da2242d4450
+npm run build
+```
+
 To test a small sample first:
 
 ```bash
@@ -45,7 +52,7 @@ python3 ../scripts/nlm_generate_static_site.py --chapters 24 --types study-guide
 npm run build
 ```
 
-Full generation is 24 chapters × 6 artifact types = 144 NotebookLM queries.
+Full generation is 24 chapters × 7 artifact types. The first six artifact types can be produced with NotebookLM queries; Blog Post uses NotebookLM Studio report generation.
 
 ## GitHub Pages
 

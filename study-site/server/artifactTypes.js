@@ -61,6 +61,17 @@ export const artifactTypes = [
 - speakerNotes
 - visualSuggestion`,
   },
+  {
+    id: "blog-post",
+    label: "Blog Post",
+    description: "A readable NotebookLM Studio article with technical takeaways.",
+    prompt: `Create a polished technical blog post with:
+- a clear headline
+- an engaging introduction
+- 4-6 explanatory sections
+- concrete CUDA/GPU performance takeaways
+- a concise closing reflection`,
+  },
 ];
 
 const artifactTypeById = new Map(artifactTypes.map((type) => [type.id, type]));
