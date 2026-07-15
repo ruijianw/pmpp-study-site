@@ -85,6 +85,36 @@ export function createQuizSession(content = {}) {
   };
 }
 
+export function createSlideDeckSession(content = {}) {
+  const slides = normalizeSlides(content.items);
+  let currentIndex = 0;
+
+  return {
+    get count() {
+      return slides.length;
+    },
+    get slides() {
+      return slides;
+    },
+    get currentIndex() {
+      return currentIndex;
+    },
+    get current() {
+      return slides[currentIndex] || null;
+    },
+    next() {
+      if (slides.length === 0) return null;
+      currentIndex = Math.min(currentIndex + 1, slides.length - 1);
+      return this.current;
+    },
+    previous() {
+      if (slides.length === 0) return null;
+      currentIndex = Math.max(currentIndex - 1, 0);
+      return this.current;
+    },
+  };
+}
+
 export function optionLabel(option, index) {
   if (typeof option === "string") {
     const match = option.trim().match(/^([A-Z])[\s.)-]/i);
@@ -112,6 +142,18 @@ function normalizeQuizQuestions(items = []) {
       index,
       type: item.type || (Array.isArray(item.options) ? "multiple-choice" : "short-answer"),
       options: Array.isArray(item.options) ? item.options : [],
+    }));
+}
+
+function normalizeSlides(items = []) {
+  return items
+    .filter((item) => item && item.title)
+    .map((item, index) => ({
+      slideNumber: Number(item.slideNumber || index + 1),
+      title: String(item.title),
+      bullets: Array.isArray(item.bullets) ? item.bullets.map(String) : [],
+      speakerNotes: item.speakerNotes ? String(item.speakerNotes) : "",
+      visualSuggestion: item.visualSuggestion ? String(item.visualSuggestion) : "",
     }));
 }
 

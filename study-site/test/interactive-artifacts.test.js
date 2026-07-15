@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { createFlashcardSession, createQuizSession } from "../public/interactiveArtifacts.js";
+import {
+  createFlashcardSession,
+  createQuizSession,
+  createSlideDeckSession,
+} from "../public/interactiveArtifacts.js";
 
 test("flashcard session flips cards and navigates through the deck", () => {
   const session = createFlashcardSession({
@@ -70,4 +74,41 @@ test("quiz session scores multiple-choice answers and reveals short answers", ()
   const reveal = session.revealShortAnswer(1);
   assert.equal(reveal.expectedAnswer, "The serial portion limits speedup.");
   assert.equal(reveal.explanation, "Even infinite parallel speed cannot remove serial work.");
+});
+
+test("slide deck session normalizes slides and navigates through the deck", () => {
+  const session = createSlideDeckSession({
+    items: [
+      {
+        slideNumber: 1,
+        title: "Concurrency Revolution",
+        bullets: ["Frequency scaling stalled.", "Parallel hardware became necessary."],
+        speakerNotes: "Explain why clock speed stopped being enough.",
+        visualSuggestion: "Timeline of frequency and core count.",
+      },
+      {
+        slideNumber: 2,
+        title: "GPU Throughput",
+        bullets: ["Many ALUs.", "Latency hiding with many threads."],
+        speakerNotes: "Contrast CPU and GPU design.",
+        visualSuggestion: "Chip area comparison.",
+      },
+    ],
+  });
+
+  assert.equal(session.count, 2);
+  assert.equal(session.currentIndex, 0);
+  assert.equal(session.current.title, "Concurrency Revolution");
+  assert.deepEqual(session.current.bullets, [
+    "Frequency scaling stalled.",
+    "Parallel hardware became necessary.",
+  ]);
+
+  session.next();
+  assert.equal(session.currentIndex, 1);
+  assert.equal(session.current.slideNumber, 2);
+  assert.equal(session.current.speakerNotes, "Contrast CPU and GPU design.");
+
+  session.previous();
+  assert.equal(session.currentIndex, 0);
 });

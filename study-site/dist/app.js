@@ -1,4 +1,9 @@
-import { createFlashcardSession, createQuizSession, optionLabel } from "./interactiveArtifacts.js";
+import {
+  createFlashcardSession,
+  createQuizSession,
+  createSlideDeckSession,
+  optionLabel,
+} from "./interactiveArtifacts.js";
 
 const state = {
   chapters: [],
@@ -265,6 +270,12 @@ function renderArtifact(artifact, cacheStatus) {
     return;
   }
 
+  if (artifact.artifactType === "slide-deck") {
+    els.artifactContent.append(renderSlideDeck(content));
+    appendSectionCards(content.sections);
+    return;
+  }
+
   for (const [key, value] of Object.entries(content)) {
     if (["summary", "items", "sections", "title"].includes(key)) continue;
     els.artifactContent.append(renderValue(titleCase(key), value));
@@ -470,6 +481,80 @@ function renderQuiz(content) {
 
   updateScore();
   return shell;
+}
+
+function renderSlideDeck(content) {
+  const session = createSlideDeckSession(content);
+  const shell = document.createElement("section");
+  shell.className = "slide-deck-study";
+
+  if (session.count === 0) {
+    shell.classList.add("empty-state");
+    shell.textContent = "No slides are available for this chapter.";
+    return shell;
+  }
+
+  const toolbar = document.createElement("div");
+  toolbar.className = "study-toolbar";
+  const progress = document.createElement("strong");
+  const meta = document.createElement("span");
+  toolbar.append(progress, meta);
+
+  const slide = document.createElement("article");
+  slide.className = "slide-stage";
+  const slideNumber = document.createElement("small");
+  const title = document.createElement("h4");
+  const bulletList = document.createElement("ul");
+  slide.append(slideNumber, title, bulletList);
+
+  const notes = document.createElement("div");
+  notes.className = "slide-notes";
+  const speakerNotes = document.createElement("p");
+  const visualSuggestion = document.createElement("p");
+  notes.append(labelText("Speaker Notes"), speakerNotes, labelText("Visual Suggestion"), visualSuggestion);
+
+  const controls = document.createElement("div");
+  controls.className = "study-controls slide-controls";
+  const previous = controlButton("Previous");
+  const next = controlButton("Next");
+  controls.append(previous, next);
+
+  function update() {
+    const current = session.current;
+    progress.textContent = `Slide ${session.currentIndex + 1} / ${session.count}`;
+    meta.textContent = `Source slide ${current.slideNumber}`;
+    slideNumber.textContent = `Slide ${current.slideNumber}`;
+    title.textContent = current.title;
+    bulletList.replaceChildren();
+    for (const bullet of current.bullets) {
+      const item = document.createElement("li");
+      item.textContent = bullet;
+      bulletList.append(item);
+    }
+    speakerNotes.textContent = current.speakerNotes || "No speaker notes.";
+    visualSuggestion.textContent = current.visualSuggestion || "No visual suggestion.";
+    previous.disabled = session.currentIndex === 0;
+    next.disabled = session.currentIndex === session.count - 1;
+  }
+
+  previous.addEventListener("click", () => {
+    session.previous();
+    update();
+  });
+  next.addEventListener("click", () => {
+    session.next();
+    update();
+  });
+
+  shell.append(toolbar, slide, controls, notes);
+  update();
+  return shell;
+}
+
+function labelText(value) {
+  const label = document.createElement("small");
+  label.textContent = value;
+  return label;
 }
 
 function controlButton(label) {
