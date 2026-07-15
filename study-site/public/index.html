@@ -37,8 +37,6 @@
           </div>
         </section>
 
-        <section class="artifact-tabs" id="artifact-tabs" aria-label="Artifact types"></section>
-
         <section class="artifact-panel">
           <div class="panel-header">
             <div>
@@ -53,44 +51,22 @@
         </section>
       </main>
 
-      <aside class="control-panel" aria-label="Chapter study navigation">
-        <section class="control-section chapter-context">
+      <aside class="control-panel" aria-label="Study mode selector">
+        <section class="control-section study-mode-panel">
           <div>
-            <p id="context-chapter-kicker" class="kicker">Chapter</p>
-            <h2 id="context-chapter-title">Select a chapter</h2>
+            <p class="kicker">Study Mode</p>
+            <h2>Choose how to learn</h2>
+            <p id="selected-artifact-copy">Choose an artifact type.</p>
           </div>
-          <dl class="data-stats compact-stats" aria-label="Current chapter stats">
-            <div>
-              <dt>Pages</dt>
-              <dd id="context-page-count">0</dd>
-            </div>
-            <div>
-              <dt>Words</dt>
-              <dd id="context-word-count">0</dd>
-            </div>
-            <div>
-              <dt>Assets</dt>
-              <dd id="context-artifact-count">0 / 0</dd>
-            </div>
-          </dl>
-        </section>
-
-        <section class="control-section artifact-guide">
-          <h2>Artifact Guide</h2>
-          <p id="selected-artifact-copy">Choose an artifact type.</p>
           <div class="guide-callout">
             <span>Use this for</span>
             <strong id="artifact-use-case">choosing a study mode</strong>
           </div>
-        </section>
-
-        <section class="control-section chapter-assets">
-          <h2>Chapter Assets</h2>
-          <div id="chapter-assets" class="asset-list"></div>
+          <div id="study-mode-list" class="mode-list"></div>
         </section>
 
         <section class="control-section source-section">
-          <h2 id="control-title">Generate</h2>
+          <h2 id="control-title">Offline Content</h2>
           <p id="codex-config" class="codex-config">Codex model loading</p>
           <button id="generate-button" type="button">Generate with Codex</button>
           <dl class="data-stats" aria-label="Offline data stats">
@@ -107,7 +83,7 @@
             <input id="force-refresh" type="checkbox" />
             <span>Regenerate cached result</span>
           </label>
-          <p id="status-line" class="status-line">Idle</p>
+          <p id="status-line" class="status-line" aria-live="polite">Idle</p>
         </section>
       </aside>
     </div>

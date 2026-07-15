@@ -1,22 +1,22 @@
 :root {
   color-scheme: light;
-  --bg: #f7f8fb;
+  --bg: #f8fafd;
   --surface: #ffffff;
   --surface-strong: #ffffff;
-  --surface-muted: #f1f5f9;
+  --surface-muted: #f1f4f9;
   --ink: #111827;
-  --muted: #5f6b7a;
-  --line: #d8e0ea;
-  --line-strong: #b7c4d3;
-  --accent: #276b59;
-  --accent-strong: #17483b;
-  --accent-soft: #e5f3ed;
-  --violet: #6254c7;
-  --blue: #2764a8;
+  --muted: #667085;
+  --line: #d9e1ec;
+  --line-strong: #aebbd0;
+  --accent: #4f46e5;
+  --accent-strong: #3730a3;
+  --accent-soft: #eef2ff;
+  --violet: #4f46e5;
+  --blue: #2563eb;
   --amber: #9a6700;
   --red: #b42318;
-  --ring: #6254c7;
-  --shadow: 0 12px 34px rgba(15, 23, 42, 0.08);
+  --ring: #4f46e5;
+  --shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
   --shadow-soft: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
@@ -88,7 +88,7 @@ main:focus-visible {
 
 .app-shell {
   display: grid;
-  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr) minmax(280px, 320px);
+  grid-template-columns: minmax(272px, 308px) minmax(0, 1fr) minmax(300px, 340px);
   min-height: 100vh;
 }
 
@@ -129,9 +129,7 @@ main:focus-visible {
 .brand-mark {
   align-items: center;
   aspect-ratio: 1;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0)),
-    var(--accent);
+  background: var(--accent);
   border-radius: 8px;
   color: white;
   display: grid;
@@ -157,12 +155,10 @@ h1,
 h2,
 h3,
 .chapter-button strong,
-.artifact-tab,
-.artifact-tab span,
 .artifact-card p,
 .section-card p,
 .control-section p,
-.asset-button strong {
+.mode-button strong {
   overflow-wrap: break-word;
 }
 
@@ -240,7 +236,7 @@ h3 {
 
 .chapter-button.active {
   background: var(--accent-soft);
-  border-color: #9fceb9;
+  border-color: #c7d2fe;
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
@@ -256,7 +252,7 @@ h3 {
 
 .workspace {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   padding: 24px 24px 28px;
 }
@@ -284,46 +280,6 @@ h3 {
   border-radius: 999px;
   box-shadow: var(--shadow-soft);
   padding: 6px 10px;
-}
-
-.artifact-tabs {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
-  padding-bottom: 18px;
-}
-
-.artifact-tab {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  color: var(--ink);
-  cursor: pointer;
-  box-shadow: var(--shadow-soft);
-  min-height: 72px;
-  min-width: 0;
-  padding: 10px;
-  text-align: left;
-}
-
-.artifact-tab:hover,
-.artifact-tab:focus-visible {
-  border-color: var(--line-strong);
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
-}
-
-.artifact-tab.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: white;
-}
-
-.artifact-tab span {
-  display: block;
-  font-size: 12px;
-  line-height: 1.2;
-  margin-top: 4px;
-  opacity: 0.78;
 }
 
 .artifact-panel,
@@ -357,7 +313,7 @@ h3 {
 }
 
 .cache-badge.hit {
-  background: #e4f0ea;
+  background: #eef2ff;
   color: var(--accent-strong);
 }
 
@@ -401,8 +357,8 @@ h3 {
 }
 
 .summary-box {
-  background: linear-gradient(180deg, #ffffff, #f5fbf8);
-  border-color: #b9d9cb;
+  background: linear-gradient(180deg, #ffffff, #f7f9ff);
+  border-color: #c7d2fe;
 }
 
 .summary-box h4 {
@@ -482,19 +438,18 @@ li + li {
   font-size: 16px;
 }
 
-.chapter-context h2 {
-  font-size: 18px;
-  line-height: 1.25;
+.study-mode-panel {
+  gap: 14px;
 }
 
-.artifact-guide {
-  background: linear-gradient(180deg, #ffffff, #f6fbf8);
-  border-color: #bddacb;
+.study-mode-panel h2 {
+  font-size: 19px;
+  line-height: 1.25;
 }
 
 .guide-callout {
   background: var(--accent-soft);
-  border: 1px solid #bddacb;
+  border: 1px solid #c7d2fe;
   border-radius: 8px;
   display: grid;
   gap: 3px;
@@ -514,12 +469,12 @@ li + li {
   line-height: 1.25;
 }
 
-.asset-list {
+.mode-list {
   display: grid;
   gap: 8px;
 }
 
-.asset-button {
+.mode-button {
   align-items: center;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -530,34 +485,46 @@ li + li {
   gap: 10px;
   justify-content: space-between;
   min-height: 44px;
-  padding: 9px 10px;
+  padding: 10px;
   text-align: left;
 }
 
-.asset-button:hover,
-.asset-button:focus-visible {
+.mode-button:hover,
+.mode-button:focus-visible {
   border-color: var(--line-strong);
   box-shadow: var(--shadow-soft);
 }
 
-.asset-button.active {
+.mode-button.active {
   background: var(--accent-soft);
-  border-color: #9fceb9;
+  border-color: #c7d2fe;
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
-.asset-button:disabled {
+.mode-button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
 
-.asset-button strong {
+.mode-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.mode-copy strong {
   font-size: 14px;
   line-height: 1.2;
   min-width: 0;
 }
 
-.asset-button span {
+.mode-copy small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.mode-status {
   border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--muted);
@@ -568,19 +535,19 @@ li + li {
   text-transform: uppercase;
 }
 
-.asset-button.available span {
+.mode-button.available .mode-status {
   background: #e8f0f8;
   border-color: #c5d7e8;
   color: var(--blue);
 }
 
-.asset-button.missing span {
+.mode-button.missing .mode-status {
   background: #fae9e6;
   border-color: #f0c2bc;
   color: var(--red);
 }
 
-.asset-empty {
+.mode-empty {
   color: var(--muted);
   font-size: 14px;
 }
@@ -616,24 +583,6 @@ li + li {
   font-weight: 750;
   margin: 0;
   text-align: right;
-}
-
-.data-stats.compact-stats {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.data-stats.compact-stats div {
-  align-items: start;
-  display: grid;
-  gap: 4px;
-  justify-content: start;
-  min-height: 54px;
-  min-width: 0;
-}
-
-.data-stats.compact-stats dd {
-  font-size: 14px;
-  text-align: left;
 }
 
 #generate-button {
@@ -705,17 +654,8 @@ li + li {
     flex-direction: column;
   }
 
-  .artifact-tabs,
   .control-panel {
     grid-template-columns: 1fr;
-  }
-
-  .artifact-tabs {
-    gap: 8px;
-  }
-
-  .artifact-tab {
-    min-height: 58px;
   }
 }
 

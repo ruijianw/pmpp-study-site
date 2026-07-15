@@ -20,19 +20,13 @@ const els = {
   pageCount: document.querySelector("#page-count"),
   wordCount: document.querySelector("#word-count"),
   artifactCount: document.querySelector("#artifact-count"),
-  artifactTabs: document.querySelector("#artifact-tabs"),
   artifactKicker: document.querySelector("#artifact-kicker"),
   artifactTitle: document.querySelector("#artifact-title"),
   artifactContent: document.querySelector("#artifact-content"),
   cacheBadge: document.querySelector("#cache-badge"),
   selectedArtifactCopy: document.querySelector("#selected-artifact-copy"),
   artifactUseCase: document.querySelector("#artifact-use-case"),
-  contextChapterKicker: document.querySelector("#context-chapter-kicker"),
-  contextChapterTitle: document.querySelector("#context-chapter-title"),
-  contextPageCount: document.querySelector("#context-page-count"),
-  contextWordCount: document.querySelector("#context-word-count"),
-  contextArtifactCount: document.querySelector("#context-artifact-count"),
-  chapterAssets: document.querySelector("#chapter-assets"),
+  studyModeList: document.querySelector("#study-mode-list"),
   controlTitle: document.querySelector("#control-title"),
   codexConfig: document.querySelector("#codex-config"),
   artifactCoverage: document.querySelector("#artifact-coverage"),
@@ -80,7 +74,6 @@ async function loadSiteData() {
 
 function renderAll() {
   renderChapters();
-  renderArtifactTabs();
   renderHeader();
   renderControls();
 }
@@ -109,26 +102,6 @@ function renderChapters() {
   }
 }
 
-function renderArtifactTabs() {
-  els.artifactTabs.replaceChildren();
-  for (const type of state.artifactTypes) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `artifact-tab${type.id === state.currentType ? " active" : ""}`;
-    button.textContent = type.label;
-    const description = document.createElement("span");
-    description.textContent = type.description;
-    button.append(description);
-    button.addEventListener("click", async () => {
-      state.currentType = type.id;
-      renderArtifactTabs();
-      renderControls();
-      await loadCachedArtifact();
-    });
-    els.artifactTabs.append(button);
-  }
-}
-
 function renderHeader() {
   const chapter = currentChapter();
   if (!chapter) return;
@@ -143,21 +116,12 @@ function renderControls() {
   const chapter = currentChapter();
   const type = currentType();
   const coverage = artifactCoverage();
-  const chapterArtifactCount = Object.keys(chapter?.artifacts || {}).length;
-
-  if (chapter) {
-    els.contextChapterKicker.textContent = `Chapter ${chapter.number}`;
-    els.contextChapterTitle.textContent = chapter.title;
-    els.contextPageCount.textContent = String(chapter.pageCount);
-    els.contextWordCount.textContent = formatNumber(chapter.wordCount);
-    els.contextArtifactCount.textContent = `${chapterArtifactCount} / ${state.artifactTypes.length}`;
-  }
 
   els.selectedArtifactCopy.textContent = type?.description || "Choose an artifact type.";
   els.artifactUseCase.textContent = artifactUseCases[type?.id] || "focused review";
   els.artifactCoverage.textContent = `${coverage.available} / ${coverage.total}`;
   els.dataUpdated.textContent = formatDate(state.generatedAt);
-  renderChapterAssets(chapter);
+  renderStudyModes(chapter);
 
   if (state.staticMode) {
     els.controlTitle.textContent = "Offline Content";
@@ -175,13 +139,13 @@ function renderControls() {
   els.generateButton.disabled = state.loading || !currentChapter() || !type;
 }
 
-function renderChapterAssets(chapter) {
-  els.chapterAssets.replaceChildren();
+function renderStudyModes(chapter) {
+  els.studyModeList.replaceChildren();
   if (!chapter) {
     const empty = document.createElement("p");
-    empty.className = "asset-empty";
-    empty.textContent = "Select a chapter to view its available artifacts.";
-    els.chapterAssets.append(empty);
+    empty.className = "mode-empty";
+    empty.textContent = "Select a chapter before choosing a study mode.";
+    els.studyModeList.append(empty);
     return;
   }
 
@@ -190,23 +154,31 @@ function renderChapterAssets(chapter) {
     const active = type.id === state.currentType;
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `asset-button${active ? " active" : ""}${available ? " available" : " missing"}`;
+    button.className = `mode-button${active ? " active" : ""}${available ? " available" : " missing"}`;
     button.setAttribute("aria-pressed", String(active));
     button.disabled = state.staticMode && !available;
+    const statusLabel = available ? "Ready" : state.staticMode ? "Missing" : "Generate";
+    button.setAttribute("aria-label", `${type.label}: ${type.description} ${statusLabel}.`);
 
+    const copy = document.createElement("span");
+    copy.className = "mode-copy";
     const label = document.createElement("strong");
     label.textContent = type.label;
+    const description = document.createElement("small");
+    description.textContent = type.description;
+    copy.append(label, description);
+
     const status = document.createElement("span");
-    status.textContent = available ? "Ready" : state.staticMode ? "Missing" : "Generate";
-    button.append(label, status);
+    status.className = "mode-status";
+    status.textContent = statusLabel;
+    button.append(copy, status);
 
     button.addEventListener("click", async () => {
       state.currentType = type.id;
-      renderArtifactTabs();
       renderControls();
       await loadCachedArtifact();
     });
-    els.chapterAssets.append(button);
+    els.studyModeList.append(button);
   }
 }
 
