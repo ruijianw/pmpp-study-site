@@ -115,6 +115,13 @@ export function createSlideDeckSession(content = {}) {
   };
 }
 
+export function navigateLinearSession(session, key) {
+  const action = key === "ArrowRight" ? "next" : key === "ArrowLeft" ? "previous" : "";
+  if (!action || typeof session?.[action] !== "function") return false;
+  session[action]();
+  return true;
+}
+
 export function optionLabel(option, index) {
   if (typeof option === "string") {
     const match = option.trim().match(/^([A-Z])[\s.)-]/i);

@@ -5,6 +5,7 @@ import {
   createFlashcardSession,
   createQuizSession,
   createSlideDeckSession,
+  navigateLinearSession,
 } from "../public/interactiveArtifacts.js";
 
 test("flashcard session flips cards and navigates through the deck", () => {
@@ -111,4 +112,35 @@ test("slide deck session normalizes slides and navigates through the deck", () =
 
   session.previous();
   assert.equal(session.currentIndex, 0);
+});
+
+test("linear study sessions navigate with arrow keys", () => {
+  const flashcards = createFlashcardSession({
+    items: [
+      { front: "Host code launches what?", back: "A GPU kernel." },
+      { front: "Blocks contain what?", back: "Threads." },
+    ],
+  });
+
+  flashcards.flip();
+  assert.equal(navigateLinearSession(flashcards, "ArrowRight"), true);
+  assert.equal(flashcards.currentIndex, 1);
+  assert.equal(flashcards.flipped, false);
+
+  assert.equal(navigateLinearSession(flashcards, "ArrowLeft"), true);
+  assert.equal(flashcards.currentIndex, 0);
+  assert.equal(navigateLinearSession(flashcards, "Enter"), false);
+
+  const slides = createSlideDeckSession({
+    items: [
+      { title: "CUDA Execution Model" },
+      { title: "Memory Hierarchy" },
+    ],
+  });
+
+  assert.equal(navigateLinearSession(slides, "ArrowRight"), true);
+  assert.equal(slides.currentIndex, 1);
+
+  assert.equal(navigateLinearSession(slides, "ArrowLeft"), true);
+  assert.equal(slides.currentIndex, 0);
 });

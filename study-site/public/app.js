@@ -2,6 +2,7 @@ import {
   createFlashcardSession,
   createQuizSession,
   createSlideDeckSession,
+  navigateLinearSession,
   optionLabel,
 } from "./interactiveArtifacts.js";
 
@@ -328,6 +329,8 @@ function renderFlashcardDeck(content) {
   const session = createFlashcardSession(content);
   const shell = document.createElement("section");
   shell.className = "flashcard-study";
+  shell.tabIndex = 0;
+  shell.setAttribute("aria-label", "Flashcard deck");
 
   if (session.count === 0) {
     shell.classList.add("empty-state");
@@ -390,9 +393,11 @@ function renderFlashcardDeck(content) {
     session.next();
     update();
   });
+  attachLinearKeyboardNavigation(shell, session, update);
 
   shell.append(toolbar, card, controls);
   update();
+  focusStudyShell(shell);
   return shell;
 }
 
@@ -487,6 +492,8 @@ function renderSlideDeck(content) {
   const session = createSlideDeckSession(content);
   const shell = document.createElement("section");
   shell.className = "slide-deck-study";
+  shell.tabIndex = 0;
+  shell.setAttribute("aria-label", "Slide deck");
 
   if (session.count === 0) {
     shell.classList.add("empty-state");
@@ -545,10 +552,27 @@ function renderSlideDeck(content) {
     session.next();
     update();
   });
+  attachLinearKeyboardNavigation(shell, session, update);
 
   shell.append(toolbar, slide, controls, notes);
   update();
+  focusStudyShell(shell);
   return shell;
+}
+
+function attachLinearKeyboardNavigation(shell, session, update) {
+  shell.addEventListener("keydown", (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    if (!navigateLinearSession(session, event.key)) return;
+    event.preventDefault();
+    update();
+  });
+}
+
+function focusStudyShell(shell) {
+  requestAnimationFrame(() => {
+    shell.focus({ preventScroll: true });
+  });
 }
 
 function labelText(value) {

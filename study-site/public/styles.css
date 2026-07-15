@@ -64,7 +64,9 @@ a {
 button:focus-visible,
 input:focus-visible,
 a:focus-visible,
-main:focus-visible {
+main:focus-visible,
+.flashcard-study:focus-visible,
+.slide-deck-study:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--ring) 72%, white);
   outline-offset: 2px;
 }
