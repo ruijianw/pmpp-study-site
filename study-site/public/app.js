@@ -1,4 +1,5 @@
 import {
+  createDataTableModel,
   createFlashcardSession,
   createQuizSession,
   createSlideDeckSession,
@@ -260,6 +261,14 @@ function renderArtifact(artifact, cacheStatus) {
   if (artifact.artifactType === "blog-post") {
     els.artifactContent.classList.add("blog-post-content");
     els.artifactContent.append(renderBlogPost(content));
+    return;
+  }
+
+  if (artifact.artifactType === "data-table") {
+    els.artifactContent.classList.add("data-table-content");
+    appendArtifactSummary(content);
+    els.artifactContent.append(renderDataTable(content));
+    appendSectionCards(content.sections);
     return;
   }
 
@@ -563,6 +572,48 @@ function renderSlideDeck(content) {
   shell.append(toolbar, slide, controls, notes);
   update();
   focusStudyShell(shell);
+  return shell;
+}
+
+function renderDataTable(content) {
+  const model = createDataTableModel(content);
+  const shell = document.createElement("div");
+  shell.className = "data-table-shell";
+
+  if (model.columns.length === 0 || model.rows.length === 0) {
+    shell.classList.add("empty-state");
+    shell.textContent = "No table rows are available for this chapter.";
+    return shell;
+  }
+
+  const table = document.createElement("table");
+  table.className = "data-table";
+  table.setAttribute("aria-label", content.title || "Data table");
+
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  for (const column of model.columns) {
+    const th = document.createElement("th");
+    th.scope = "col";
+    th.textContent = column.label;
+    headerRow.append(th);
+  }
+  thead.append(headerRow);
+  table.append(thead);
+
+  const tbody = document.createElement("tbody");
+  for (const row of model.rows) {
+    const tr = document.createElement("tr");
+    row.forEach((cell, index) => {
+      const td = document.createElement("td");
+      td.textContent = cell;
+      if (index === 0) td.className = "primary-cell";
+      tr.append(td);
+    });
+    tbody.append(tr);
+  }
+  table.append(tbody);
+  shell.append(table);
   return shell;
 }
 

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  createDataTableModel,
   createFlashcardSession,
   createQuizSession,
   createSlideDeckSession,
@@ -143,4 +144,41 @@ test("linear study sessions navigate with arrow keys", () => {
 
   assert.equal(navigateLinearSession(slides, "ArrowLeft"), true);
   assert.equal(slides.currentIndex, 0);
+});
+
+test("data table model normalizes item rows into table columns", () => {
+  const table = createDataTableModel({
+    items: [
+      {
+        concept: "Coalescing",
+        definition: "Adjacent threads access adjacent memory.",
+        cudaRelevance: "Improves global memory throughput.",
+        performanceConcern: "Uncoalesced access wastes bandwidth.",
+        commonMistake: "Ignoring thread-to-address mapping.",
+      },
+      {
+        concept: "Occupancy",
+        definition: "Active warps relative to hardware capacity.",
+        cudaRelevance: "Helps hide latency.",
+        performanceConcern: "Too many registers can reduce occupancy.",
+        commonMistake: "Maximizing occupancy without checking bandwidth.",
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    table.columns.map((column) => column.key),
+    ["concept", "definition", "cudaRelevance", "performanceConcern", "commonMistake"],
+  );
+  assert.deepEqual(
+    table.columns.map((column) => column.label),
+    ["Concept", "Definition", "CUDA Relevance", "Performance Concern", "Common Mistake"],
+  );
+  assert.deepEqual(table.rows[0], [
+    "Coalescing",
+    "Adjacent threads access adjacent memory.",
+    "Improves global memory throughput.",
+    "Uncoalesced access wastes bandwidth.",
+    "Ignoring thread-to-address mapping.",
+  ]);
 });

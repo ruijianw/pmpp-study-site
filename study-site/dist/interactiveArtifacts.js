@@ -115,6 +115,13 @@ export function createSlideDeckSession(content = {}) {
   };
 }
 
+export function createDataTableModel(content = {}) {
+  const sourceRows = normalizeDataRows(content.items);
+  const columns = normalizeDataColumns(content.columns, sourceRows);
+  const rows = sourceRows.map((row) => columns.map((column) => stringifyTableValue(row[column.key])));
+  return { columns, rows };
+}
+
 export function navigateLinearSession(session, key) {
   const action = key === "ArrowRight" ? "next" : key === "ArrowLeft" ? "previous" : "";
   if (!action || typeof session?.[action] !== "function") return false;
@@ -164,6 +171,63 @@ function normalizeSlides(items = []) {
     }));
 }
 
+const preferredDataColumns = [
+  "chapterNumber",
+  "chapterTitle",
+  "concept",
+  "definition",
+  "cudaRelevance",
+  "performanceConcern",
+  "commonMistake",
+  "source",
+];
+
+const dataColumnLabels = {
+  chapterNumber: "Chapter",
+  chapterTitle: "Chapter Title",
+  concept: "Concept",
+  definition: "Definition",
+  cudaRelevance: "CUDA Relevance",
+  performanceConcern: "Performance Concern",
+  commonMistake: "Common Mistake",
+  source: "Source",
+};
+
+function normalizeDataRows(items = []) {
+  if (!Array.isArray(items)) return [];
+  return items.filter((item) => item && typeof item === "object" && !Array.isArray(item));
+}
+
+function normalizeDataColumns(columns = [], rows = []) {
+  if (Array.isArray(columns) && columns.length > 0) {
+    return columns
+      .map((column) => {
+        if (typeof column === "string") return { key: column, label: dataColumnLabels[column] || titleCase(column) };
+        if (column && typeof column === "object" && column.key) {
+          return {
+            key: String(column.key),
+            label: String(column.label || dataColumnLabels[column.key] || titleCase(column.key)),
+          };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }
+
+  const keys = [...new Set(rows.flatMap((row) => Object.keys(row)))];
+  return keys
+    .sort((left, right) => columnRank(left) - columnRank(right))
+    .map((key) => ({
+      key,
+      label: dataColumnLabels[key] || titleCase(key),
+    }));
+}
+
+function columnRank(key) {
+  const index = preferredDataColumns.indexOf(key);
+  return index === -1 ? preferredDataColumns.length : index;
+}
+
 function normalizeAnswer(value, options = []) {
   if (typeof value === "number") return optionLabel(options[value], value);
   const text = String(value ?? "").trim();
@@ -171,4 +235,22 @@ function normalizeAnswer(value, options = []) {
   if (exactIndex >= 0) return optionLabel(options[exactIndex], exactIndex);
   const match = text.match(/^([A-Z])(?:[\s.)-]|$)/i);
   return match ? match[1].toUpperCase() : text.toUpperCase();
+}
+
+function stringifyTableValue(value) {
+  if (Array.isArray(value)) return value.map(stringifyTableValue).join("; ");
+  if (value && typeof value === "object") {
+    return Object.entries(value)
+      .map(([key, nested]) => `${titleCase(key)}: ${stringifyTableValue(nested)}`)
+      .join("; ");
+  }
+  return value == null ? "" : String(value);
+}
+
+function titleCase(value) {
+  return String(value)
+    .replace(/([A-Z])/g, " $1")
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .trim();
 }
